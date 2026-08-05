@@ -9,16 +9,16 @@ packaging and setting the extension up. Findings and dead ends live in `LEARNING
 
 ## Build and install
 
-Node 20 is required for anything that touches `vsce`:
+`vsce` needs Node 20 or newer; the default here is 22.14.0 and works. Node 25 does not — see
+Gotchas. VS Code sits in `~/Applications` on this machine.
 
 ```sh
 cd ~/claude-terminal-panel
-export PATH="$HOME/.nvm/versions/node/v20.19.0/bin:$PATH"
 npm ci
 npm run lint && npm run compile
 npm run package
-"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" \
-  --install-extension claude-terminal-panel-local-darwin-arm64-1.1.0.vsix --force
+"$HOME/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" \
+  --install-extension claude-terminal-panel-local-1.1.0.vsix --force
 ```
 
 `--force` matters: without it VS Code skips an install whose version is already present, which is
@@ -36,20 +36,43 @@ hand.
 ## Package contents
 
 `node-pty` loads its binary from `build/Release`, `build/Debug` or `prebuilds/<platform>-<arch>`
-only (`node_modules/node-pty/lib/utils.js`), and `spawn-helper` must sit in the same directory as
-the loaded `pty.node`. `.vscodeignore` keeps exactly those paths and drops everything else —
-Windows prebuilds, `bin/`, sources, `deps/`, `third_party/`.
+only (`node_modules/node-pty/lib/utils.js`), picking the directory from `process.arch`. The
+`.vsix` therefore carries **all four** prebuilds — `darwin-x64`, `darwin-arm64`, `win32-x64`,
+`win32-arm64` — and no platform tag, so one build installs on Intel and ARM alike. That costs
+2.96 MB in total. Everything else is dropped: `.pdb` debug symbols, `bin/`, sources, `deps/`,
+`third_party/`.
 
-Check after any change there:
+Two things break silently if they slip:
+
+- **`spawn-helper` must sit next to the loaded `pty.node` and be executable.**
+  `lib/unixTerminal.js:29` derives its path from the directory the module came from. `npm ci`
+  leaves the file at 644 and `vsce` copies that mode into the archive, so the module loads and
+  every spawn dies with `posix_spawnp failed`.
+- **A missing prebuild only shows on the machine that needs it**, as
+  `Cannot find module './prebuilds/<arch>//pty.node'`.
+
+`scripts/verify-package-payload.js` covers both and runs automatically as `prepackage` and
+`postpackage`. It restores the executable bit, refuses an incomplete prebuild set, and fails the
+build if `.pdb` files were packaged. To check by hand:
 
 ```sh
-unzip -l *.vsix | grep -E "node-pty.*(\.node|spawn-helper)"
+node scripts/verify-package-payload.js --source
+node scripts/verify-package-payload.js --vsix
+unzip -Z -l *.vsix | grep spawn-helper       # both darwin entries must read -rwxr-xr-x
 npx @vscode/vsce ls | grep -E "resources|dist/extension.js|media/main.js"
 ```
 
-Expected: `build/Release/pty.node` and `build/Release/spawn-helper`, plus the same two under
-`prebuilds/darwin-arm64/`, no `win32-*`, no `bin/`. And `resources/panel-statusline.js` must be
-there — without it the status line silently stays hidden.
+`resources/panel-statusline.js` must be in that last list — without it the status line silently
+stays hidden.
+
+### Linux
+
+`node-pty` 1.1.0 ships **no** Linux prebuild. `scripts/prebuild.js` exits 1 there and the install
+falls back to `node-gyp rebuild`, which produces `build/Release/pty.node` and
+`build/Release/spawn-helper` — both already negated in `.vscodeignore`. So a `.vsix` packaged **on
+Linux** supports Linux with no change to this repository, and one packaged on macOS never can:
+there is nothing to bundle. A Linux binary in the archive does no harm on macOS, because
+`loadNativeModule` tries `build/Release` first, catches the failure and moves on to `prebuilds/`.
 
 ## Differences from upstream
 
@@ -174,9 +197,10 @@ the webview.
 
 ## Gotchas
 
-- **Use Node 20.** `vsce` 3.9.2 collects zero files under Node 25 and then reports
+- **Avoid Node 25.** `vsce` 3.9.2 collects zero files there and then reports
   `Extension entrypoint(s) missing`, which points at the wrong cause. `vsce ls` printing nothing
-  is the tell.
+  is the tell. Node 20 and 22 both work; the earlier instruction to pin exactly 20 was too narrow,
+  and that nvm install no longer exists on this machine.
 - **`.vscodeignore` beats `.gitignore`.** While `.vscodeignore` exists, `vsce` ignores
   `.gitignore` entirely — measured. Anything that must stay out of the `.vsix` needs its own line
   in `.vscodeignore`.

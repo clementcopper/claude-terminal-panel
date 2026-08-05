@@ -14,6 +14,7 @@ eslint.config.mjs
 .prettierignore
 .github/**
 .claude/**
+scripts/**
 *.vsix
 Bildschirmfoto*.png
 Screenshot*.png
@@ -29,6 +30,26 @@ node_modules/**
 # prebuilds/<platform>-<arch>; spawn-helper must sit next to the loaded pty.node.
 !node_modules/node-pty/build/Release/pty.node
 !node_modules/node-pty/build/Release/spawn-helper
+# Both macOS prebuilds ship: 260 KB together, and the loader picks by process.arch, so a package
+# carrying only one fails on the other machine with
+# "Cannot find module './prebuilds/<arch>//pty.node'".
+!node_modules/node-pty/prebuilds/darwin-x64/**
 !node_modules/node-pty/prebuilds/darwin-arm64/**
+# Windows needs each of these by name — winpty for the legacy path, conpty for Windows 10+,
+# conpty/ for the DLL variant. Listed file by file instead of a `**` glob on purpose: the two
+# directories are 58 MB raw, ~95 % of that .pdb debug symbols, and since negations beat every
+# ignore pattern regardless of order, a trailing `*.pdb` rule could not take them out again.
+!node_modules/node-pty/prebuilds/win32-x64/pty.node
+!node_modules/node-pty/prebuilds/win32-x64/conpty.node
+!node_modules/node-pty/prebuilds/win32-x64/conpty_console_list.node
+!node_modules/node-pty/prebuilds/win32-x64/winpty.dll
+!node_modules/node-pty/prebuilds/win32-x64/winpty-agent.exe
+!node_modules/node-pty/prebuilds/win32-x64/conpty/**
+!node_modules/node-pty/prebuilds/win32-arm64/pty.node
+!node_modules/node-pty/prebuilds/win32-arm64/conpty.node
+!node_modules/node-pty/prebuilds/win32-arm64/conpty_console_list.node
+!node_modules/node-pty/prebuilds/win32-arm64/winpty.dll
+!node_modules/node-pty/prebuilds/win32-arm64/winpty-agent.exe
+!node_modules/node-pty/prebuilds/win32-arm64/conpty/**
 
 !dist/**

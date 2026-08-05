@@ -76,6 +76,17 @@ export default tseslint.config(
     },
   },
 
+  // Build tooling, plain CommonJS on the Node globals. Not packaged.
+  {
+    files: ['scripts/**/*.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+
   // Prettier compatibility (must be last)
   eslintConfigPrettier
 );

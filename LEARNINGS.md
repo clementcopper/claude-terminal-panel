@@ -36,6 +36,22 @@ Non-obvious findings and dead ends. Only add what saves future work.
   (`node_modules/node-pty/lib/utils.js`) and expects `spawn-helper` **in the same directory** as
   the loaded `pty.node`. `@electron/rebuild` puts its result under
   `bin/<platform>-<arch>-<abi>/node-pty.node` instead — which is never loaded.
+- **`spawn-helper` arrives without its executable bit and nothing puts it back.** `npm ci` leaves
+  it at 644, `node-pty`'s own `scripts/post-install.js` only cleans `build/Release` and never
+  chmods, and `vsce` stores the mode verbatim. The symptom is not a load error — `pty.node` loads
+  fine and `pty.fork` dies with `Error: posix_spawnp failed`, which names neither the file nor the
+  permission. Fixed at packaging time by `scripts/verify-package-payload.js`.
+- **This machine is Intel** (i7-7700HQ), and VS Code 1.132.0 is the x86_64 build in
+  `~/Applications`. The documented `--target darwin-arm64` was therefore wrong from the start and
+  produced `Cannot find module './prebuilds/darwin-x64//pty.node'`. A platform tag buys nothing
+  once `@electron/rebuild` is gone: all four prebuilds are in the tarball after any `npm ci`,
+  whatever the host architecture, so shipping them all is both simpler and portable.
+- **`.pdb` files are ~95 % of the Windows prebuilds** — 58 MB raw for `win32-x64` plus
+  `win32-arm64`, 5.1 MB without them. They are debug symbols and nothing loads them. They cannot
+  be removed with a trailing ignore rule either, because negations win regardless of order, so the
+  Windows files are negated one by one.
+- **`vsce` 3.9.2 runs fine under Node 22.14.0** — 73 files collected. The Node 25 failure is not a
+  "anything but 20" problem.
 
 ## Claude Code
 

@@ -39,6 +39,20 @@ Local fork, published nowhere: built and installed as `local.claude-terminal-pan
   terminal output is partly model-generated
 - The webview nonce comes from `crypto.randomBytes` instead of `Math.random`
 
+### Fixed
+
+- The `.vsix` is installable on Intel and ARM alike. It carried only the `darwin-arm64` prebuild
+  behind a `--target darwin-arm64` tag, so on an Intel machine the panel died at startup with
+  `Cannot find module './prebuilds/darwin-x64//pty.node'`. All four prebuilds ship now —
+  `darwin-x64`, `darwin-arm64`, `win32-x64`, `win32-arm64` — without a platform tag, 2.96 MB total
+- `spawn-helper` ships executable. It arrived at 644 from `npm ci` and `vsce` stored that mode, so
+  `pty.node` loaded and every spawn failed with `posix_spawnp failed`
+
+### Added
+
+- `scripts/verify-package-payload.js`, run as `prepackage` and `postpackage`: restores the
+  executable bit, rejects an incomplete prebuild set, and keeps `.pdb` debug symbols (55 MB) out
+
 ### Removed
 
 - `@electron/rebuild`, `node-abi` and the `postinstall` script. `node-pty` 1.1.0 is N-API and

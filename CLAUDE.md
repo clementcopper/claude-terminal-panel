@@ -18,21 +18,29 @@ is uninstalled. Renamed on purpose so a Marketplace update cannot overwrite it.
 
 ## Commands
 
-Node 20 is required for anything that touches `vsce`:
+`vsce` needs Node 20 or newer. Node 22.14.0 (the current default here) is fine; Node 25 is not —
+see `LEARNINGS.md`. There is no nvm install of Node 20 on this machine any more.
 
-```sh
-export PATH="$HOME/.nvm/versions/node/v20.19.0/bin:$PATH"
-```
+| Task                     | Command                                                                       |
+| ------------------------ | ----------------------------------------------------------------------------- |
+| Install                  | `npm ci`                                                                      |
+| Full build               | `npm run compile` (extension bundle + `media/main.js` + copies `xterm.css`)   |
+| Extension only, watching | `npm run watch`                                                               |
+| Lint                     | `npm run lint` / `npm run lint:fix`                                           |
+| Format                   | `npm run format` / `npm run format:check`                                     |
+| Package `.vsix`          | `npm run package` (no `--target`, `--skip-license`; guarded on both sides)    |
+| Check the payload alone  | `node scripts/verify-package-payload.js --source` / `--vsix`                  |
+| Install the build        | `code --install-extension claude-terminal-panel-local-<version>.vsix --force` |
 
-| Task                     | Command                                                                                    |
-| ------------------------ | ------------------------------------------------------------------------------------------ |
-| Install                  | `npm ci`                                                                                   |
-| Full build               | `npm run compile` (extension bundle + `media/main.js` + copies `xterm.css`)                |
-| Extension only, watching | `npm run watch`                                                                            |
-| Lint                     | `npm run lint` / `npm run lint:fix`                                                        |
-| Format                   | `npm run format` / `npm run format:check`                                                  |
-| Package `.vsix`          | `npm run package` (darwin-arm64, `--skip-license`)                                         |
-| Install the build        | `code --install-extension claude-terminal-panel-local-darwin-arm64-<version>.vsix --force` |
+VS Code lives in **`~/Applications`** on this machine, not `/Applications` — the CLI is
+`"$HOME/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"`.
+
+The `.vsix` carries no platform tag and ships the prebuilds for `darwin-x64`, `darwin-arm64`,
+`win32-x64` and `win32-arm64`, so one build installs on Intel and ARM alike. `scripts/verify-package-payload.js`
+runs as `prepackage` and `postpackage`: it restores the executable bit on every `spawn-helper` and
+refuses to let a package through that is missing a prebuild or carries `.pdb` debug symbols.
+Linux has no prebuild in `node-pty` 1.1.0 and would have to be packaged on Linux — see
+`README.local.md`.
 
 **There is no test suite** — no test script, no framework, no `.vscode-test`. Verification is
 `npm run lint && npm run compile`, then package, install, reload the window and exercise the panel
@@ -45,11 +53,12 @@ touches types.
 
 ## Git — read before running anything
 
-- **`origin` is the upstream repo, not ours** (`Nolikzero/claude-terminal-panel`, HTTPS). Never
-  push there; there is no write access, and it is not our repository. Fetch from it to compare
-  or merge.
-- **`fork` is ours** (`clementcopper/claude-terminal-panel`, SSH), and `main` tracks `fork/main`.
-  Push only when asked, and only to `fork`.
+- **Check the remote URLs, not the names** (`git remote -v`). They have been renamed once already,
+  and an earlier version of this file described the opposite of what is configured. As of
+  2026-08-05: **`origin` is ours** (`clementcopper/claude-terminal-panel`, HTTPS) and `main`
+  tracks `origin/main`; **`upstream` is Nolikzero's** (`Nolikzero/claude-terminal-panel`).
+- **Never push to Nolikzero's repository**, under whatever name it carries. There is no write
+  access and it is not ours. Fetch from it to compare or merge. Push to ours only when asked.
 - **Never create a `v*` tag.** `.github/workflows/release.yml` is upstream's, still runs
   `@electron/rebuild` and ends in `vsce publish` with `VSCE_PAT`. It has no business running for
   this fork.
@@ -137,7 +146,12 @@ directory.
   ```
 
   pulls the whole module back in regardless of line order. Ignore all of `node_modules`, then
-  negate exactly the paths that ship.
+  negate exactly the paths that ship. For the same reason the Windows prebuilds are negated file
+  by file: a `**` glob cannot be narrowed afterwards, and their `.pdb` debug symbols are 55 MB.
+
+- **`--target` on `vsce package`.** A platform tag makes the `.vsix` refuse to install on any
+  other architecture, and the fork has no rebuild step that would need one. Ship every prebuild
+  instead.
 
 ## Learnings
 
