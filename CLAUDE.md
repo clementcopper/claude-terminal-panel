@@ -42,9 +42,11 @@ Type-checking happens through esbuild bundling only (`tsc` is not in the build c
 
 ## Git — read before running anything
 
-- **`origin` is the upstream repo, not ours.** `main` tracks `origin/main`. Never push; there
-  is no write access, and it is not our repository. If a backup remote is wanted, add it under
-  a different name and push there explicitly.
+- **`origin` is the upstream repo, not ours** (`Nolikzero/claude-terminal-panel`, HTTPS). Never
+  push there; there is no write access, and it is not our repository. Fetch from it to compare
+  or merge.
+- **`fork` is ours** (`clementcopper/claude-terminal-panel`, SSH), and `main` tracks `fork/main`.
+  Push only when asked, and only to `fork`.
 - **Never create a `v*` tag.** `.github/workflows/release.yml` is upstream's, still runs
   `@electron/rebuild` and ends in `vsce publish` with `VSCE_PAT`. It has no business running for
   this fork.
