@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { createHash } from 'crypto';
 import type { StatusLineSnapshot } from './types';
 
 /**
@@ -14,6 +15,23 @@ export function getStatusLineDir(): string {
 
 export type StatusLineCallback = (terminalId: string, snapshot: StatusLineSnapshot | null) => void;
 
+/** `~` for the home directory, matching what the producers write. */
+function collapseHome(dir: string): string {
+  const home = os.homedir();
+  if (home.length === 0) return dir;
+  if (dir === home) return '~';
+  return dir.startsWith(home + path.sep) ? `~${dir.slice(home.length)}` : dir;
+}
+
+/**
+ * File name for the remembered snapshot. Hashed rather than escaped so a path with separators or
+ * odd characters cannot escape the directory, and collapsed first so `/Users/x/p` and `~/p` are
+ * the same key.
+ */
+function hashCwd(cwd: string): string {
+  return createHash('sha1').update(collapseHome(cwd)).digest('hex').slice(0, 16);
+}
+
 /**
  * Watches the status directory and reports whatever the statusLine script wrote.
  *
@@ -23,6 +41,13 @@ export type StatusLineCallback = (terminalId: string, snapshot: StatusLineSnapsh
  */
 export class StatusLineWatcher {
   private readonly dir = getStatusLineDir();
+  /**
+   * Last snapshot per working directory, kept across windows. Claude Code only runs the
+   * statusLine command when it renders, which is after its first output — so a fresh tab would
+   * show nothing for a while. This is what fills the row in the meantime, greyed out because its
+   * `updatedAt` is old.
+   */
+  private readonly lastDir = path.join(getStatusLineDir(), 'last');
   private watcher: fs.FSWatcher | undefined;
   private readonly debounceTimers = new Map<string, NodeJS.Timeout>();
   private readonly latest = new Map<string, StatusLineSnapshot>();
@@ -38,6 +63,122 @@ export class StatusLineWatcher {
   /** The last snapshot seen for a tab, so a webview reload can be filled in again. */
   get(terminalId: string): StatusLineSnapshot | undefined {
     return this.latest.get(terminalId);
+  }
+
+  /**
+   * What a brand new tab in this directory should show until Claude renders for the first time:
+   * the previous session's snapshot if there is one, otherwise just the directory.
+   */
+  getInitialSnapshot(cwd: string | undefined): StatusLineSnapshot | undefined {
+    if (cwd === undefined) {
+      return undefined;
+    }
+
+    const base: StatusLineSnapshot = this.readLastForCwd(cwd) ?? {
+      // Nothing remembered for this directory — the path alone still beats an empty row, and it
+      // keeps the terminal height from changing once the real values arrive.
+      model: '',
+      cwd: collapseHome(cwd),
+      usedTokens: 0,
+      totalTokens: 0,
+      usedPercent: 0,
+      updatedAt: 0
+    };
+
+    return this.withRememberedLimits(base);
+  }
+
+  /**
+   * Rate limits belong to the account, not to a directory, so they are remembered separately —
+   * a first tab in a brand new folder still shows Session and Week right away.
+   */
+  private withRememberedLimits(snapshot: StatusLineSnapshot): StatusLineSnapshot {
+    const limits = this.readLimits();
+    if (!limits) {
+      return snapshot;
+    }
+
+    const merged = { ...snapshot, ...limits };
+
+    // A remembered "resets in 84 min" is a lie an hour later: recompute from the absolute point,
+    // and drop the session values once that point has passed — the window reset, so the old
+    // percentage says nothing about the new one.
+    if (merged.sessionResetsAt !== undefined) {
+      const minutes = Math.round((merged.sessionResetsAt * 1000 - Date.now()) / 60000);
+      if (minutes <= 0) {
+        delete merged.sessionPercent;
+        delete merged.sessionResetsAt;
+        delete merged.sessionResetsInMin;
+      } else {
+        merged.sessionResetsInMin = minutes;
+      }
+    } else {
+      delete merged.sessionResetsInMin;
+    }
+
+    return merged;
+  }
+
+  private readLimits(): Partial<StatusLineSnapshot> | undefined {
+    try {
+      const raw = fs.readFileSync(path.join(this.lastDir, 'limits.json'), 'utf8');
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed !== 'object' || parsed === null) {
+        return undefined;
+      }
+      const value = parsed as Record<string, unknown>;
+      return {
+        sessionPercent: numberOrUndefined(value.sessionPercent),
+        sessionResetsAt: numberOrUndefined(value.sessionResetsAt),
+        sessionResetsInMin: numberOrUndefined(value.sessionResetsInMin),
+        weekPercent: numberOrUndefined(value.weekPercent),
+        weekResetsAt: typeof value.weekResetsAt === 'string' ? value.weekResetsAt : undefined
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  private rememberLimits(snapshot: StatusLineSnapshot): void {
+    if (snapshot.sessionPercent === undefined && snapshot.weekPercent === undefined) {
+      return;
+    }
+    this.writeAtomically('limits.json', {
+      sessionPercent: snapshot.sessionPercent,
+      sessionResetsAt: snapshot.sessionResetsAt,
+      sessionResetsInMin: snapshot.sessionResetsInMin,
+      weekPercent: snapshot.weekPercent,
+      weekResetsAt: snapshot.weekResetsAt,
+      updatedAt: snapshot.updatedAt
+    });
+  }
+
+  private readLastForCwd(cwd: string): StatusLineSnapshot | undefined {
+    try {
+      const raw = fs.readFileSync(path.join(this.lastDir, `${hashCwd(cwd)}.json`), 'utf8');
+      return parseSnapshot(raw);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private rememberForCwd(snapshot: StatusLineSnapshot): void {
+    if (snapshot.cwd === undefined || snapshot.cwd.length === 0 || snapshot.totalTokens <= 0) {
+      return;
+    }
+    this.writeAtomically(`${hashCwd(snapshot.cwd)}.json`, snapshot);
+  }
+
+  private writeAtomically(fileName: string, payload: unknown): void {
+    try {
+      fs.mkdirSync(this.lastDir, { recursive: true, mode: 0o700 });
+      const target = path.join(this.lastDir, fileName);
+      const temp = `${target}.tmp`;
+      fs.writeFileSync(temp, JSON.stringify(payload), { mode: 0o600 });
+      fs.renameSync(temp, target);
+    } catch {
+      // Remembering is a convenience; failing at it must not affect the live row
+    }
   }
 
   /** Drops a tab's snapshot and its file. */
@@ -86,10 +227,16 @@ export class StatusLineWatcher {
     }
   }
 
+  /**
+   * Snapshots from a previous window describe tabs that no longer exist. The `last` directory is
+   * deliberately kept — that is the memory a fresh tab starts from.
+   */
   private removeStaleFiles(): void {
     try {
-      for (const entry of fs.readdirSync(this.dir)) {
-        fs.unlinkSync(path.join(this.dir, entry));
+      for (const entry of fs.readdirSync(this.dir, { withFileTypes: true })) {
+        if (entry.isFile()) {
+          fs.unlinkSync(path.join(this.dir, entry.name));
+        }
       }
     } catch {
       // Empty or unreadable — nothing to clean up
@@ -135,6 +282,8 @@ export class StatusLineWatcher {
     }
 
     this.latest.set(terminalId, snapshot);
+    this.rememberForCwd(snapshot);
+    this.rememberLimits(snapshot);
     this.onSnapshot(terminalId, snapshot);
   }
 
@@ -180,6 +329,7 @@ function parseSnapshot(raw: string): StatusLineSnapshot | undefined {
     totalTokens,
     usedPercent,
     sessionPercent: numberOrUndefined(value.sessionPercent),
+    sessionResetsAt: numberOrUndefined(value.sessionResetsAt),
     sessionResetsInMin: numberOrUndefined(value.sessionResetsInMin),
     weekPercent: numberOrUndefined(value.weekPercent),
     weekResetsAt: typeof value.weekResetsAt === 'string' ? value.weekResetsAt : undefined,

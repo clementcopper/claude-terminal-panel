@@ -333,7 +333,11 @@ class StatusLineView {
     }
 
     this.element.textContent = '';
-    this.element.appendChild(this.buildContextRow(snapshot));
+
+    const context = this.buildContextRow(snapshot);
+    if (context) {
+      this.element.appendChild(context);
+    }
 
     const secondary = this.buildSecondaryRow(snapshot);
     if (secondary) {
@@ -361,8 +365,15 @@ class StatusLineView {
     if (wasHidden) this.onHeightChange();
   }
 
-  private buildContextRow(snapshot: StatusLineSnapshot): HTMLDivElement {
+  private buildContextRow(snapshot: StatusLineSnapshot): HTMLDivElement | null {
     const warn = snapshot.usedPercent >= StatusLineView.WARN_AT_PCT;
+    // A tab that has not been rendered by Claude yet carries no numbers — show nothing rather
+    // than a full bar reading "0 / 0"
+    const hasContext = snapshot.totalTokens > 0;
+    if (!hasContext && snapshot.model.length === 0 && !snapshot.effort) {
+      return null;
+    }
+
     const row = document.createElement('div');
     row.className = 'status-row';
 
@@ -380,25 +391,28 @@ class StatusLineView {
       row.appendChild(effort);
     }
 
-    const bar = document.createElement('div');
-    bar.className = warn ? 'status-bar warn' : 'status-bar';
-    const fill = document.createElement('div');
-    fill.className = 'status-bar-fill';
-    fill.style.width = `${String(Math.min(100, Math.max(0, snapshot.usedPercent)))}%`;
-    bar.appendChild(fill);
-    row.appendChild(bar);
+    if (hasContext) {
+      const bar = document.createElement('div');
+      bar.className = warn ? 'status-bar warn' : 'status-bar';
+      const fill = document.createElement('div');
+      fill.className = 'status-bar-fill';
+      fill.style.width = `${String(Math.min(100, Math.max(0, snapshot.usedPercent)))}%`;
+      bar.appendChild(fill);
+      row.appendChild(bar);
 
-    const percent = document.createElement('span');
-    percent.className = warn ? 'status-value warn' : 'status-value';
-    percent.textContent = `${String(Math.round(snapshot.usedPercent))}%`;
-    row.appendChild(percent);
+      const percent = document.createElement('span');
+      percent.className = warn ? 'status-value warn' : 'status-value';
+      percent.textContent = `${String(Math.round(snapshot.usedPercent))}%`;
+      row.appendChild(percent);
 
-    const tokens = document.createElement('span');
-    tokens.className = 'status-value';
-    tokens.textContent = `${formatK(snapshot.usedTokens)} / ${formatK(snapshot.totalTokens)}`;
-    row.appendChild(tokens);
+      const tokens = document.createElement('span');
+      tokens.className = 'status-value';
+      tokens.textContent = `${formatK(snapshot.usedTokens)} / ${formatK(snapshot.totalTokens)}`;
+      row.appendChild(tokens);
 
-    row.title = `Context: ${String(snapshot.usedTokens)} of ${String(snapshot.totalTokens)} tokens`;
+      row.title = `Context: ${String(snapshot.usedTokens)} of ${String(snapshot.totalTokens)} tokens`;
+    }
+
     return row;
   }
 
@@ -406,10 +420,12 @@ class StatusLineView {
     const parts: string[] = [];
 
     if (snapshot.sessionPercent !== undefined) {
-      const resets =
-        snapshot.sessionResetsInMin !== undefined
-          ? ` · ${String(snapshot.sessionResetsInMin)} min`
-          : '';
+      // Prefer the absolute point: a remembered "84 min" is wrong an hour later
+      const minutes =
+        snapshot.sessionResetsAt !== undefined
+          ? Math.max(0, Math.round((snapshot.sessionResetsAt * 1000 - Date.now()) / 60000))
+          : snapshot.sessionResetsInMin;
+      const resets = minutes !== undefined ? ` · ${String(minutes)} min` : '';
       parts.push(`Session ${String(Math.round(snapshot.sessionPercent))}%${resets}`);
     }
 

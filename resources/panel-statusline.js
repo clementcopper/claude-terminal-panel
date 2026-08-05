@@ -157,6 +157,9 @@ function buildSnapshot(payload) {
     totalTokens,
     usedPercent: Math.round(usedPercent * 10) / 10,
     sessionPercent: num(fiveHour.used_percentage) ?? null,
+    // Both: the absolute point survives being remembered across sessions, the minutes stay for
+    // any reader that does not know the newer field.
+    sessionResetsAt: num(fiveHour.resets_at) ?? null,
     sessionResetsInMin: minutesUntil(fiveHour.resets_at) ?? null,
     weekPercent: num(sevenDay.used_percentage) ?? null,
     weekResetsAt: formatResetTime(sevenDay.resets_at) ?? null,

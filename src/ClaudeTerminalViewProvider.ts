@@ -263,6 +263,7 @@ export class ClaudeTerminalViewProvider
     const accentColor = this.getAccentColor(folderIndex);
     this.postMessage({ type: 'createTab', id, name, accentColor });
     this.sendTabsUpdate();
+    this.sendInitialStatusLine(id, cwd);
 
     // Start the terminal process
     const config = this.configManager.getConfig();
@@ -309,6 +310,7 @@ export class ClaudeTerminalViewProvider
     const accentColor = this.getAccentColor(folderIndex);
     this.postMessage({ type: 'createTab', id, name, accentColor });
     this.sendTabsUpdate();
+    this.sendInitialStatusLine(id, cwd);
 
     // Use provided command/args instead of config
     const config = this.configManager.getConfig();
@@ -468,6 +470,18 @@ export class ClaudeTerminalViewProvider
       showDelay: vsConfig.get<number>('promptNotificationDelay', 300),
       customPatterns: vsConfig.get<string[]>('promptPatterns', [])
     };
+  }
+
+  /**
+   * Fills the status line the moment a tab exists. Claude Code only runs the statusLine command
+   * once it renders, which is after its first output, so without this the row would appear
+   * several seconds late — and change the terminal height while the user is already typing.
+   */
+  private sendInitialStatusLine(terminalId: string, cwd: string | undefined): void {
+    const snapshot = this.statusLineWatcher.getInitialSnapshot(cwd);
+    if (snapshot) {
+      this.postMessage({ type: 'statusLine', id: terminalId, data: snapshot });
+    }
   }
 
   private handleNotificationChange(terminalId: string, isWaiting: boolean): void {

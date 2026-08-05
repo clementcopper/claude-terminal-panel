@@ -71,6 +71,8 @@ export interface StatusLineSnapshot {
   totalTokens: number;
   usedPercent: number;
   sessionPercent?: number;
+  /** Unix seconds. Survives being remembered; the minutes below are derived and go stale. */
+  sessionResetsAt?: number;
   sessionResetsInMin?: number;
   weekPercent?: number;
   weekResetsAt?: string;

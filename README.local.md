@@ -111,6 +111,7 @@ With `statusLineProvider: "own"`, write this shape to
   "totalTokens": 1000000,
   "usedPercent": 25.4,
   "sessionPercent": 70,
+  "sessionResetsAt": 1785940000,
   "sessionResetsInMin": 84,
   "weekPercent": 55,
   "weekResetsAt": "Fri 8:00 PM",
@@ -124,6 +125,26 @@ With `statusLineProvider: "own"`, write this shape to
 Only `usedTokens`, `totalTokens` and `usedPercent` are required; anything else may be `null` and
 is then left out of the row. Write atomically — the watcher must never see a half-written file.
 Print nothing when the panel variables are set, or the line shows up twice.
+
+Write `sessionResetsAt` (Unix seconds) as well as `sessionResetsInMin`: the absolute point is what
+survives being remembered, and the minutes are recomputed from it at render time.
+
+### Before the first render
+
+Claude Code only runs the statusLine command when it renders its own status line, which happens
+after its first output — so a fresh tab has no data for a while. The watcher therefore keeps what
+it last saw, under `status/last/`:
+
+| File                 | Contents                                                                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `<sha1 of cwd>.json` | the last full snapshot for that working directory — model, context, everything                                                       |
+| `limits.json`        | session and weekly rate limits, which belong to the account rather than a directory, so a first tab in a new folder still shows them |
+
+When a tab is created, the extension sends that combination straight away. Its `updatedAt` is old,
+so the row renders greyed out until the first real snapshot replaces it. The session countdown is
+recomputed from `sessionResetsAt`, and if that point has already passed the session values are
+dropped rather than shown stale — the window reset, so the old percentage says nothing about the
+new one. `status/last/` deliberately survives a window reload; the per-tab files do not.
 
 ### Behaviour worth knowing
 

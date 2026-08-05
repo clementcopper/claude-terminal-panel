@@ -89,17 +89,17 @@ the webview's map (it is not).
 
 Supporting modules, each owning one concern:
 
-| Module                                     | Role                                                                                                                |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `ptyManager.ts`                            | spawns/kills PTYs, resolves the cwd, builds the env, injects the status line settings, lazily `require`s `node-pty` |
-| `terminalStateManager.ts`                  | the tab model — instances, active id, names, accent colors, `TabInfo` for the UI                                    |
-| `configManager.ts`                         | cached `claudeTerminal.*` settings, invalidated on config change                                                    |
-| `promptDetector.ts`                        | strips ANSI, buffers output, matches prompt patterns after a delay to flag "waiting for input"                      |
-| `commandInputPicker.ts`                    | the "new tab with command" QuickPick, with flag and path completion                                                 |
-| `helpExecutor.ts` + `commandHelpParser.ts` | run `<cmd> --help` and parse it (GNU → argparse → fallback parser chain) into `CommandFlag`s                        |
-| `pathAutocompleteProvider.ts`              | debounced, cached directory listings for flag values                                                                |
-| `statusLineWatcher.ts`                     | watches `<tmpdir>/claude-terminal-panel/status/<tab id>.json` and turns each write into a `statusLine` message      |
-| `resources/panel-statusline.js`            | shipped status line producer, run by Claude Code, not by the extension host                                         |
+| Module                                     | Role                                                                                                                                                                                                                                 |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ptyManager.ts`                            | spawns/kills PTYs, resolves the cwd, builds the env, injects the status line settings, lazily `require`s `node-pty`                                                                                                                  |
+| `terminalStateManager.ts`                  | the tab model — instances, active id, names, accent colors, `TabInfo` for the UI                                                                                                                                                     |
+| `configManager.ts`                         | cached `claudeTerminal.*` settings, invalidated on config change                                                                                                                                                                     |
+| `promptDetector.ts`                        | strips ANSI, buffers output, matches prompt patterns after a delay to flag "waiting for input"                                                                                                                                       |
+| `commandInputPicker.ts`                    | the "new tab with command" QuickPick, with flag and path completion                                                                                                                                                                  |
+| `helpExecutor.ts` + `commandHelpParser.ts` | run `<cmd> --help` and parse it (GNU → argparse → fallback parser chain) into `CommandFlag`s                                                                                                                                         |
+| `pathAutocompleteProvider.ts`              | debounced, cached directory listings for flag values                                                                                                                                                                                 |
+| `statusLineWatcher.ts`                     | watches `<tmpdir>/claude-terminal-panel/status/<tab id>.json`, turns each write into a `statusLine` message, and remembers the last snapshot per cwd plus the account's rate limits under `status/last/` so a fresh tab is not empty |
+| `resources/panel-statusline.js`            | shipped status line producer, run by Claude Code, not by the extension host                                                                                                                                                          |
 
 `directMode` (default on) spawns the configured command directly; off spawns a shell and writes
 `clear && <command>` into it. `restart()`, `resumeActiveTerminal()` and `continueActiveTerminal()`

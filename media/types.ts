@@ -35,6 +35,7 @@ export interface StatusLineSnapshot {
   totalTokens: number;
   usedPercent: number;
   sessionPercent?: number;
+  sessionResetsAt?: number;
   sessionResetsInMin?: number;
   weekPercent?: number;
   weekResetsAt?: string;
