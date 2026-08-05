@@ -12,14 +12,16 @@ body {
   background-color: var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e));
   font-family: var(--vscode-editor-font-family, 'SF Mono', Monaco, Menlo, 'Courier New', monospace);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
 }
 
-/* Terminals and the vertical tab bar sit side by side; the status line goes below both */
-#panel-body {
+/* Terminal plus its status line form the left column; the tab bar stays beside them,
+   so the status line is exactly as wide as the terminal and never runs under the tabs */
+#terminal-column {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   flex: 1;
+  min-width: 0;
   min-height: 0;
 }
 
@@ -28,6 +30,8 @@ body {
   flex: 1;
   position: relative;
   overflow: hidden;
+  min-height: 0;
+  background-color: var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e));
 }
 
 /* Status line at the bottom edge, fed by the statusLine script through the watcher */
@@ -70,13 +74,14 @@ body {
   flex-shrink: 0;
 }
 
+/* The track must not use `opacity`: it would dim the fill inside it as well, which is why
+   the bar looked empty. Own colour instead. */
 .status-bar {
   flex: 1;
   min-width: 24px;
   height: 4px;
   border-radius: 2px;
-  background-color: var(--vscode-progressBar-background, #0e70c0);
-  opacity: 0.25;
+  background-color: var(--vscode-scrollbarSlider-background, rgba(255, 255, 255, 0.18));
   position: relative;
   overflow: hidden;
 }
@@ -84,15 +89,12 @@ body {
 .status-bar-fill {
   position: absolute;
   inset: 0 auto 0 0;
+  min-width: 2px;
   border-radius: 2px;
   background-color: var(--vscode-progressBar-background, #0e70c0);
 }
 
 /* Same threshold the script uses for its macOS notification */
-.status-bar.warn {
-  background-color: var(--vscode-editorWarning-foreground, #cca700);
-}
-
 .status-bar.warn .status-bar-fill {
   background-color: var(--vscode-editorWarning-foreground, #cca700);
 }
@@ -109,6 +111,27 @@ body {
 .status-row.secondary {
   gap: 10px;
   opacity: 0.85;
+}
+
+.status-effort {
+  flex-shrink: 0;
+  padding: 0 4px;
+  border-radius: 3px;
+  background-color: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #fff);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* Working directory last: least urgent, and the only part that can get long */
+.status-row.cwd {
+  opacity: 0.7;
+}
+
+.status-cwd {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Vertical tab bar on the right */
@@ -238,17 +261,25 @@ body {
 }
 
 /* Terminal wrapper */
+/* No padding: the terminal fills its column edge to edge. Any inset here shows the page
+   background as a frame around the output. */
 .terminal-wrapper {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 4px 10px;
 }
 
 .terminal-wrapper .xterm {
   height: 100%;
+}
+
+/* xterm.css paints the viewport #000 so macOS scrollbars stay opaque (xterm.css:93). xterm
+   colours the cells from its theme, not that surface — so the strip FitAddon leaves below the
+   last row showed as a black band above the status line. */
+.terminal-wrapper .xterm-viewport {
+  background-color: var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e));
 }
 
 /* xterm 6.0.0 handles viewport scrolling internally */

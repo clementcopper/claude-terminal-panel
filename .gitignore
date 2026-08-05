@@ -4,9 +4,18 @@ node_modules/
 .claude/
 .DS_Store
 
-# Build output (dist/, media/main.js, media/xterm.css) is deliberately NOT ignored:
-# vsce 3.9.2 reads this file too, and an entry here drops the file from the package —
-# the build then fails with the misleading "Extension entrypoint(s) missing".
+# Screenshots dropped into the project folder. Keeping them out of the .vsix needs a
+# second entry in .vscodeignore — measured: with .vscodeignore present, vsce ignores
+# this file entirely.
+Bildschirmfoto*.png
+Screenshot*.png
+Bildschirmaufnahme*.mov
+
+# Build output (dist/, media/main.js, media/xterm.css) is not ignored here, but that is a
+# convention, not a requirement: measured with vsce 3.9.2, `dist/` in this file does NOT
+# drop it from the package, because .vscodeignore exists and takes over completely.
+# Deleting .vscodeignore would put this file back in charge — then the entry would matter.
+# The files stay out of `git status` through .git/info/exclude instead.
 
 # ESLint
 .eslintcache

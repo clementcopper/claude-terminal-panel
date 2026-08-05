@@ -56,6 +56,10 @@ export interface TerminalConfig {
  */
 export interface StatusLineSnapshot {
   model: string;
+  /** Effort level plus fast mode, e.g. `high · fast` — empty when Claude reports neither. */
+  effort?: string;
+  /** Working directory with `~` already collapsed by the script. */
+  cwd?: string;
   usedTokens: number;
   totalTokens: number;
   usedPercent: number;

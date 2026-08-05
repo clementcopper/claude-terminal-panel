@@ -174,6 +174,8 @@ function parseSnapshot(raw: string): StatusLineSnapshot | undefined {
 
   return {
     model: typeof value.model === 'string' ? value.model : '',
+    effort: typeof value.effort === 'string' ? value.effort : undefined,
+    cwd: typeof value.cwd === 'string' ? value.cwd : undefined,
     usedTokens,
     totalTokens,
     usedPercent,

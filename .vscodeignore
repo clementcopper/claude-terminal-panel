@@ -15,6 +15,9 @@ eslint.config.mjs
 .github/**
 .claude/**
 *.vsix
+Bildschirmfoto*.png
+Screenshot*.png
+Bildschirmaufnahme*.mov
 
 # vsce applies negations AFTER every ignore pattern, so a blanket
 # "!node_modules/node-pty/**" would pull the whole module back in regardless of order.

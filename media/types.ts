@@ -29,6 +29,8 @@ export interface TabInfo {
  */
 export interface StatusLineSnapshot {
   model: string;
+  effort?: string;
+  cwd?: string;
   usedTokens: number;
   totalTokens: number;
   usedPercent: number;

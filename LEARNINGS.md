@@ -9,9 +9,12 @@ Nicht-offensichtliche Erkenntnisse und Sackgassen. Nur eintragen, was künftige 
 - **`vsce` 3.9.2 sammelt unter Node 25 null Dateien** und meldet
   `Extension entrypoint(s) missing`, obwohl das Bundle existiert. Zeigt auf die falsche
   Ursache. Node 20 funktioniert. `vsce ls` gibt in dem Fall leere Ausgabe — daran erkennbar.
-- **`vsce` liest zusätzlich die `.gitignore`.** Build-Ausgaben, die dort stehen, fallen aus dem
-  Paket. Deshalb sind `dist/`, `media/main.js` und `media/xterm.css` dort bewusst *nicht*
-  ignoriert, mit Begründung als Kommentar.
+- **`vsce` liest die `.gitignore` NICHT, solange `.vscodeignore` existiert.** Gemessen mit vsce
+  3.9.2: `dist/` in `.gitignore` eingetragen, `vsce ls` listet `dist/extension.js` weiterhin.
+  Die frühere Notiz hier behauptete das Gegenteil — sie war falsch. Folge: was nicht ins `.vsix`
+  soll, braucht eine Zeile in `.vscodeignore`; ein `.gitignore`-Eintrag genügt nicht (ein
+  Screenshot im Projektordner landete so im Paket). Umgekehrt wäre `.gitignore` erst wieder
+  zuständig, wenn `.vscodeignore` gelöscht würde — dann fielen die Build-Ausgaben aus dem Paket.
 - **`.git/info/exclude` löst den Konflikt zwischen `git status` und `vsce`.** Build-Ausgaben
   dürfen nicht in `.gitignore` (sonst fehlen sie im Paket), stehen dort aber dauerhaft als
   untracked herum. Ein Eintrag in `.git/info/exclude` blendet sie nur lokal aus; `vsce` liest

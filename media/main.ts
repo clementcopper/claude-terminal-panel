@@ -340,6 +340,19 @@ class StatusLineView {
       this.element.appendChild(secondary);
     }
 
+    if (snapshot.cwd) {
+      const cwdRow = document.createElement('div');
+      cwdRow.className = 'status-row cwd';
+      const cwd = document.createElement('span');
+      cwd.className = 'status-cwd';
+      // Shortened in JS, not by CSS: a right-to-left trick for left-side ellipsis
+      // reorders a plain path ("~/foo" came out as "foo/~").
+      cwd.textContent = shortenPath(snapshot.cwd);
+      cwd.title = snapshot.cwd;
+      cwdRow.appendChild(cwd);
+      this.element.appendChild(cwdRow);
+    }
+
     const ageMs = Date.now() - snapshot.updatedAt * 1000;
     this.element.classList.toggle('stale', ageMs > StatusLineView.STALE_AFTER_MS);
 
@@ -357,6 +370,13 @@ class StatusLineView {
       model.className = 'status-model';
       model.textContent = snapshot.model;
       row.appendChild(model);
+    }
+
+    if (snapshot.effort) {
+      const effort = document.createElement('span');
+      effort.className = 'status-effort';
+      effort.textContent = snapshot.effort;
+      row.appendChild(effort);
     }
 
     const bar = document.createElement('div');
@@ -430,7 +450,26 @@ class StatusLineView {
  * Compact token counts the way the statusLine script does: integers from 100k up, one
  * decimal below that, comma as the decimal separator.
  */
+/**
+ * Keeps the tail of a path, which is the part that identifies the project.
+ * `~/work/clients/acme/api` becomes `…/acme/api`; short paths stay whole.
+ */
+function shortenPath(path: string, maxSegments = 2): string {
+  const segments = path.split('/').filter((segment) => segment.length > 0);
+  if (segments.length <= maxSegments || path.length <= 28) {
+    return path;
+  }
+  return `…/${segments.slice(-maxSegments).join('/')}`;
+}
+
 function formatK(tokens: number): string {
+  // A 1M context window would read as "1000k" otherwise
+  if (tokens >= 1_000_000) {
+    const millions = tokens / 1_000_000;
+    const rounded = millions.toFixed(1);
+    return rounded.endsWith('.0') ? `${rounded.slice(0, -2)}M` : `${rounded.replace('.', ',')}M`;
+  }
+
   const value = tokens / 1000;
   const fraction = value - Math.floor(value);
   if (value >= 100 || fraction < 0.05 || fraction > 0.95) {
@@ -448,6 +487,8 @@ class WebviewContext {
   private readonly terminalsContainer: HTMLElement;
   private readonly statusLine: StatusLineView;
   private resizeObserver: ResizeObserver | null = null;
+  private themeObserver: MutationObserver | null = null;
+  private themeApplyTimer: number | null = null;
 
   constructor() {
     this.vscode = acquireVsCodeApi();
@@ -490,9 +531,52 @@ class WebviewContext {
 
   initialize(): void {
     this.setupResizeObserver();
+    this.setupThemeObserver();
     this.setupMessageHandler();
     this.setupCleanup();
     this.signalReady();
+  }
+
+  /**
+   * Keeps the terminals on the current VS Code theme. xterm takes finished colour values, not
+   * CSS variables, so its theme is a snapshot and has to be handed over again on every change.
+   * VS Code rewrites the `--vscode-*` variables while the theme picker is merely highlighted,
+   * so this follows along live rather than only on confirmation.
+   */
+  private setupThemeObserver(): void {
+    this.themeObserver = new MutationObserver(() => {
+      // A single theme change writes the attributes several times
+      if (this.themeApplyTimer !== null) {
+        clearTimeout(this.themeApplyTimer);
+      }
+      this.themeApplyTimer = setTimeout(() => {
+        this.themeApplyTimer = null;
+        this.applyTheme();
+      }, 50) as unknown as number;
+    });
+
+    this.themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class', 'style']
+    });
+    this.themeObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['class', 'style']
+    });
+  }
+
+  private applyTheme(): void {
+    this.themeBuilder.invalidateCache();
+    const theme = this.themeBuilder.getTheme();
+    const fontFamily = this.themeBuilder.getFontFamily();
+
+    this.state.forEach((entry) => {
+      entry.terminal.options.theme = theme;
+      entry.terminal.options.fontFamily = fontFamily;
+    });
+
+    // A different font family changes the cell size, so the column count can change with it
+    this.refitActive();
   }
 
   private setupResizeObserver(): void {
@@ -541,6 +625,10 @@ class WebviewContext {
   private setupCleanup(): void {
     window.addEventListener('unload', () => {
       this.resizeObserver?.disconnect();
+      this.themeObserver?.disconnect();
+      if (this.themeApplyTimer !== null) {
+        clearTimeout(this.themeApplyTimer);
+      }
       this.state.forEach((t) => {
         t.terminal.dispose();
       });
@@ -555,7 +643,8 @@ class WebviewContext {
   private measureInitialDimensions(): { cols: number; rows: number } {
     const tempContainer = document.createElement('div');
     tempContainer.style.cssText =
-      'position: absolute; visibility: hidden; width: calc(100% - 32px); height: 100%;';
+      // 36px is the vertical tab bar; the terminal wrapper itself has no padding
+      'position: absolute; visibility: hidden; width: calc(100% - 36px); height: 100%;';
     document.body.appendChild(tempContainer);
 
     const tempTerminal = new Terminal({

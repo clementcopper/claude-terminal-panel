@@ -109,8 +109,11 @@ Supporting modules, each owning one concern:
 - **`@electron/rebuild`, `node-abi`, `postinstall`.** `node-pty` 1.1.0 is N-API and therefore
   ABI-independent — no rebuild is needed when VS Code updates Electron. Measured: the same
   `pty.node` loads under Node ABI 115, 141 and 146.
-- **Build outputs in `.gitignore`.** `vsce` reads that file too, so an entry for `dist/`,
-  `media/main.js` or `media/xterm.css` drops it from the package. The comment there says so.
+- **Deleting `.vscodeignore`.** It is the only ignore file `vsce` honours while it exists —
+  measured with 3.9.2: `dist/` added to `.gitignore` did **not** drop `dist/extension.js` from
+  `vsce ls`. Remove `.vscodeignore` and `.gitignore` takes over, which would drop the build
+  output and produce the misleading `Extension entrypoint(s) missing`. Anything that must stay
+  out of the `.vsix` needs its own line in `.vscodeignore`; `.gitignore` alone is not enough.
 - **A blanket `!node_modules/node-pty/**` in `.vscodeignore`.** `vsce` applies negations after
   every ignore pattern, so it pulls the whole module back in regardless of line order. Ignore
   all of `node_modules`, then negate exactly the paths that ship.
@@ -129,7 +132,8 @@ Continue, Restart). `newTabResume` / `newTabContinue` open an **additional** tab
 Command Palette only.
 
 **Status line.** The panel renders Claude's status data natively at the bottom edge
-(`#status-line`, below `#panel-body`), instead of leaving it as ASCII text in the scrollback.
+(`#status-line`, inside `#terminal-column` so it ends where the vertical tab bar starts),
+instead of leaving it as ASCII text in the scrollback.
 The extension host cannot read that data from the PTY — only the configured `statusLine` command
 gets it, on stdin from Claude Code. So the contract runs the other way: `ptyManager` puts
 `CLAUDE_PANEL_TAB_ID` and `CLAUDE_PANEL_STATUS_DIR` into each PTY's env, and
