@@ -7,7 +7,8 @@ import type {
   WebviewOutgoingMessage,
   TabInfo,
   TerminalEntry,
-  XTermTheme
+  XTermTheme,
+  StatusLineSnapshot
 } from './types';
 
 // File path link provider for terminal
@@ -236,6 +237,7 @@ interface MessageHandlers {
   switchTab: MessageHandler<Extract<WebviewIncomingMessage, { type: 'switchTab' }>>;
   removeTab: MessageHandler<Extract<WebviewIncomingMessage, { type: 'removeTab' }>>;
   setNotification: MessageHandler<Extract<WebviewIncomingMessage, { type: 'setNotification' }>>;
+  statusLine: MessageHandler<Extract<WebviewIncomingMessage, { type: 'statusLine' }>>;
 }
 
 const messageHandlers: MessageHandlers = {
@@ -271,8 +273,171 @@ const messageHandlers: MessageHandlers = {
   },
   setNotification: (message, ctx) => {
     ctx.setTabNotification(message.id, message.show);
+  },
+  statusLine: (message, ctx) => {
+    ctx.setStatusLine(message.id, message.data);
   }
 };
+
+/**
+ * The status line at the bottom edge. Data comes from the statusLine script through the
+ * extension host — the terminal stream itself carries no session state.
+ */
+class StatusLineView {
+  /** Same threshold as the script's macOS notification. */
+  private static readonly WARN_AT_PCT = 61.5;
+  /** Nothing written for this long means Claude has not re-rendered since. */
+  private static readonly STALE_AFTER_MS = 60_000;
+
+  private readonly snapshots = new Map<string, StatusLineSnapshot>();
+  private activeId: string | null = null;
+
+  constructor(
+    private readonly element: HTMLElement,
+    private readonly onHeightChange: () => void
+  ) {}
+
+  set(id: string, snapshot: StatusLineSnapshot | null): void {
+    if (snapshot) {
+      this.snapshots.set(id, snapshot);
+    } else {
+      this.snapshots.delete(id);
+    }
+    if (id === this.activeId) {
+      this.render();
+    }
+  }
+
+  setActive(id: string | null): void {
+    this.activeId = id;
+    this.render();
+  }
+
+  remove(id: string): void {
+    this.snapshots.delete(id);
+    if (id === this.activeId) {
+      this.activeId = null;
+      this.render();
+    }
+  }
+
+  private render(): void {
+    const snapshot = this.activeId ? this.snapshots.get(this.activeId) : undefined;
+    const wasHidden = this.element.hidden;
+
+    if (!snapshot) {
+      this.element.hidden = true;
+      this.element.textContent = '';
+      if (!wasHidden) this.onHeightChange();
+      return;
+    }
+
+    this.element.textContent = '';
+    this.element.appendChild(this.buildContextRow(snapshot));
+
+    const secondary = this.buildSecondaryRow(snapshot);
+    if (secondary) {
+      this.element.appendChild(secondary);
+    }
+
+    const ageMs = Date.now() - snapshot.updatedAt * 1000;
+    this.element.classList.toggle('stale', ageMs > StatusLineView.STALE_AFTER_MS);
+
+    this.element.hidden = false;
+    if (wasHidden) this.onHeightChange();
+  }
+
+  private buildContextRow(snapshot: StatusLineSnapshot): HTMLDivElement {
+    const warn = snapshot.usedPercent >= StatusLineView.WARN_AT_PCT;
+    const row = document.createElement('div');
+    row.className = 'status-row';
+
+    if (snapshot.model) {
+      const model = document.createElement('span');
+      model.className = 'status-model';
+      model.textContent = snapshot.model;
+      row.appendChild(model);
+    }
+
+    const bar = document.createElement('div');
+    bar.className = warn ? 'status-bar warn' : 'status-bar';
+    const fill = document.createElement('div');
+    fill.className = 'status-bar-fill';
+    fill.style.width = `${String(Math.min(100, Math.max(0, snapshot.usedPercent)))}%`;
+    bar.appendChild(fill);
+    row.appendChild(bar);
+
+    const percent = document.createElement('span');
+    percent.className = warn ? 'status-value warn' : 'status-value';
+    percent.textContent = `${String(Math.round(snapshot.usedPercent))}%`;
+    row.appendChild(percent);
+
+    const tokens = document.createElement('span');
+    tokens.className = 'status-value';
+    tokens.textContent = `${formatK(snapshot.usedTokens)} / ${formatK(snapshot.totalTokens)}`;
+    row.appendChild(tokens);
+
+    row.title = `Context: ${String(snapshot.usedTokens)} of ${String(snapshot.totalTokens)} tokens`;
+    return row;
+  }
+
+  private buildSecondaryRow(snapshot: StatusLineSnapshot): HTMLDivElement | null {
+    const parts: string[] = [];
+
+    if (snapshot.sessionPercent !== undefined) {
+      const resets =
+        snapshot.sessionResetsInMin !== undefined
+          ? ` · ${String(snapshot.sessionResetsInMin)} min`
+          : '';
+      parts.push(`Session ${String(Math.round(snapshot.sessionPercent))}%${resets}`);
+    }
+
+    if (snapshot.compacted !== undefined) {
+      const budget =
+        snapshot.compactBudget !== undefined ? `/${String(snapshot.compactBudget)}` : '';
+      const auto =
+        snapshot.compactAuto !== undefined && snapshot.compactAuto > 0
+          ? ` (${String(snapshot.compactAuto)} auto)`
+          : '';
+      parts.push(`Compacted ${String(snapshot.compacted)}${budget}${auto}`);
+    }
+
+    if (snapshot.weekPercent !== undefined) {
+      parts.push(`Week ${String(Math.round(snapshot.weekPercent))}%`);
+    }
+
+    if (parts.length === 0) {
+      return null;
+    }
+
+    const row = document.createElement('div');
+    row.className = 'status-row secondary';
+    parts.forEach((text) => {
+      const span = document.createElement('span');
+      span.className = 'status-value';
+      span.textContent = text;
+      row.appendChild(span);
+    });
+
+    if (snapshot.weekResetsAt) {
+      row.title = `Weekly limit resets on ${snapshot.weekResetsAt}`;
+    }
+    return row;
+  }
+}
+
+/**
+ * Compact token counts the way the statusLine script does: integers from 100k up, one
+ * decimal below that, comma as the decimal separator.
+ */
+function formatK(tokens: number): string {
+  const value = tokens / 1000;
+  const fraction = value - Math.floor(value);
+  if (value >= 100 || fraction < 0.05 || fraction > 0.95) {
+    return `${String(Math.round(value))}k`;
+  }
+  return `${value.toFixed(1).replace('.', ',')}k`;
+}
 
 // Main webview context class
 class WebviewContext {
@@ -281,6 +446,7 @@ class WebviewContext {
   private readonly vscode: VSCodeAPI;
   private readonly tabBar: HTMLElement;
   private readonly terminalsContainer: HTMLElement;
+  private readonly statusLine: StatusLineView;
   private resizeObserver: ResizeObserver | null = null;
 
   constructor() {
@@ -288,13 +454,38 @@ class WebviewContext {
 
     const tabBar = document.getElementById('tab-bar');
     const terminalsContainer = document.getElementById('terminals-container');
+    const statusLineElement = document.getElementById('status-line');
 
-    if (!tabBar || !terminalsContainer) {
+    if (!tabBar || !terminalsContainer || !statusLineElement) {
       throw new Error('Required DOM elements not found');
     }
 
     this.tabBar = tabBar;
     this.terminalsContainer = terminalsContainer;
+    // Showing or hiding the row changes the terminal's height, so xterm has to refit.
+    this.statusLine = new StatusLineView(statusLineElement, () => {
+      this.refitActive();
+    });
+  }
+
+  setStatusLine(id: string, snapshot: StatusLineSnapshot | null): void {
+    this.statusLine.set(id, snapshot);
+  }
+
+  private refitActive(): void {
+    const activeId = this.state.getActiveId();
+    const active = activeId ? this.state.get(activeId) : undefined;
+    if (!active || !activeId) return;
+
+    requestAnimationFrame(() => {
+      active.fitAddon.fit();
+      this.postMessage({
+        type: 'resize',
+        id: activeId,
+        cols: active.terminal.cols,
+        rows: active.terminal.rows
+      });
+    });
   }
 
   initialize(): void {
@@ -529,6 +720,7 @@ class WebviewContext {
     });
 
     this.state.setActiveId(id);
+    this.statusLine.setActive(id);
 
     const active = this.state.get(id);
     if (active) {
@@ -570,6 +762,7 @@ class WebviewContext {
       t.element.remove();
       this.state.delete(id);
     }
+    this.statusLine.remove(id);
   }
 
   setTabNotification(id: string, show: boolean): void {

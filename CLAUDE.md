@@ -91,6 +91,7 @@ Supporting modules, each owning one concern:
 | `commandInputPicker.ts` | the "new tab with command" QuickPick, with flag and path completion |
 | `helpExecutor.ts` + `commandHelpParser.ts` | run `<cmd> --help` and parse it (GNU → argparse → fallback parser chain) into `CommandFlag`s |
 | `pathAutocompleteProvider.ts` | debounced, cached directory listings for flag values |
+| `statusLineWatcher.ts` | watches `<tmpdir>/claude-terminal-panel/status/<tab id>.json` and turns each write into a `statusLine` message |
 
 `directMode` (default on) spawns the configured command directly; off spawns a shell and writes
 `clear && <command>` into it. `restart()` respawns in the tab's own cwd, not the workspace root.
@@ -126,6 +127,21 @@ Four commands expose the session flags, and the difference between the pairs mat
 tab, same cwd, no new PTY id — and they are the ones in the view title bar (New Tab, Resume,
 Continue, Restart). `newTabResume` / `newTabContinue` open an **additional** tab instead and are
 Command Palette only.
+
+**Status line.** The panel renders Claude's status data natively at the bottom edge
+(`#status-line`, below `#panel-body`), instead of leaving it as ASCII text in the scrollback.
+The extension host cannot read that data from the PTY — only the configured `statusLine` command
+gets it, on stdin from Claude Code. So the contract runs the other way: `ptyManager` puts
+`CLAUDE_PANEL_TAB_ID` and `CLAUDE_PANEL_STATUS_DIR` into each PTY's env, and
+`~/.claude/statusline-command.sh` writes `<tab id>.json` there (atomically, `umask 077`) and
+prints nothing when those variables are set. Consequences worth knowing:
+
+- Removing `statusLine` from `~/.claude/settings.json` kills the data source, and with it the
+  script's context warning.
+- The row only updates when Claude re-renders; `updatedAt` older than 60 s greys it out.
+- Tabs running something other than Claude never write a file, so their row stays hidden.
+- Showing or hiding the row changes the terminal height — the webview refits xterm afterwards.
+- `claudeTerminal.statusLine` (default on) switches the whole path off, env vars included.
 
 **Hardening.** Help probing runs without a shell and only for names matching
 `^[A-Za-z0-9._@/-]+$`; `claudeTerminal.preloadHelp` defaults to off; file links outside the

@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { IPty, INodePty, TerminalConfig } from './types';
+import { getStatusLineDir } from './statusLineWatcher';
 
 /**
  * Callbacks for PTY events.
@@ -47,7 +48,7 @@ export class PtyManager {
 
     try {
       this.ensureNodePtyLoaded();
-      const { shell, env, cwd: defaultCwd } = this.prepareSpawnOptions(config);
+      const { shell, env, cwd: defaultCwd } = this.prepareSpawnOptions(config, terminalId);
       const workingDir = cwd ?? defaultCwd;
       const pty = this.createPty(config, shell, cols, rows, workingDir, env);
 
@@ -115,14 +116,17 @@ export class PtyManager {
     }
   }
 
-  private prepareSpawnOptions(config: TerminalConfig): {
+  private prepareSpawnOptions(
+    config: TerminalConfig,
+    terminalId: string
+  ): {
     shell: string;
     env: Record<string, string>;
     cwd: string;
   } {
     const shell = config.shell || this.getDefaultShell();
     const cwd = this.resolveConfiguredCwd(config.cwd) ?? this.getWorkingDirectory();
-    const env = this.buildEnvironment(config.env);
+    const env = this.buildEnvironment(config.env, config.statusLine ? terminalId : undefined);
     return { shell, env, cwd };
   }
 
@@ -162,7 +166,10 @@ export class PtyManager {
     return fs.existsSync(cwd) ? cwd : os.homedir();
   }
 
-  private buildEnvironment(configEnv: Record<string, string>): Record<string, string> {
+  private buildEnvironment(
+    configEnv: Record<string, string>,
+    statusLineTabId?: string
+  ): Record<string, string> {
     const env: Record<string, string> = {};
 
     // Copy process.env, filtering undefined values
@@ -178,6 +185,18 @@ export class PtyManager {
       COLORTERM: 'truecolor',
       FORCE_COLOR: '1'
     });
+
+    // The statusLine script has no other way to say which tab it belongs to: Claude Code
+    // hands it the session data on stdin, and the extension only ever sees PTY bytes.
+    // These two variables are the whole contract — the script writes <tab id>.json into
+    // the directory, the watcher reads it back.
+    if (statusLineTabId !== undefined) {
+      env.CLAUDE_PANEL_TAB_ID = statusLineTabId;
+      env.CLAUDE_PANEL_STATUS_DIR = getStatusLineDir();
+    } else {
+      delete env.CLAUDE_PANEL_TAB_ID;
+      delete env.CLAUDE_PANEL_STATUS_DIR;
+    }
 
     // Remove CI flag so Claude doesn't think it's in CI
     delete env.CI;

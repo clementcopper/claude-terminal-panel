@@ -57,3 +57,21 @@ Erwartet: `build/Release/pty.node` und `build/Release/spawn-helper`, dazu diesel
 | Help-Ermittlung | ohne `shell: true`, Kommandoname muss `^[A-Za-z0-9._@/-]+$` erfüllen |
 | Datei-Links | Pfade außerhalb von Workspace und Terminal-cwd fragen vor dem Öffnen nach |
 | Nonce | `crypto.randomBytes` statt `Math.random` |
+| Statuszeile | nativ am unteren Panelrand statt als Text im Scrollback; `claudeTerminal.statusLine` schaltet sie ab |
+
+## Statuszeile — der Datenkanal
+
+Modell, Token und Rate-Limits stehen nicht im PTY-Strom. Claude Code gibt sie nur dem in
+`~/.claude/settings.json` eingetragenen `statusLine`-Befehl, als JSON auf stdin. Deshalb ist das
+Skript die Quelle und die Extension der Leser:
+
+1. `ptyManager` setzt pro PTY `CLAUDE_PANEL_TAB_ID` und `CLAUDE_PANEL_STATUS_DIR`
+   (`<os.tmpdir()>/claude-terminal-panel/status`).
+2. `~/.claude/statusline-command.sh` erkennt beide Variablen, schreibt `<tab-id>.json` (eigenes
+   flaches Schema, `umask 077`, atomar über `.tmp` + `mv`) und gibt **keinen** Text aus.
+3. `statusLineWatcher.ts` beobachtet das Verzeichnis und schickt jede Änderung als
+   `statusLine`-Nachricht an das Webview.
+
+Ohne den `statusLine`-Eintrag in `~/.claude/settings.json` bleibt die Zeile leer — und die
+Kontextwarnung des Skripts fällt mit weg. Sicherungskopie des Skripts vor dem Eingriff:
+`~/.claude/statusline-command.sh.bak`.

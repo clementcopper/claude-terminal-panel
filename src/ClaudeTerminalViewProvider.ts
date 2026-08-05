@@ -9,6 +9,7 @@ import type { WebviewMessage, TerminalInstance, ExtensionMessage } from './types
 import { WORKSPACE_ACCENT_COLORS } from './types';
 import { CommandInputPicker } from './commandInputPicker';
 import { PromptDetector, type PromptDetectorConfig } from './promptDetector';
+import { StatusLineWatcher } from './statusLineWatcher';
 
 export class ClaudeTerminalViewProvider
   implements vscode.WebviewViewProvider, MessageHandlerContext
@@ -24,6 +25,7 @@ export class ClaudeTerminalViewProvider
   private readonly ptyManager: PtyManager;
   private readonly commandPicker = new CommandInputPicker();
   private readonly promptDetector: PromptDetector;
+  private readonly statusLineWatcher: StatusLineWatcher;
 
   constructor(private readonly extensionUri: vscode.Uri) {
     const callbacks: PtyEventCallbacks = {
@@ -38,6 +40,10 @@ export class ClaudeTerminalViewProvider
       this.getPromptDetectorConfig(),
       this.handleNotificationChange.bind(this)
     );
+
+    this.statusLineWatcher = new StatusLineWatcher((terminalId, snapshot) => {
+      this.postMessage({ type: 'statusLine', id: terminalId, data: snapshot });
+    });
 
     // Pre-load help for the configured command. Probing the other CLI agents spawns a
     // process per candidate on every window start, so it is opt-in.
@@ -330,6 +336,7 @@ export class ClaudeTerminalViewProvider
 
     this.ptyManager.kill(terminalId);
     this.promptDetector.removeTerminal(terminalId);
+    this.statusLineWatcher.removeTerminal(terminalId);
     this.stateManager.delete(terminalId);
     this.postMessage({ type: 'removeTab', id: terminalId });
 
@@ -447,6 +454,7 @@ export class ClaudeTerminalViewProvider
     this.disposed = true;
     this.ptyManager.killAll();
     this.promptDetector.dispose();
+    this.statusLineWatcher.dispose();
     this.configManager.dispose();
     this.commandPicker.dispose();
   }
@@ -506,8 +514,11 @@ export class ClaudeTerminalViewProvider
     <link href="${stylesUri.toString()}" rel="stylesheet">
 </head>
 <body>
-    <div id="terminals-container"></div>
-    <div id="tab-bar"></div>
+    <div id="panel-body">
+        <div id="terminals-container"></div>
+        <div id="tab-bar"></div>
+    </div>
+    <div id="status-line" hidden></div>
     <script nonce="${nonce}" src="${scriptUri.toString()}"></script>
 </body>
 </html>`;

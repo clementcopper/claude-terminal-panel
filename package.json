@@ -195,6 +195,11 @@
           "default": false,
           "description": "On startup, probe other CLI agents (gemini, aider, codex, gh, interpreter, opencode) for their --help output. Off means only the configured command is probed."
         },
+        "claudeTerminal.statusLine": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Render Claude's status line natively at the bottom of the panel instead of as text inside the terminal. Needs the `statusLine` command in `~/.claude/settings.json` to write its data — see README.local.md. Off means the script behaves like in any other terminal."
+        },
         "claudeTerminal.env": {
           "type": "object",
           "default": {},

@@ -45,6 +45,29 @@ export interface TerminalConfig {
   cwd: string;
   /** Probe other CLI agents for --help output on startup. */
   preloadHelp: boolean;
+  /** Render the statusLine script's data at the bottom of the panel. */
+  statusLine: boolean;
+}
+
+/**
+ * What the statusLine script writes per tab. Its own flat schema, not Claude Code's stdin
+ * payload — the script keeps the arithmetic (real percentage, compact counting), so a schema
+ * change on Claude's side lands in one place.
+ */
+export interface StatusLineSnapshot {
+  model: string;
+  usedTokens: number;
+  totalTokens: number;
+  usedPercent: number;
+  sessionPercent?: number;
+  sessionResetsInMin?: number;
+  weekPercent?: number;
+  weekResetsAt?: string;
+  compacted?: number;
+  compactBudget?: number;
+  compactAuto?: number;
+  /** Unix seconds, so the webview can grey out a stale line. */
+  updatedAt: number;
 }
 
 // Terminal instance for multi-tab support
@@ -88,7 +111,8 @@ export type ExtensionMessage =
   | { type: 'createTab'; id: string; name: string; accentColor?: string }
   | { type: 'switchTab'; id: string }
   | { type: 'removeTab'; id: string }
-  | { type: 'setNotification'; id: string; show: boolean };
+  | { type: 'setNotification'; id: string; show: boolean }
+  | { type: 'statusLine'; id: string; data: StatusLineSnapshot | null };
 
 // Command help parsing types
 export interface CommandFlag {

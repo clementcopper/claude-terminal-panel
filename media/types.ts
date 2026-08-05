@@ -23,6 +23,25 @@ export interface TabInfo {
   cwd?: string;
 }
 
+/**
+ * Status line data for one tab, produced by the statusLine script.
+ * Declared separately from `src/types.ts` on purpose — the two bundles share no module.
+ */
+export interface StatusLineSnapshot {
+  model: string;
+  usedTokens: number;
+  totalTokens: number;
+  usedPercent: number;
+  sessionPercent?: number;
+  sessionResetsInMin?: number;
+  weekPercent?: number;
+  weekResetsAt?: string;
+  compacted?: number;
+  compactBudget?: number;
+  compactAuto?: number;
+  updatedAt: number;
+}
+
 // Message types from extension to webview
 export type WebviewIncomingMessage =
   | { type: 'output'; id: string; data: string }
@@ -31,7 +50,8 @@ export type WebviewIncomingMessage =
   | { type: 'createTab'; id: string; name: string; accentColor?: string }
   | { type: 'switchTab'; id: string }
   | { type: 'removeTab'; id: string }
-  | { type: 'setNotification'; id: string; show: boolean };
+  | { type: 'setNotification'; id: string; show: boolean }
+  | { type: 'statusLine'; id: string; data: StatusLineSnapshot | null };
 
 // Message types from webview to extension
 export type WebviewOutgoingMessage =

@@ -12,7 +12,15 @@ body {
   background-color: var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e));
   font-family: var(--vscode-editor-font-family, 'SF Mono', Monaco, Menlo, 'Courier New', monospace);
   display: flex;
+  flex-direction: column;
+}
+
+/* Terminals and the vertical tab bar sit side by side; the status line goes below both */
+#panel-body {
+  display: flex;
   flex-direction: row;
+  flex: 1;
+  min-height: 0;
 }
 
 /* Terminals container - takes most of the space */
@@ -20,6 +28,87 @@ body {
   flex: 1;
   position: relative;
   overflow: hidden;
+}
+
+/* Status line at the bottom edge, fed by the statusLine script through the watcher */
+#status-line {
+  flex-shrink: 0;
+  padding: 3px 8px 4px;
+  background-color: var(--vscode-tab-inactiveBackground, #2d2d2d);
+  border-top: 1px solid var(--vscode-tab-border, #3c3c3c);
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: 10px;
+  line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  cursor: default;
+  user-select: none;
+}
+
+#status-line[hidden] {
+  display: none;
+}
+
+/* A snapshot older than a minute means Claude has not re-rendered since — say so quietly */
+#status-line.stale {
+  opacity: 0.55;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.status-model {
+  color: var(--vscode-foreground, #ccc);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.status-bar {
+  flex: 1;
+  min-width: 24px;
+  height: 4px;
+  border-radius: 2px;
+  background-color: var(--vscode-progressBar-background, #0e70c0);
+  opacity: 0.25;
+  position: relative;
+  overflow: hidden;
+}
+
+.status-bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background-color: var(--vscode-progressBar-background, #0e70c0);
+}
+
+/* Same threshold the script uses for its macOS notification */
+.status-bar.warn {
+  background-color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.status-bar.warn .status-bar-fill {
+  background-color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.status-value {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-value.warn {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.status-row.secondary {
+  gap: 10px;
+  opacity: 0.85;
 }
 
 /* Vertical tab bar on the right */
