@@ -133,6 +133,29 @@ export class StatusLineWatcher {
     return merged;
   }
 
+  /**
+   * Supplies the context window size when the payload has none yet, so the bar has a scale from
+   * the start. The **usage** is never taken from memory: a fresh session really is at zero, and
+   * showing the previous session's tokens would be a lie rather than a placeholder.
+   */
+  private withRememberedWindowSize(snapshot: StatusLineSnapshot): StatusLineSnapshot {
+    if (snapshot.totalTokens > 0 || snapshot.cwd === undefined) {
+      return snapshot;
+    }
+
+    const remembered = this.readLastForCwd(snapshot.cwd);
+    if (!remembered || remembered.totalTokens <= 0) {
+      return snapshot;
+    }
+
+    const totalTokens = remembered.totalTokens;
+    return {
+      ...snapshot,
+      totalTokens,
+      usedPercent: Math.round((snapshot.usedTokens / totalTokens) * 1000) / 10
+    };
+  }
+
   private readLimits(): Partial<StatusLineSnapshot> | undefined {
     try {
       const raw = fs.readFileSync(path.join(this.lastDir, 'limits.json'), 'utf8');
@@ -300,7 +323,7 @@ export class StatusLineWatcher {
     this.rememberForCwd(snapshot);
     this.rememberLimits(snapshot);
 
-    const complete = this.withRememberedLimits(snapshot);
+    const complete = this.withRememberedLimits(this.withRememberedWindowSize(snapshot));
     this.latest.set(terminalId, complete);
     this.onSnapshot(terminalId, complete);
   }

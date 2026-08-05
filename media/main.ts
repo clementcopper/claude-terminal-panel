@@ -280,6 +280,113 @@ const messageHandlers: MessageHandlers = {
 };
 
 /**
+ * Tooltips in the shape VS Code uses for its own toolbars.
+ *
+ * The `title` attribute would be simpler, but it is the browser's tooltip: about a second of
+ * delay and the operating system's styling, next to the view title bar's themed hover that
+ * appears right away. Anything carrying `data-tooltip` gets this one instead.
+ */
+class TooltipManager {
+  /** Matches the feel of the title bar hover rather than the browser's own delay. */
+  private static readonly SHOW_DELAY_MS = 300;
+  private static readonly GAP_PX = 6;
+
+  private readonly element: HTMLDivElement;
+  private timer: number | null = null;
+  private target: HTMLElement | null = null;
+
+  constructor() {
+    this.element = document.createElement('div');
+    this.element.className = 'panel-tooltip';
+    this.element.hidden = true;
+    document.body.appendChild(this.element);
+
+    // Delegated, because tabs are rebuilt on every update — per-element listeners would have to
+    // be reattached each time.
+    document.addEventListener('mouseover', (event) => {
+      const found = this.findTarget(event.target);
+      if (found !== this.target) {
+        this.schedule(found);
+      }
+    });
+    document.addEventListener('mouseleave', () => {
+      this.hide();
+    });
+    document.addEventListener('mousedown', () => {
+      this.hide();
+    });
+    window.addEventListener('blur', () => {
+      this.hide();
+    });
+    window.addEventListener('scroll', () => {
+      this.hide();
+    });
+  }
+
+  private findTarget(node: EventTarget | null): HTMLElement | null {
+    if (!(node instanceof Element)) return null;
+    const match = node.closest('[data-tooltip]');
+    return match instanceof HTMLElement && match.dataset.tooltip ? match : null;
+  }
+
+  private schedule(target: HTMLElement | null): void {
+    this.clearTimer();
+    this.target = target;
+
+    if (!target) {
+      this.element.hidden = true;
+      return;
+    }
+
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.show(target);
+    }, TooltipManager.SHOW_DELAY_MS) as unknown as number;
+  }
+
+  private show(target: HTMLElement): void {
+    const text = target.dataset.tooltip;
+    if (!text || !target.isConnected) return;
+
+    this.element.textContent = text;
+    this.element.hidden = false;
+
+    // Measure after the text is in, then place it. The tab bar sits on the right edge, so the
+    // preferred side is to the left of the element; above is the fallback for wide targets.
+    const targetRect = target.getBoundingClientRect();
+    const tip = this.element.getBoundingClientRect();
+    const gap = TooltipManager.GAP_PX;
+
+    let left = targetRect.left - tip.width - gap;
+    let top = targetRect.top + targetRect.height / 2 - tip.height / 2;
+
+    if (left < gap) {
+      left = Math.min(targetRect.left, window.innerWidth - tip.width - gap);
+      top = targetRect.top - tip.height - gap;
+      if (top < gap) {
+        top = targetRect.bottom + gap;
+      }
+    }
+
+    this.element.style.left = `${String(Math.max(gap, left))}px`;
+    this.element.style.top = `${String(Math.max(gap, Math.min(top, window.innerHeight - tip.height - gap)))}px`;
+  }
+
+  private hide(): void {
+    this.clearTimer();
+    this.target = null;
+    this.element.hidden = true;
+  }
+
+  private clearTimer(): void {
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+  }
+}
+
+/**
  * The status line at the bottom edge. Data comes from the statusLine script through the
  * extension host — the terminal stream itself carries no session state.
  */
@@ -353,7 +460,7 @@ class StatusLineView {
       // Shortened in JS, not by CSS: a right-to-left trick for left-side ellipsis
       // reorders a plain path ("~/foo" came out as "foo/~").
       cwd.textContent = shortenPath(snapshot.cwd);
-      cwd.title = snapshot.cwd;
+      cwd.dataset.tooltip = snapshot.cwd;
       cwdRow.appendChild(cwd);
       this.element.appendChild(cwdRow);
     }
@@ -410,7 +517,7 @@ class StatusLineView {
       tokens.textContent = `${formatK(snapshot.usedTokens)} / ${formatK(snapshot.totalTokens)}`;
       row.appendChild(tokens);
 
-      row.title = `Context: ${String(snapshot.usedTokens)} of ${String(snapshot.totalTokens)} tokens`;
+      row.dataset.tooltip = `Context: ${String(snapshot.usedTokens)} of ${String(snapshot.totalTokens)} tokens`;
     }
 
     return row;
@@ -458,7 +565,7 @@ class StatusLineView {
     });
 
     if (snapshot.weekResetsAt) {
-      row.title = `Weekly limit resets on ${snapshot.weekResetsAt}`;
+      row.dataset.tooltip = `Weekly limit resets on ${snapshot.weekResetsAt}`;
     }
     return row;
   }
@@ -504,6 +611,7 @@ class WebviewContext {
   private readonly tabBar: HTMLElement;
   private readonly terminalsContainer: HTMLElement;
   private readonly statusLine: StatusLineView;
+  private readonly tooltips = new TooltipManager();
   private resizeObserver: ResizeObserver | null = null;
   private themeObserver: MutationObserver | null = null;
   private themeApplyTimer: number | null = null;
@@ -710,7 +818,7 @@ class WebviewContext {
     tabElement.dataset.id = tab.id;
     // Show the working directory: Claude Code keeps its session history per directory,
     // so a tab in an unexpected folder shows an unexpected /resume list.
-    tabElement.title = tab.cwd ? `${tab.name} — ${tab.cwd}` : tab.name;
+    tabElement.dataset.tooltip = tab.cwd ? `${tab.name} — ${tab.cwd}` : tab.name;
 
     // Apply accent color if provided (for multi-workspace folder coloring)
     if (tab.accentColor) {
@@ -724,7 +832,7 @@ class WebviewContext {
 
     const closeButton = document.createElement('button');
     closeButton.className = 'tab-close';
-    closeButton.title = 'Close';
+    closeButton.dataset.tooltip = 'Close Tab (Cmd+W)';
     closeButton.onclick = (e) => {
       e.stopPropagation();
       this.postMessage({ type: 'closeTab', id: tab.id });
@@ -753,7 +861,7 @@ class WebviewContext {
     const addButton = document.createElement('button');
     addButton.className = 'tab-add';
     addButton.innerHTML = '+';
-    addButton.title = 'New Terminal (Ctrl+Shift+`)';
+    addButton.dataset.tooltip = 'New Terminal (Cmd+Shift+`)';
     addButton.onclick = () => {
       this.postMessage({ type: 'newTab' });
     };
@@ -767,7 +875,7 @@ class WebviewContext {
       <path d="M1 3.5L4.5 7 1 10.5v1.12l4.5-4.5v-.24L1 2.38V3.5zm5 9h9v-1H6v1z"/>
       <path d="M11 3v2H9v1h2v2h1V6h2V5h-2V3h-1z"/>
     </svg>`;
-    button.title = 'New Terminal with Custom Command';
+    button.dataset.tooltip = 'New Terminal with Custom Command';
     button.onclick = () => {
       this.postMessage({ type: 'newTabWithCommand' });
     };
