@@ -147,6 +147,39 @@ body {
   letter-spacing: 0.3px;
 }
 
+/* The open file, at the top edge — closest to the editor it describes. It is the one row that
+   does something when clicked, so it has to read as clickable rather than as label text. */
+.status-row.editor {
+  border-bottom: 1px solid var(--vscode-tab-border, #3c3c3c);
+  margin-bottom: 2px;
+  padding-bottom: 2px;
+}
+
+.status-editor {
+  /* A button, for the keyboard and the accessibility tree; the panel's own look, not the OS one */
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: inherit;
+  color: var(--vscode-foreground, #ccc);
+  cursor: pointer;
+}
+
+.status-editor:hover {
+  color: var(--vscode-textLink-activeForeground, #4daafc);
+  text-decoration: underline;
+}
+
+.status-editor:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #0078d4);
+  outline-offset: 1px;
+}
+
 /* Working directory last: least urgent, and the only part that can get long */
 .status-row.cwd {
   opacity: 0.7;

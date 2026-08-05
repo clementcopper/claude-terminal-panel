@@ -8,7 +8,8 @@ import type {
   TabInfo,
   TerminalEntry,
   XTermTheme,
-  StatusLineSnapshot
+  StatusLineSnapshot,
+  EditorContext
 } from './types';
 
 // File path link provider for terminal
@@ -229,16 +230,16 @@ class ScrollManager {
 // Handler registry pattern for message handling
 type MessageHandler<T extends WebviewIncomingMessage> = (message: T, ctx: WebviewContext) => void;
 
-interface MessageHandlers {
-  output: MessageHandler<Extract<WebviewIncomingMessage, { type: 'output' }>>;
-  clear: MessageHandler<Extract<WebviewIncomingMessage, { type: 'clear' }>>;
-  tabsUpdate: MessageHandler<Extract<WebviewIncomingMessage, { type: 'tabsUpdate' }>>;
-  createTab: MessageHandler<Extract<WebviewIncomingMessage, { type: 'createTab' }>>;
-  switchTab: MessageHandler<Extract<WebviewIncomingMessage, { type: 'switchTab' }>>;
-  removeTab: MessageHandler<Extract<WebviewIncomingMessage, { type: 'removeTab' }>>;
-  setNotification: MessageHandler<Extract<WebviewIncomingMessage, { type: 'setNotification' }>>;
-  statusLine: MessageHandler<Extract<WebviewIncomingMessage, { type: 'statusLine' }>>;
-}
+/**
+ * Keyed off the message union rather than listed by hand, so a new incoming message that has no
+ * handler here fails the build instead of being dropped in silence — the same guarantee the
+ * extension side gets from `src/messageHandlers.ts`.
+ */
+type MessageHandlers = {
+  [K in WebviewIncomingMessage['type']]: MessageHandler<
+    Extract<WebviewIncomingMessage, { type: K }>
+  >;
+};
 
 const messageHandlers: MessageHandlers = {
   output: (message, ctx) => {
@@ -276,6 +277,9 @@ const messageHandlers: MessageHandlers = {
   },
   statusLine: (message, ctx) => {
     ctx.setStatusLine(message.id, message.data);
+  },
+  editorContext: (message, ctx) => {
+    ctx.setEditorContext(message.data);
   }
 };
 
@@ -398,10 +402,13 @@ class StatusLineView {
 
   private readonly snapshots = new Map<string, StatusLineSnapshot>();
   private activeId: string | null = null;
+  /** Belongs to the window, not to a tab: one editor, however many terminals. */
+  private editorContext: EditorContext | null = null;
 
   constructor(
     private readonly element: HTMLElement,
-    private readonly onHeightChange: () => void
+    private readonly onHeightChange: () => void,
+    private readonly onEditorReferenceClick: () => void
   ) {}
 
   set(id: string, snapshot: StatusLineSnapshot | null): void {
@@ -420,6 +427,11 @@ class StatusLineView {
     this.render();
   }
 
+  setEditorContext(context: EditorContext | null): void {
+    this.editorContext = context;
+    this.render();
+  }
+
   remove(id: string): void {
     this.snapshots.delete(id);
     if (id === this.activeId) {
@@ -428,18 +440,48 @@ class StatusLineView {
     }
   }
 
+  /**
+   * Rebuilds the whole element, then refits xterm if that changed the height.
+   *
+   * Measured rather than inferred from `hidden`: a row can now come and go while the element
+   * stays visible — the editor row appears the moment a file is opened — and that moves the
+   * terminal's bottom edge just as much as showing the status line does. Without the refit xterm
+   * keeps its old row count.
+   */
   private render(): void {
-    const snapshot = this.activeId ? this.snapshots.get(this.activeId) : undefined;
-    const wasHidden = this.element.hidden;
+    const previousHeight = this.element.hidden ? 0 : this.element.offsetHeight;
+    this.draw();
+    const currentHeight = this.element.hidden ? 0 : this.element.offsetHeight;
 
-    if (!snapshot) {
+    if (currentHeight !== previousHeight) {
+      this.onHeightChange();
+    }
+  }
+
+  private draw(): void {
+    const snapshot = this.activeId ? this.snapshots.get(this.activeId) : undefined;
+
+    // The editor row stands on its own: a tab Claude has not rendered yet still has a file open
+    // next to it.
+    if (!snapshot && !this.editorContext) {
       this.element.hidden = true;
       this.element.textContent = '';
-      if (!wasHidden) this.onHeightChange();
       return;
     }
 
     this.element.textContent = '';
+
+    // First, so it sits at the top edge — closest to the editor it describes
+    if (this.editorContext) {
+      this.element.appendChild(this.buildEditorRow(this.editorContext));
+    }
+
+    this.element.hidden = false;
+
+    if (!snapshot) {
+      this.element.classList.remove('stale');
+      return;
+    }
 
     const context = this.buildContextRow(snapshot);
     if (context) {
@@ -467,9 +509,35 @@ class StatusLineView {
 
     const ageMs = Date.now() - snapshot.updatedAt * 1000;
     this.element.classList.toggle('stale', ageMs > StatusLineView.STALE_AFTER_MS);
+  }
 
-    this.element.hidden = false;
-    if (wasHidden) this.onHeightChange();
+  /**
+   * The open file, and the selected range when there is one. Clicking it hands the reference to
+   * Claude's input — the row is the affordance, so it has to look like one.
+   */
+  private buildEditorRow(context: EditorContext): HTMLDivElement {
+    const row = document.createElement('div');
+    row.className = 'status-row editor';
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'status-editor';
+
+    const lines =
+      context.startLine !== undefined && context.endLine !== undefined
+        ? context.startLine === context.endLine
+          ? `:${String(context.startLine)}`
+          : `:${String(context.startLine)}-${String(context.endLine)}`
+        : '';
+    button.textContent = `${context.fileName}${lines}`;
+    button.dataset.tooltip = `${context.relativePath}${lines} — click to add to the prompt`;
+
+    button.addEventListener('click', () => {
+      this.onEditorReferenceClick();
+    });
+
+    row.appendChild(button);
+    return row;
   }
 
   private buildContextRow(snapshot: StatusLineSnapshot): HTMLDivElement | null {
@@ -629,14 +697,24 @@ class WebviewContext {
 
     this.tabBar = tabBar;
     this.terminalsContainer = terminalsContainer;
-    // Showing or hiding the row changes the terminal's height, so xterm has to refit.
-    this.statusLine = new StatusLineView(statusLineElement, () => {
-      this.refitActive();
-    });
+    // Showing or hiding a row changes the terminal's height, so xterm has to refit.
+    this.statusLine = new StatusLineView(
+      statusLineElement,
+      () => {
+        this.refitActive();
+      },
+      () => {
+        this.postMessage({ type: 'insertEditorReference' });
+      }
+    );
   }
 
   setStatusLine(id: string, snapshot: StatusLineSnapshot | null): void {
     this.statusLine.set(id, snapshot);
+  }
+
+  setEditorContext(context: EditorContext | null): void {
+    this.statusLine.setEditorContext(context);
   }
 
   private refitActive(): void {

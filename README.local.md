@@ -82,6 +82,7 @@ there is nothing to bundle. A Linux binary in the archive does no harm on macOS,
 | Title bar                    | `Resume Session in Current Tab…` and `Continue Last Session in Current Tab` respawn the **active** tab with `--resume` / `--continue`, in the tab's own directory |
 | Commands                     | `New Terminal Tab (Resume Session…)` and `(Continue Last Session)` do the same in an **additional** tab; Command Palette only                                     |
 | Tab tooltip                  | shows the working directory, because Claude Code stores session history per directory                                                                             |
+| Editor row                   | the file open in the editor sits above the status line, with the selected range; clicking it adds the reference to the prompt. `claudeTerminal.editorContext`     |
 | `claudeTerminal.cwd`         | fixed working directory independent of the open folder, `~` allowed                                                                                               |
 | `claudeTerminal.preloadHelp` | defaults to `false`. On, startup probes eight CLI binaries with `--help`                                                                                          |
 | Help probing                 | runs without `shell: true`; command names must match `^[A-Za-z0-9._@/-]+$`                                                                                        |

@@ -19,6 +19,12 @@ scripts/**
 Bildschirmfoto*.png
 Screenshot*.png
 Bildschirmaufnahme*.mov
+# vsce matches case-sensitively, unlike git on this filesystem — `screenshot_2.png` slipped past
+# the rule above and put 1.9 MB into the package. Readme assets have no business in a .vsix at all:
+# *.md is ignored, so the readme that shows them is not even there. media/icon.png and the
+# top-level icon.png are the only images the extension itself needs.
+media/screenshot*.png
+media/Screenshot*.png
 
 # vsce applies negations AFTER every ignore pattern, so a blanket
 # "!node_modules/node-pty/**" would pull the whole module back in regardless of order.

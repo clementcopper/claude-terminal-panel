@@ -5,11 +5,12 @@ import { PtyManager, type PtyEventCallbacks } from './ptyManager';
 import { ConfigManager } from './configManager';
 import { TerminalStateManager } from './terminalStateManager';
 import { dispatchMessage, type MessageHandlerContext } from './messageHandlers';
-import type { WebviewMessage, TerminalInstance, ExtensionMessage } from './types';
+import type { WebviewMessage, TerminalInstance, ExtensionMessage, EditorContext } from './types';
 import { WORKSPACE_ACCENT_COLORS } from './types';
 import { CommandInputPicker } from './commandInputPicker';
 import { PromptDetector, type PromptDetectorConfig } from './promptDetector';
 import { StatusLineWatcher } from './statusLineWatcher';
+import { EditorContextTracker, formatReference } from './editorContextTracker';
 
 export class ClaudeTerminalViewProvider
   implements vscode.WebviewViewProvider, MessageHandlerContext
@@ -26,6 +27,7 @@ export class ClaudeTerminalViewProvider
   private readonly commandPicker = new CommandInputPicker();
   private readonly promptDetector: PromptDetector;
   private readonly statusLineWatcher: StatusLineWatcher;
+  private readonly editorTracker: EditorContextTracker;
 
   constructor(private readonly extensionUri: vscode.Uri) {
     const callbacks: PtyEventCallbacks = {
@@ -45,6 +47,13 @@ export class ClaudeTerminalViewProvider
       this.postMessage({ type: 'statusLine', id: terminalId, data: snapshot });
     });
 
+    // The tracker runs whatever the setting says: `editorContext` only decides whether the row
+    // is drawn, while the reference command stays useful either way — and toggling the setting
+    // then takes effect without a window reload.
+    this.editorTracker = new EditorContextTracker((context) => {
+      this.sendEditorContext(context);
+    });
+
     // Pre-load help for the configured command. Probing the other CLI agents spawns a
     // process per candidate on every window start, so it is opt-in.
     const config = this.configManager.getConfig();
@@ -60,6 +69,8 @@ export class ClaudeTerminalViewProvider
   handleReady(cols: number, rows: number): void {
     this.lastCols = cols;
     this.lastRows = rows;
+    // A reloaded webview starts empty; the editor is whatever it was before the reload
+    this.sendEditorContext(this.editorTracker.current);
     void this.createTerminal();
   }
 
@@ -88,6 +99,34 @@ export class ClaudeTerminalViewProvider
 
   handleSwitchTab(id: string): void {
     this.switchToTerminal(id);
+  }
+
+  handleInsertEditorReference(): void {
+    this.insertEditorReference();
+  }
+
+  /**
+   * Writes the open file — and the selected lines, if any — into the active tab's input.
+   *
+   * Deliberately without a newline: this lands in Claude's prompt, and sending it stays the
+   * user's decision. Nothing is appended automatically anywhere else, so context only ever
+   * leaves the editor when it is asked for.
+   */
+  public insertEditorReference(): void {
+    const activeId = this.stateManager.getActiveId();
+    if (!activeId) {
+      return;
+    }
+
+    const context = this.editorTracker.current;
+    if (!context) {
+      void vscode.window.showInformationMessage(
+        'Claude Terminal: no file is open in the editor to reference.'
+      );
+      return;
+    }
+
+    this.ptyManager.write(activeId, formatReference(context));
   }
 
   handleOpenFile(id: string, path: string, line?: number, column?: number): void {
@@ -450,6 +489,9 @@ export class ClaudeTerminalViewProvider
   public updateConfig(): void {
     this.configManager.invalidateCache();
     this.promptDetector.updateConfig(this.getPromptDetectorConfig());
+    // `editorContext` may have just been switched: redraw the row rather than wait for the next
+    // time the user happens to move the cursor
+    this.sendEditorContext(this.editorTracker.current);
   }
 
   public dispose(): void {
@@ -457,6 +499,7 @@ export class ClaudeTerminalViewProvider
     this.ptyManager.killAll();
     this.promptDetector.dispose();
     this.statusLineWatcher.dispose();
+    this.editorTracker.dispose();
     this.configManager.dispose();
     this.commandPicker.dispose();
   }
@@ -477,6 +520,12 @@ export class ClaudeTerminalViewProvider
    * once it renders, which is after its first output, so without this the row would appear
    * several seconds late — and change the terminal height while the user is already typing.
    */
+  /** Suppressed as `null` rather than skipped, so switching the setting off clears the row. */
+  private sendEditorContext(context: EditorContext | null): void {
+    const enabled = this.configManager.getConfig().editorContext;
+    this.postMessage({ type: 'editorContext', data: enabled ? context : null });
+  }
+
   private sendInitialStatusLine(terminalId: string, cwd: string | undefined): void {
     const snapshot = this.statusLineWatcher.getInitialSnapshot(cwd);
     if (snapshot) {

@@ -93,8 +93,8 @@ private `postMessage` and a mirror handler map in `media/main.ts`.
 `ExtensionMessage`, `TabInfo`, `StatusLineSnapshot`) and `media/types.ts`
 (`WebviewOutgoingMessage`, `WebviewIncomingMessage`, `TabInfo`, `StatusLineSnapshot`) are separate
 declarations of the same shapes — the two bundles share no module. Adding a message means editing
-both, plus `messageHandlers.ts` (the map is exhaustive, so a missing entry fails the build) and
-the webview's map (it is not).
+both, plus `messageHandlers.ts` and the webview's map in `media/main.ts`. Both maps are keyed off
+their message union, so a missing entry fails the build rather than dropping the message.
 
 Supporting modules, each owning one concern:
 

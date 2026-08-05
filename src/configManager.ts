@@ -40,7 +40,8 @@ export class ConfigManager {
       preloadHelp: config.get<boolean>('preloadHelp', false),
       statusLine: config.get<boolean>('statusLine', true),
       statusLineProvider: config.get<'bundled' | 'own'>('statusLineProvider', 'bundled'),
-      statusLineCompactBudget: config.get<number>('statusLineCompactBudget', 0)
+      statusLineCompactBudget: config.get<number>('statusLineCompactBudget', 0),
+      editorContext: config.get<boolean>('editorContext', true)
     };
 
     return this.cachedConfig;

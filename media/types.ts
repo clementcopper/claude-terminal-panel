@@ -45,6 +45,17 @@ export interface StatusLineSnapshot {
   updatedAt: number;
 }
 
+/**
+ * The file the editor is showing, and the lines selected in it. Same separate declaration as
+ * `StatusLineSnapshot` above, for the same reason.
+ */
+export interface EditorContext {
+  fileName: string;
+  relativePath: string;
+  startLine?: number;
+  endLine?: number;
+}
+
 // Message types from extension to webview
 export type WebviewIncomingMessage =
   | { type: 'output'; id: string; data: string }
@@ -54,7 +65,8 @@ export type WebviewIncomingMessage =
   | { type: 'switchTab'; id: string }
   | { type: 'removeTab'; id: string }
   | { type: 'setNotification'; id: string; show: boolean }
-  | { type: 'statusLine'; id: string; data: StatusLineSnapshot | null };
+  | { type: 'statusLine'; id: string; data: StatusLineSnapshot | null }
+  | { type: 'editorContext'; data: EditorContext | null };
 
 // Message types from webview to extension
 export type WebviewOutgoingMessage =
@@ -65,7 +77,8 @@ export type WebviewOutgoingMessage =
   | { type: 'newTabWithCommand' }
   | { type: 'closeTab'; id: string }
   | { type: 'switchTab'; id: string }
-  | { type: 'openFile'; id: string; path: string; line?: number; column?: number };
+  | { type: 'openFile'; id: string; path: string; line?: number; column?: number }
+  | { type: 'insertEditorReference' };
 
 // Terminal entry in the map
 export interface TerminalEntry {

@@ -53,6 +53,12 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('claudeTerminal.insertEditorReference', () => {
+      terminalProvider?.insertEditorReference();
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('claudeTerminal.closeTab', () => {
       terminalProvider?.closeActiveTerminal();
     })

@@ -107,6 +107,12 @@
         "command": "claudeTerminal.previousTab",
         "title": "Previous Terminal Tab",
         "category": "Claude Terminal"
+      },
+      {
+        "command": "claudeTerminal.insertEditorReference",
+        "title": "Add Editor Selection to Prompt",
+        "category": "Claude Terminal",
+        "icon": "$(add)"
       }
     ],
     "keybindings": [
@@ -133,6 +139,12 @@
         "key": "ctrl+w",
         "mac": "cmd+w",
         "when": "focusedView == 'claudeTerminal.terminalView'"
+      },
+      {
+        "command": "claudeTerminal.insertEditorReference",
+        "key": "ctrl+alt+k",
+        "mac": "cmd+alt+k",
+        "when": "editorTextFocus"
       }
     ],
     "menus": {
@@ -218,6 +230,11 @@
           "default": 0,
           "minimum": 0,
           "markdownDescription": "Target number of compactions per session, shown as `Compacted 1/3`. `0` shows the count without a budget. Only used by the bundled provider."
+        },
+        "claudeTerminal.editorContext": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show the file open in the editor at the top of the status line, with the selected line range when there is one. Clicking it adds the reference to Claude's prompt; the command `Claude Terminal: Add Editor Selection to Prompt` does the same and stays available when this is off. Nothing is sent to Claude unless you ask for it."
         },
         "claudeTerminal.env": {
           "type": "object",

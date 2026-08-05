@@ -17,6 +17,11 @@ Non-obvious findings and dead ends. Only add what saves future work.
   `.vsix` needs a line in `.vscodeignore`; a `.gitignore` entry is not enough (a screenshot
   dropped into the project folder shipped that way). Conversely `.gitignore` would only take over
   if `.vscodeignore` were deleted — and then the build output would fall out of the package.
+- **`vsce` matches ignore patterns case-sensitively, git does not.** `core.ignorecase` is `true` on
+  this filesystem, so `.gitignore`'s `Screenshot*.png` swallows `screenshot_2.png` — while
+  `.vscodeignore`'s identical line does not, and the file shipped: 1.9 MB in a 3 MB package. The
+  two files look the same and behave differently; a name that git hides is not thereby out of the
+  `.vsix`. Check the payload by size, not by assuming.
 - **`.git/info/exclude` settles the conflict between `git status` and `vsce`.** Build output
   cannot go into `.gitignore` by convention here, but sits in the working tree as untracked noise.
   An entry in `.git/info/exclude` hides it locally only; `vsce` does not read that file. Checked:

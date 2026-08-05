@@ -52,6 +52,10 @@ Local fork, published nowhere: built and installed as `local.claude-terminal-pan
 
 - `scripts/verify-package-payload.js`, run as `prepackage` and `postpackage`: restores the
   executable bit, rejects an incomplete prebuild set, and keeps `.pdb` debug symbols (55 MB) out
+- An editor row above the status line: the open file, plus the selected line range when there is
+  one. Clicking it — or `Claude Terminal: Add Editor Selection to Prompt`, `cmd+alt+k` — writes
+  `@path (lines 12-30)` into Claude's input without sending it. Nothing is attached automatically;
+  `claudeTerminal.editorContext` hides the row and leaves the command working
 
 ### Removed
 

@@ -54,6 +54,8 @@ export interface TerminalConfig {
   statusLineProvider: 'bundled' | 'own';
   /** Target number of compactions shown next to the counter; 0 hides the budget. */
   statusLineCompactBudget: number;
+  /** Show the open file, and any selected lines, at the top of the status line. */
+  editorContext: boolean;
 }
 
 /**
@@ -81,6 +83,20 @@ export interface StatusLineSnapshot {
   compactAuto?: number;
   /** Unix seconds, so the webview can grey out a stale line. */
   updatedAt: number;
+}
+
+/**
+ * What the editor is looking at. Belongs to the window, not to a tab — there is one active
+ * editor, however many terminals are open.
+ */
+export interface EditorContext {
+  /** Shown in the status line; the path is too wide for a sidebar. */
+  fileName: string;
+  /** Workspace-relative where possible, absolute otherwise. This is what a reference carries. */
+  relativePath: string;
+  /** 1-based, and only present when something is actually selected. */
+  startLine?: number;
+  endLine?: number;
 }
 
 // Terminal instance for multi-tab support
@@ -114,7 +130,9 @@ export type WebviewMessage =
   | { type: 'newTabWithCommand' }
   | { type: 'closeTab'; id: string }
   | { type: 'switchTab'; id: string }
-  | { type: 'openFile'; id: string; path: string; line?: number; column?: number };
+  | { type: 'openFile'; id: string; path: string; line?: number; column?: number }
+  // No tab id: the reference goes to whichever tab is active when it is asked for
+  | { type: 'insertEditorReference' };
 
 // Extension message types (from extension to webview)
 export type ExtensionMessage =
@@ -125,7 +143,8 @@ export type ExtensionMessage =
   | { type: 'switchTab'; id: string }
   | { type: 'removeTab'; id: string }
   | { type: 'setNotification'; id: string; show: boolean }
-  | { type: 'statusLine'; id: string; data: StatusLineSnapshot | null };
+  | { type: 'statusLine'; id: string; data: StatusLineSnapshot | null }
+  | { type: 'editorContext'; data: EditorContext | null };
 
 // Command help parsing types
 export interface CommandFlag {
