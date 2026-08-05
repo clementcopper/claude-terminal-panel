@@ -89,8 +89,14 @@ export class StatusLineWatcher {
   }
 
   /**
-   * Rate limits belong to the account, not to a directory, so they are remembered separately —
-   * a first tab in a brand new folder still shows Session and Week right away.
+   * Fills in rate limits the snapshot does not carry. Two reasons it may not:
+   *
+   * - Claude Code leaves `rate_limits` out of its payload until a request has been made, so the
+   *   first snapshots of a session have no Session and Week at all.
+   * - A brand new tab starts from the remembered directory snapshot, which may predate them.
+   *
+   * The limits belong to the account rather than a directory, hence their own file. Only
+   * undefined fields are filled — a live value always wins over a remembered one.
    */
   private withRememberedLimits(snapshot: StatusLineSnapshot): StatusLineSnapshot {
     const limits = this.readLimits();
@@ -98,7 +104,15 @@ export class StatusLineWatcher {
       return snapshot;
     }
 
-    const merged = { ...snapshot, ...limits };
+    const merged = { ...snapshot };
+    for (const [key, value] of Object.entries(limits) as [
+      keyof StatusLineSnapshot,
+      number | string | undefined
+    ][]) {
+      if (value !== undefined && merged[key] === undefined) {
+        Object.assign(merged, { [key]: value });
+      }
+    }
 
     // A remembered "resets in 84 min" is a lie an hour later: recompute from the absolute point,
     // and drop the session values once that point has passed — the window reset, so the old
@@ -281,10 +295,14 @@ export class StatusLineWatcher {
       return;
     }
 
-    this.latest.set(terminalId, snapshot);
+    // Remember first, from the live values, then hand out a snapshot topped up with whatever
+    // rate limits are known — Claude omits them until the session has made a request.
     this.rememberForCwd(snapshot);
     this.rememberLimits(snapshot);
-    this.onSnapshot(terminalId, snapshot);
+
+    const complete = this.withRememberedLimits(snapshot);
+    this.latest.set(terminalId, complete);
+    this.onSnapshot(terminalId, complete);
   }
 
   private clearTimer(terminalId: string): void {

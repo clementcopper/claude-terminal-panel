@@ -140,6 +140,11 @@ it last saw, under `status/last/`:
 | `<sha1 of cwd>.json` | the last full snapshot for that working directory — model, context, everything                                                       |
 | `limits.json`        | session and weekly rate limits, which belong to the account rather than a directory, so a first tab in a new folder still shows them |
 
+`limits.json` also fills in live snapshots, not just the initial one: Claude Code leaves
+`rate_limits` out of its payload until the session has made a request, so the first snapshots
+carry no Session and Week at all. Only fields the snapshot lacks are filled — a live value always
+wins over a remembered one.
+
 When a tab is created, the extension sends that combination straight away. Its `updatedAt` is old,
 so the row renders greyed out until the first real snapshot replaces it. The session countdown is
 recomputed from `sessionResetsAt`, and if that point has already passed the session values are
