@@ -33,7 +33,7 @@ export class ClaudeTerminalViewProvider
       onExit: this.handlePtyExit.bind(this),
       onError: this.handlePtyError.bind(this)
     };
-    this.ptyManager = new PtyManager(callbacks);
+    this.ptyManager = new PtyManager(callbacks, extensionUri);
 
     // Initialize prompt detector for input waiting notifications
     this.promptDetector = new PromptDetector(

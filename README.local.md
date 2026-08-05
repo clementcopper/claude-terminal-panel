@@ -61,17 +61,29 @@ Erwartet: `build/Release/pty.node` und `build/Release/spawn-helper`, dazu diesel
 
 ## Statuszeile — der Datenkanal
 
-Modell, Token und Rate-Limits stehen nicht im PTY-Strom. Claude Code gibt sie nur dem in
-`~/.claude/settings.json` eingetragenen `statusLine`-Befehl, als JSON auf stdin. Deshalb ist das
-Skript die Quelle und die Extension der Leser:
+Modell, Token und Rate-Limits stehen nicht im PTY-Strom. Claude Code gibt sie nur dem
+`statusLine`-Befehl, als JSON auf stdin. Die Quelle ist also immer ein Skript, die Extension ist
+der Leser:
 
 1. `ptyManager` setzt pro PTY `CLAUDE_PANEL_TAB_ID` und `CLAUDE_PANEL_STATUS_DIR`
    (`<os.tmpdir()>/claude-terminal-panel/status`).
-2. `~/.claude/statusline-command.sh` erkennt beide Variablen, schreibt `<tab-id>.json` (eigenes
-   flaches Schema, `umask 077`, atomar über `.tmp` + `mv`) und gibt **keinen** Text aus.
+2. Das Skript schreibt `<tab-id>.json` — eigenes flaches Schema, Modus 600, atomar über `.tmp`
+   plus Rename — und gibt **keinen** Text aus.
 3. `statusLineWatcher.ts` beobachtet das Verzeichnis und schickt jede Änderung als
    `statusLine`-Nachricht an das Webview.
 
-Ohne den `statusLine`-Eintrag in `~/.claude/settings.json` bleibt die Zeile leer — und die
-Kontextwarnung des Skripts fällt mit weg. Sicherungskopie des Skripts vor dem Eingriff:
-`~/.claude/statusline-command.sh.bak`.
+Wer das Skript stellt, entscheidet `claudeTerminal.statusLineProvider`:
+
+| Wert | Verhalten |
+|---|---|
+| `bundled` (Vorgabe) | Die Extension hängt beim Start `--settings` mit `resources/panel-statusline.js` an. Ohne Einrichtung nutzbar, `~/.claude/settings.json` bleibt unangetastet. Ein dort eingetragener eigener Befehl läuft danach trotzdem — für seine Nebeneffekte, ohne seine Textausgabe |
+| `own` | Nur die Umgebungsvariablen. Das eigene Skript muss `CLAUDE_PANEL_TAB_ID` erkennen und die Datei selbst schreiben. So läuft es hier: `~/.claude/statusline-command.sh`, Sicherung unter `.bak` |
+
+Der mitgelieferte Producer läuft mit VS Codes eigenem Electron-Binary
+(`ELECTRON_RUN_AS_NODE=1`), damit kein `node` und kein `jq` im PATH nötig ist. Das Präfix steht im
+Kommandostring, nicht in der PTY-Umgebung — sonst erbte es jedes aus dem Terminal gestartete
+Electron. Geprüft: `sh -c "ELECTRON_RUN_AS_NODE=1 '<Code Helper>' panel-statusline.js"` schreibt
+die Datei und gibt nichts aus.
+
+`claudeTerminal.statusLineCompactBudget` setzt die Zielmarke hinter dem Verdichtungszähler
+(`Compacted 1/3`), `0` zeigt nur die Zahl.

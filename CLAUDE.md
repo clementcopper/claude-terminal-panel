@@ -136,12 +136,26 @@ Command Palette only.
 instead of leaving it as ASCII text in the scrollback.
 The extension host cannot read that data from the PTY — only the configured `statusLine` command
 gets it, on stdin from Claude Code. So the contract runs the other way: `ptyManager` puts
-`CLAUDE_PANEL_TAB_ID` and `CLAUDE_PANEL_STATUS_DIR` into each PTY's env, and
-`~/.claude/statusline-command.sh` writes `<tab id>.json` there (atomically, `umask 077`) and
-prints nothing when those variables are set. Consequences worth knowing:
+`CLAUDE_PANEL_TAB_ID` and `CLAUDE_PANEL_STATUS_DIR` into each PTY's env, and the producer writes
+`<tab id>.json` there, atomically and mode 600, printing nothing.
 
-- Removing `statusLine` from `~/.claude/settings.json` kills the data source, and with it the
-  script's context warning.
+Two providers, `claudeTerminal.statusLineProvider`:
+
+- **`bundled`** (default, works with no setup). `withStatusLineSettings()` appends
+  `--settings '{"statusLine":…}'` pointing at `resources/panel-statusline.js`, which runs under
+  VS Code's own Electron binary (`ELECTRON_RUN_AS_NODE=1` inside the command string, never in the
+  PTY env — otherwise every Electron started from that terminal inherits it). Additional
+  settings for that process only; nothing in `~/.claude/settings.json` changes. An existing
+  `statusLine` command is passed along as `CLAUDE_PANEL_DELEGATE` and executed afterwards with
+  the same stdin but without the `CLAUDE_PANEL_*` variables, so its side effects survive while
+  its text output is dropped. The flag is only added when the command's basename is `claude`.
+- **`own`** — env variables only; the user's own script has to write the snapshot. That is
+  Daniel's setup (`~/.claude/statusline-command.sh`).
+
+Consequences worth knowing:
+
+- With `own`, removing `statusLine` from `~/.claude/settings.json` kills the data source, and
+  with it the script's context warning. `bundled` does not depend on that entry at all.
 - The row only updates when Claude re-renders; `updatedAt` older than 60 s greys it out.
 - Tabs running something other than Claude never write a file, so their row stays hidden.
 - Showing or hiding the row changes the terminal height — the webview refits xterm afterwards.

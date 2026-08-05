@@ -340,6 +340,7 @@ class StatusLineView {
       this.element.appendChild(secondary);
     }
 
+    // Directory last: least urgent, and the only part that can get long
     if (snapshot.cwd) {
       const cwdRow = document.createElement('div');
       cwdRow.className = 'status-row cwd';
@@ -423,7 +424,8 @@ class StatusLineView {
     }
 
     if (snapshot.weekPercent !== undefined) {
-      parts.push(`Week ${String(Math.round(snapshot.weekPercent))}%`);
+      const resets = snapshot.weekResetsAt ? ` · ${snapshot.weekResetsAt}` : '';
+      parts.push(`Week ${String(Math.round(snapshot.weekPercent))}%${resets}`);
     }
 
     if (parts.length === 0) {

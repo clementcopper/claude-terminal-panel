@@ -261,14 +261,17 @@ body {
 }
 
 /* Terminal wrapper */
-/* No padding: the terminal fills its column edge to edge. Any inset here shows the page
-   background as a frame around the output. */
+/* Breathing room on three sides. The wrapper carries the terminal background itself, so the
+   inset reads as part of the terminal instead of showing the page behind it as a frame.
+   No padding at the bottom: the terminal ends flush against the status line. */
 .terminal-wrapper {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
+  padding: 6px 10px 0;
+  background-color: var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e));
 }
 
 .terminal-wrapper .xterm {

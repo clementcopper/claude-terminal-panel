@@ -47,6 +47,13 @@ export interface TerminalConfig {
   preloadHelp: boolean;
   /** Render the statusLine script's data at the bottom of the panel. */
   statusLine: boolean;
+  /**
+   * `bundled` injects the shipped producer per session through `claude --settings`;
+   * `own` expects the user's own statusLine command to write the snapshot.
+   */
+  statusLineProvider: 'bundled' | 'own';
+  /** Target number of compactions shown next to the counter; 0 hides the budget. */
+  statusLineCompactBudget: number;
 }
 
 /**

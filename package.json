@@ -200,6 +200,25 @@
           "default": true,
           "markdownDescription": "Render Claude's status line natively at the bottom of the panel instead of as text inside the terminal. Needs the `statusLine` command in `~/.claude/settings.json` to write its data — see README.local.md. Off means the script behaves like in any other terminal."
         },
+        "claudeTerminal.statusLineProvider": {
+          "type": "string",
+          "enum": [
+            "bundled",
+            "own"
+          ],
+          "default": "bundled",
+          "markdownEnumDescriptions": [
+            "Pass the shipped producer to Claude through `--settings` for this session only. Nothing in `~/.claude/settings.json` is changed, and an existing `statusLine` command still runs for its side effects.",
+            "Write nothing to Claude's settings and expect your own `statusLine` command to detect `CLAUDE_PANEL_TAB_ID` and write the snapshot itself."
+          ],
+          "markdownDescription": "Where the status line data comes from. `bundled` works without any setup; `own` leaves the contract to your own script."
+        },
+        "claudeTerminal.statusLineCompactBudget": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "markdownDescription": "Target number of compactions per session, shown as `Compacted 1/3`. `0` shows the count without a budget. Only used by the bundled provider."
+        },
         "claudeTerminal.env": {
           "type": "object",
           "default": {},

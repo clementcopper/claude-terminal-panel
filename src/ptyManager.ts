@@ -6,6 +6,14 @@ import type { IPty, INodePty, TerminalConfig } from './types';
 import { getStatusLineDir } from './statusLineWatcher';
 
 /**
+ * Single-quotes a path for a POSIX shell. Both paths involved contain spaces on macOS
+ * ("Visual Studio Code.app"), and Claude Code runs the statusLine command through a shell.
+ */
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
  * Callbacks for PTY events.
  */
 export interface PtyEventCallbacks {
@@ -30,7 +38,10 @@ export class PtyManager {
   private nodePty: INodePty | undefined;
   private readonly ptys = new Map<string, IPty>();
 
-  constructor(private readonly callbacks: PtyEventCallbacks) {}
+  constructor(
+    private readonly callbacks: PtyEventCallbacks,
+    private readonly extensionUri: vscode.Uri
+  ) {}
 
   /**
    * Spawns a new PTY process for the given terminal ID.
@@ -48,13 +59,16 @@ export class PtyManager {
 
     try {
       this.ensureNodePtyLoaded();
+      // The bundled status line producer is handed over per session, so nothing in the user's
+      // ~/.claude/settings.json has to change.
+      const effectiveConfig = this.withStatusLineSettings(config);
       const { shell, env, cwd: defaultCwd } = this.prepareSpawnOptions(config, terminalId);
       const workingDir = cwd ?? defaultCwd;
-      const pty = this.createPty(config, shell, cols, rows, workingDir, env);
+      const pty = this.createPty(effectiveConfig, shell, cols, rows, workingDir, env);
 
       this.ptys.set(terminalId, pty);
       this.setupPtyEventHandlers(terminalId, pty);
-      this.handleAutoRun(pty, config);
+      this.handleAutoRun(pty, effectiveConfig);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.callbacks.onError(terminalId, errorMessage);
@@ -126,7 +140,10 @@ export class PtyManager {
   } {
     const shell = config.shell || this.getDefaultShell();
     const cwd = this.resolveConfiguredCwd(config.cwd) ?? this.getWorkingDirectory();
-    const env = this.buildEnvironment(config.env, config.statusLine ? terminalId : undefined);
+    const env = this.buildEnvironment(
+      config.env,
+      config.statusLine ? { terminalId, config } : undefined
+    );
     return { shell, env, cwd };
   }
 
@@ -153,6 +170,64 @@ export class PtyManager {
     return expanded;
   }
 
+  /**
+   * Adds `--settings` with the bundled status line producer when the tab runs Claude Code.
+   *
+   * Additional settings for this process only: the user's own configuration stays untouched,
+   * and outside the panel their status line keeps behaving exactly as before.
+   */
+  private withStatusLineSettings(config: TerminalConfig): TerminalConfig {
+    if (!config.statusLine || config.statusLineProvider !== 'bundled') {
+      return config;
+    }
+    // `gemini`, `aider` and friends would choke on an unknown flag
+    if (path.basename(config.command).replace(/\.(exe|cmd|bat)$/i, '') !== 'claude') {
+      return config;
+    }
+
+    const settings = JSON.stringify({
+      statusLine: { type: 'command', command: this.getBundledStatusLineCommand() }
+    });
+
+    return { ...config, args: [...config.args, '--settings', settings] };
+  }
+
+  /**
+   * How the producer is started. VS Code's own binary runs it, so no `node` on PATH is needed;
+   * `ELECTRON_RUN_AS_NODE` sits in the command string rather than the PTY environment, or every
+   * Electron app started from that terminal would inherit it.
+   */
+  private getBundledStatusLineCommand(): string {
+    const script = vscode.Uri.joinPath(
+      this.extensionUri,
+      'resources',
+      'panel-statusline.js'
+    ).fsPath;
+    return `ELECTRON_RUN_AS_NODE=1 ${shellQuote(process.execPath)} ${shellQuote(script)}`;
+  }
+
+  /**
+   * The user's own statusLine command, so the bundled producer can still run it for its side
+   * effects — a context warning, a log, whatever it does besides printing.
+   */
+  private getUserStatusLineCommand(): string | undefined {
+    try {
+      const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+      const parsed: unknown = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      if (typeof parsed !== 'object' || parsed === null) {
+        return undefined;
+      }
+      const statusLine = (parsed as { statusLine?: { type?: string; command?: string } })
+        .statusLine;
+      if (statusLine?.type === 'command' && typeof statusLine.command === 'string') {
+        return statusLine.command;
+      }
+    } catch {
+      // No settings file, or not readable — then there is nothing to delegate to
+    }
+    return undefined;
+  }
+
   private getDefaultShell(): string {
     if (process.platform === 'win32') {
       return process.env.COMSPEC || 'cmd.exe';
@@ -168,7 +243,7 @@ export class PtyManager {
 
   private buildEnvironment(
     configEnv: Record<string, string>,
-    statusLineTabId?: string
+    statusLine?: { terminalId: string; config: TerminalConfig }
   ): Record<string, string> {
     const env: Record<string, string> = {};
 
@@ -190,12 +265,28 @@ export class PtyManager {
     // hands it the session data on stdin, and the extension only ever sees PTY bytes.
     // These two variables are the whole contract — the script writes <tab id>.json into
     // the directory, the watcher reads it back.
-    if (statusLineTabId !== undefined) {
-      env.CLAUDE_PANEL_TAB_ID = statusLineTabId;
+    if (statusLine !== undefined) {
+      env.CLAUDE_PANEL_TAB_ID = statusLine.terminalId;
       env.CLAUDE_PANEL_STATUS_DIR = getStatusLineDir();
+
+      if (statusLine.config.statusLineProvider === 'bundled') {
+        env.CLAUDE_PANEL_COMPACT_BUDGET = String(statusLine.config.statusLineCompactBudget);
+        // Hand the user's own command to the producer instead of losing its side effects
+        const delegate = this.getUserStatusLineCommand();
+        if (delegate !== undefined) {
+          env.CLAUDE_PANEL_DELEGATE = delegate;
+        } else {
+          delete env.CLAUDE_PANEL_DELEGATE;
+        }
+      } else {
+        delete env.CLAUDE_PANEL_COMPACT_BUDGET;
+        delete env.CLAUDE_PANEL_DELEGATE;
+      }
     } else {
       delete env.CLAUDE_PANEL_TAB_ID;
       delete env.CLAUDE_PANEL_STATUS_DIR;
+      delete env.CLAUDE_PANEL_COMPACT_BUDGET;
+      delete env.CLAUDE_PANEL_DELEGATE;
     }
 
     // Remove CI flag so Claude doesn't think it's in CI

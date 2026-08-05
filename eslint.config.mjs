@@ -65,6 +65,17 @@ export default tseslint.config(
     },
   },
 
+  // Shipped scripts that Claude Code runs, plain CommonJS on the Node globals
+  {
+    files: ['resources/**/*.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+
   // Prettier compatibility (must be last)
   eslintConfigPrettier
 );
