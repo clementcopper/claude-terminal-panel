@@ -12,6 +12,11 @@ Nicht-offensichtliche Erkenntnisse und Sackgassen. Nur eintragen, was künftige 
 - **`vsce` liest zusätzlich die `.gitignore`.** Build-Ausgaben, die dort stehen, fallen aus dem
   Paket. Deshalb sind `dist/`, `media/main.js` und `media/xterm.css` dort bewusst *nicht*
   ignoriert, mit Begründung als Kommentar.
+- **`.git/info/exclude` löst den Konflikt zwischen `git status` und `vsce`.** Build-Ausgaben
+  dürfen nicht in `.gitignore` (sonst fehlen sie im Paket), stehen dort aber dauerhaft als
+  untracked herum. Ein Eintrag in `.git/info/exclude` blendet sie nur lokal aus; `vsce` liest
+  diese Datei nicht. Geprüft: `vsce ls` listet `dist/extension.js`, `media/main.js` und
+  `media/xterm.css` danach weiterhin, 56 Dateien insgesamt.
 - **`node-pty` 1.1.0 ist N-API** (`napi_register_module_v1`), also ABI-unabhängig. Kein Rebuild
   bei VS-Code-Updates, `@electron/rebuild` und `node-abi` sind überflüssig. Belegt: dasselbe
   `pty.node` lädt unter Node-ABI 115, 141 und 146.
