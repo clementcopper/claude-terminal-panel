@@ -5,6 +5,45 @@ All notable changes to the "Claude Terminal Panel" extension will be documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-08-05
+
+Local fork, published nowhere: built and installed as `local.claude-terminal-panel-local`.
+
+### Added
+
+- Status line rendered natively at the bottom of the panel — model, effort, context bar, token
+  count, session and weekly rate limits, compaction counter and working directory
+- Bundled status line producer (`resources/panel-statusline.js`), handed to Claude Code per
+  session through `--settings`, so the row works without touching `~/.claude/settings.json`
+- `claudeTerminal.statusLine`, `claudeTerminal.statusLineProvider` (`bundled` / `own`) and
+  `claudeTerminal.statusLineCompactBudget`
+- `Resume Session in Current Tab…` and `Continue Last Session in Current Tab` — both in the view
+  title bar, both respawning the active tab instead of opening another one
+- `New Terminal Tab (Resume Session…)` and `New Terminal Tab (Continue Last Session)`, Command
+  Palette only
+- `claudeTerminal.cwd` to pin the working directory, `~` allowed — Claude Code stores session
+  history per directory, so this keeps `/resume` showing the same sessions
+- `claudeTerminal.preloadHelp` to opt into probing other CLI agents for `--help`
+
+### Changed
+
+- The terminal fills its column edge to edge; the remaining inset carries the terminal
+  background instead of showing the page behind it as a frame
+- Terminals follow VS Code theme changes live, including while the theme picker is browsed
+- `Restart Terminal` respawns in the tab's own working directory rather than the first workspace
+  folder, which silently changed which session history applied
+- Tab tooltips show the working directory
+- Help probing runs without a shell and only for command names matching `^[A-Za-z0-9._@/-]+$`;
+  probing other agents is now off by default
+- File links pointing outside the workspace and the terminal's directory ask before opening —
+  terminal output is partly model-generated
+- The webview nonce comes from `crypto.randomBytes` instead of `Math.random`
+
+### Removed
+
+- `@electron/rebuild`, `node-abi` and the `postinstall` script. `node-pty` 1.1.0 is N-API and
+  therefore ABI-independent: the same `pty.node` loads under Node ABI 115, 141 and 146
+
 ## [1.0.10] - 2026-01-14
 
 ### Added

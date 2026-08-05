@@ -18,6 +18,8 @@ Run **Claude Code**, **Gemini CLI**, **OpenAI Codex**, **Aider**, **OpenCode** a
 - **Dedicated Sidebar Terminal** - Run any AI CLI tool directly from VS Code's secondary sidebar, always accessible while you code
 - **Multi-Tab Support** - Run multiple terminal instances simultaneously with keyboard shortcuts for quick navigation
 - **Prompt Notifications** - Visual indicator (pulsing red dot) when the terminal is waiting for your input
+- **Native Status Line** - Claude's model, context usage, rate limits and working directory rendered at the bottom edge of the panel instead of as text in the scrollback
+- **Resume Sessions in Place** - Continue or pick an earlier session in the current tab, without piling up new tabs
 - **Custom Commands** - Create new terminals with custom commands, intelligent flag suggestions from `--help`
 - **Working Directory Selection** - Choose which workspace folder to use when creating new terminals
 - **Tab Accent Colors** - Color-coded tabs per workspace folder for easy identification in multi-root workspaces
@@ -90,13 +92,20 @@ npm run package
 
 ### Commands
 
-| Command                         | Description                    |
-| ------------------------------- | ------------------------------ |
-| `Claude Terminal: Restart`      | Restart the terminal session   |
-| `Claude Terminal: New Tab`      | Create a new terminal tab      |
-| `Claude Terminal: Close Tab`    | Close the current terminal tab |
-| `Claude Terminal: Next Tab`     | Switch to the next tab         |
-| `Claude Terminal: Previous Tab` | Switch to the previous tab     |
+| Command                                                     | Description                                               |
+| ----------------------------------------------------------- | --------------------------------------------------------- |
+| `Claude Terminal: Restart Terminal`                         | Restart the terminal session in the tab's own directory   |
+| `Claude Terminal: New Terminal Tab`                         | Create a new terminal tab                                 |
+| `Claude Terminal: Resume Session in Current Tab…`           | Restart the active tab with `--resume` and pick a session |
+| `Claude Terminal: Continue Last Session in Current Tab`     | Restart the active tab with `--continue`                  |
+| `Claude Terminal: New Terminal Tab (Resume Session…)`       | Open an additional tab with `--resume`                    |
+| `Claude Terminal: New Terminal Tab (Continue Last Session)` | Open an additional tab with `--continue`                  |
+| `Claude Terminal: Close Terminal Tab`                       | Close the current terminal tab                            |
+| `Claude Terminal: Next Terminal Tab`                        | Switch to the next tab                                    |
+| `Claude Terminal: Previous Terminal Tab`                    | Switch to the previous tab                                |
+
+The four session commands only make sense for Claude Code. Claude stores its history per working
+directory, so which sessions you get depends on the tab's directory — visible in the tab tooltip.
 
 Access commands via the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) or the view title bar icons.
 
@@ -113,17 +122,22 @@ Access commands via the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) or the 
 
 Configure the extension via VS Code Settings (`Cmd+,` / `Ctrl+,`):
 
-| Setting                                  | Type    | Default    | Description                                               |
-| ---------------------------------------- | ------- | ---------- | --------------------------------------------------------- |
-| `claudeTerminal.command`                 | string  | `"claude"` | The command to run in the terminal                        |
-| `claudeTerminal.args`                    | array   | `[]`       | Arguments to pass to the command                          |
-| `claudeTerminal.autoRun`                 | boolean | `true`     | Automatically run the command when the terminal opens     |
-| `claudeTerminal.shell`                   | string  | `""`       | Custom shell to use (empty for system default)            |
-| `claudeTerminal.env`                     | object  | `{}`       | Additional environment variables                          |
-| `claudeTerminal.directMode`              | boolean | `true`     | Run command directly without shell wrapper                |
-| `claudeTerminal.promptNotification`      | boolean | `true`     | Show notification indicator when terminal awaits input    |
-| `claudeTerminal.promptNotificationDelay` | number  | `300`      | Delay (ms) before showing notification after output stops |
-| `claudeTerminal.promptPatterns`          | array   | `[]`       | Additional regex patterns to detect input prompts         |
+| Setting                                  | Type    | Default    | Description                                                                                        |
+| ---------------------------------------- | ------- | ---------- | -------------------------------------------------------------------------------------------------- |
+| `claudeTerminal.command`                 | string  | `"claude"` | The command to run in the terminal                                                                 |
+| `claudeTerminal.args`                    | array   | `[]`       | Arguments to pass to the command                                                                   |
+| `claudeTerminal.autoRun`                 | boolean | `true`     | Automatically run the command when the terminal opens                                              |
+| `claudeTerminal.shell`                   | string  | `""`       | Custom shell to use (empty for system default)                                                     |
+| `claudeTerminal.cwd`                     | string  | `""`       | Fixed working directory, `~` allowed (empty for the first workspace folder)                        |
+| `claudeTerminal.env`                     | object  | `{}`       | Additional environment variables                                                                   |
+| `claudeTerminal.preloadHelp`             | boolean | `false`    | Probe other CLI agents for `--help` output on startup                                              |
+| `claudeTerminal.statusLine`              | boolean | `true`     | Render Claude's status line at the bottom of the panel                                             |
+| `claudeTerminal.statusLineProvider`      | string  | `bundled`  | `bundled` uses the shipped producer, `own` expects your own `statusLine` command to write the data |
+| `claudeTerminal.statusLineCompactBudget` | number  | `0`        | Target number of compactions shown as `Compacted 1/3`; `0` shows the count alone                   |
+| `claudeTerminal.directMode`              | boolean | `true`     | Run command directly without shell wrapper                                                         |
+| `claudeTerminal.promptNotification`      | boolean | `true`     | Show notification indicator when terminal awaits input                                             |
+| `claudeTerminal.promptNotificationDelay` | number  | `300`      | Delay (ms) before showing notification after output stops                                          |
+| `claudeTerminal.promptPatterns`          | array   | `[]`       | Additional regex patterns to detect input prompts                                                  |
 
 ### Configuration Examples
 
@@ -226,6 +240,30 @@ To disable prompt notifications entirely:
   "claudeTerminal.promptNotification": false
 }
 ```
+
+## Status Line
+
+For Claude Code tabs, the panel draws a status row at its bottom edge: model and effort, a context
+bar with percentage and token count, the five-hour and weekly rate limits with their reset points,
+the compaction counter, and the working directory.
+
+It works without any setup. The data cannot be read from the terminal stream — Claude Code hands
+model, token counts and rate limits only to the configured `statusLine` command — so the extension
+ships a small producer and passes it to Claude per session via `--settings`. Nothing in
+`~/.claude/settings.json` is changed, and the injection applies inside the panel only.
+
+If you already have a `statusLine` command, it is not lost: the bundled producer runs it
+afterwards with the same input, so its side effects still happen, while its text output is dropped
+in favour of the native row. Set `claudeTerminal.statusLineProvider` to `own` if your script writes
+the panel snapshot itself, or `claudeTerminal.statusLine` to `false` to switch the whole thing off.
+
+Notes:
+
+- The row updates when Claude re-renders its status line; a value older than a minute is greyed
+  out.
+- Tabs running something other than Claude Code have no status row.
+- Claude's own colours (diff blocks and highlights) follow its `theme` setting, not the VS Code
+  theme. On a light theme, pick a light theme in Claude too with `/theme`.
 
 ## Custom Commands
 

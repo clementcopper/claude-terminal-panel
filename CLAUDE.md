@@ -5,40 +5,43 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What This Is
 
 A local fork of [Nolikzero/claude-terminal-panel](https://github.com/Nolikzero/claude-terminal-panel),
-a VS Code extension that runs Claude Code in a PTY inside the secondary sidebar. It is built
-and installed **only on this machine** as `local.claude-terminal-panel-local`; the Marketplace
-version is uninstalled. Renamed on purpose so a Marketplace update cannot overwrite it.
+a VS Code extension that runs Claude Code in a PTY inside the secondary sidebar. It is built and
+installed **only on this machine** as `local.claude-terminal-panel-local`; the Marketplace version
+is uninstalled. Renamed on purpose so a Marketplace update cannot overwrite it.
 
-| File | Contents |
-|---|---|
-| `README.local.md` | build recipe, package contents, list of differences from upstream |
-| `LEARNINGS.md` | tool quirks and dead ends — add findings there, not here |
-| `README.md` | upstream's own readme, untouched |
+| File              | Contents                                                                            |
+| ----------------- | ----------------------------------------------------------------------------------- |
+| `README.local.md` | build recipe, package contents, differences from upstream, the status line contract |
+| `LEARNINGS.md`    | tool quirks and dead ends — add findings there, not here                            |
+| `CHANGELOG.md`    | upstream's history plus this fork's `1.1.0` entry                                   |
+| `README.md`       | upstream's readme, extended with the features this fork adds                        |
 
 ## Commands
 
-Node 20 is required for anything that touches `vsce` (see Build gotchas):
+Node 20 is required for anything that touches `vsce`:
 
 ```sh
 export PATH="$HOME/.nvm/versions/node/v20.19.0/bin:$PATH"
 ```
 
-| Task | Command |
-|---|---|
-| Install | `npm ci` |
-| Full build | `npm run compile` (extension bundle + `media/main.js` + copies `xterm.css`) |
-| Extension only, watching | `npm run watch` |
-| Lint | `npm run lint` / `npm run lint:fix` |
-| Format | `npm run format` / `npm run format:check` |
-| Package `.vsix` | `npm run package` (darwin-arm64, `--skip-license`) |
-| Install the build | `"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --install-extension claude-terminal-panel-local-darwin-arm64-<version>.vsix` |
+| Task                     | Command                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------ |
+| Install                  | `npm ci`                                                                                   |
+| Full build               | `npm run compile` (extension bundle + `media/main.js` + copies `xterm.css`)                |
+| Extension only, watching | `npm run watch`                                                                            |
+| Lint                     | `npm run lint` / `npm run lint:fix`                                                        |
+| Format                   | `npm run format` / `npm run format:check`                                                  |
+| Package `.vsix`          | `npm run package` (darwin-arm64, `--skip-license`)                                         |
+| Install the build        | `code --install-extension claude-terminal-panel-local-darwin-arm64-<version>.vsix --force` |
 
-**There is no test suite** — no test script, no framework, no `.vscode-test`. Verification is:
-`npm run lint && npm run compile`, then package and reload the VS Code window and exercise the
-panel by hand. Never claim a change works without that reload.
+**There is no test suite** — no test script, no framework, no `.vscode-test`. Verification is
+`npm run lint && npm run compile`, then package, install, reload the window and exercise the panel
+by hand. Never claim a change works without that reload. Reloading also kills the Claude session
+running in the panel, so commit first.
 
 Type-checking happens through esbuild bundling only (`tsc` is not in the build chain); run
-`npx tsc --noEmit -p tsconfig.json` when a change touches types.
+`npx tsc --noEmit -p tsconfig.json` and `npx tsc --noEmit -p media/tsconfig.json` when a change
+touches types.
 
 ## Git — read before running anything
 
@@ -52,6 +55,9 @@ Type-checking happens through esbuild bundling only (`tsc` is not in the build c
   this fork.
 - **The clone is shallow** (`--depth 1`). Before comparing against upstream or reading history,
   run `git fetch --unshallow`.
+- **`git add -A` is unsafe here.** `dist/`, `media/main.js` and `media/xterm.css` are build output
+  that must not be committed but also must not enter `.gitignore`; they are hidden through
+  `.git/info/exclude`, which does not stop an explicit `add`.
 - Unlike the quartz fork, **upstream is a live repository** — merges are realistic here. Keep
   changes small and localized, prefer additive edits over restructuring.
 
@@ -65,44 +71,54 @@ the single `ClaudeTerminalViewProvider`. That class is the hub: it implements bo
 `vscode.WebviewViewProvider` and `MessageHandlerContext`, and delegates everything else.
 
 **Webview** (`media/main.ts`, bundled to `media/main.js`, IIFE, browser platform, own
-`media/tsconfig.json` for DOM libs). `WebviewContext` owns one xterm.js `Terminal` per tab,
-the tab bar DOM, `FitAddon` resizing and `FileLinkProvider` (clickable `path:line:col` in
-output). Loaded from generated HTML with a strict CSP and a per-load nonce.
+`media/tsconfig.json` for DOM libs). `WebviewContext` owns one xterm.js `Terminal` per tab, the
+tab bar DOM, `FitAddon` resizing, `FileLinkProvider` (clickable `path:line:col`) and
+`StatusLineView`. Loaded from generated HTML with a strict CSP and a per-load nonce.
 
 Message flow: webview `postMessage` → `onDidReceiveMessage` → `dispatchMessage`
 (`src/messageHandlers.ts`, a typed handler map keyed by message `type`, exhaustive by
 construction) → a `handle*` method on the provider. Return traffic goes through the provider's
-private `postMessage` and a mirror handler map at `media/main.ts:241`.
+private `postMessage` and a mirror handler map in `media/main.ts`.
 
 **Message contracts are duplicated on purpose.** `src/types.ts` (`WebviewMessage`,
-`ExtensionMessage`, `TabInfo`) and `media/types.ts` (`WebviewOutgoingMessage`,
-`WebviewIncomingMessage`, `TabInfo`) are separate declarations of the same unions — the two
-bundles share no module. Adding a message means editing both, plus `messageHandlers.ts` (the
-map is exhaustive, so a missing entry fails the build) and the webview's map (it is not).
+`ExtensionMessage`, `TabInfo`, `StatusLineSnapshot`) and `media/types.ts`
+(`WebviewOutgoingMessage`, `WebviewIncomingMessage`, `TabInfo`, `StatusLineSnapshot`) are separate
+declarations of the same shapes — the two bundles share no module. Adding a message means editing
+both, plus `messageHandlers.ts` (the map is exhaustive, so a missing entry fails the build) and
+the webview's map (it is not).
 
 Supporting modules, each owning one concern:
 
-| Module | Role |
-|---|---|
-| `ptyManager.ts` | spawns/kills PTYs, resolves the cwd, builds the env (`TERM`, `FORCE_COLOR`, deletes `CI`), lazily `require`s `node-pty` |
-| `terminalStateManager.ts` | the tab model — instances, active id, names, accent colors, `TabInfo` for the UI |
-| `configManager.ts` | cached `claudeTerminal.*` settings, invalidated on config change |
-| `promptDetector.ts` | strips ANSI, buffers output, matches prompt patterns after a delay to flag "waiting for input" |
-| `commandInputPicker.ts` | the "new tab with command" QuickPick, with flag and path completion |
-| `helpExecutor.ts` + `commandHelpParser.ts` | run `<cmd> --help` and parse it (GNU → argparse → fallback parser chain) into `CommandFlag`s |
-| `pathAutocompleteProvider.ts` | debounced, cached directory listings for flag values |
-| `statusLineWatcher.ts` | watches `<tmpdir>/claude-terminal-panel/status/<tab id>.json` and turns each write into a `statusLine` message |
+| Module                                     | Role                                                                                                                |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `ptyManager.ts`                            | spawns/kills PTYs, resolves the cwd, builds the env, injects the status line settings, lazily `require`s `node-pty` |
+| `terminalStateManager.ts`                  | the tab model — instances, active id, names, accent colors, `TabInfo` for the UI                                    |
+| `configManager.ts`                         | cached `claudeTerminal.*` settings, invalidated on config change                                                    |
+| `promptDetector.ts`                        | strips ANSI, buffers output, matches prompt patterns after a delay to flag "waiting for input"                      |
+| `commandInputPicker.ts`                    | the "new tab with command" QuickPick, with flag and path completion                                                 |
+| `helpExecutor.ts` + `commandHelpParser.ts` | run `<cmd> --help` and parse it (GNU → argparse → fallback parser chain) into `CommandFlag`s                        |
+| `pathAutocompleteProvider.ts`              | debounced, cached directory listings for flag values                                                                |
+| `statusLineWatcher.ts`                     | watches `<tmpdir>/claude-terminal-panel/status/<tab id>.json` and turns each write into a `statusLine` message      |
+| `resources/panel-statusline.js`            | shipped status line producer, run by Claude Code, not by the extension host                                         |
 
 `directMode` (default on) spawns the configured command directly; off spawns a shell and writes
-`clear && <command>` into it. `restart()` respawns in the tab's own cwd, not the workspace root.
+`clear && <command>` into it. `restart()`, `resumeActiveTerminal()` and `continueActiveTerminal()`
+all go through `respawnActive()`, which reuses the tab's own cwd — session history lives per
+directory.
 
-## Build gotchas
+## Rules for changes here
 
-- **Use Node 20** (`~/.nvm/versions/node/v20.19.0/bin`). `vsce` 3.9.2 collects zero files under
-  Node 25 and then reports `Extension entrypoint(s) missing`, pointing at the wrong cause.
-  `vsce ls` printing nothing is the tell.
-- **Never publish.** No `vsce publish`, no Marketplace, no `VSCE_PAT`. `npm run package` builds
-  a `.vsix`; installing is a separate, explicit step.
+- **Terminal output is partly model-generated.** Treat it as untrusted input: that is why file
+  links outside the workspace ask first and help probing runs without a shell against a name
+  allowlist.
+- **`ELECTRON_RUN_AS_NODE` belongs in a command string, never in the PTY env.** In the env every
+  Electron app started from that terminal inherits it.
+- **Showing or hiding the status line changes the terminal height.** Refit xterm afterwards, or
+  it keeps the old row count.
+- **`opacity` on an element dims its children**, so a progress track and its fill need separate
+  colors rather than one color plus opacity.
+- **`media/xterm.css` is regenerated on every build.** Overrides belong in `media/styles.css`.
+- UI strings are English.
 
 ## Do not reintroduce
 
@@ -111,77 +127,17 @@ Supporting modules, each owning one concern:
   `pty.node` loads under Node ABI 115, 141 and 146.
 - **Deleting `.vscodeignore`.** It is the only ignore file `vsce` honours while it exists —
   measured with 3.9.2: `dist/` added to `.gitignore` did **not** drop `dist/extension.js` from
-  `vsce ls`. Remove `.vscodeignore` and `.gitignore` takes over, which would drop the build
-  output and produce the misleading `Extension entrypoint(s) missing`. Anything that must stay
-  out of the `.vsix` needs its own line in `.vscodeignore`; `.gitignore` alone is not enough.
-- **A blanket `!node_modules/node-pty/**` in `.vscodeignore`.** `vsce` applies negations after
-  every ignore pattern, so it pulls the whole module back in regardless of line order. Ignore
-  all of `node_modules`, then negate exactly the paths that ship.
+  `vsce ls`. Remove `.vscodeignore` and `.gitignore` takes over, which would drop the build output
+  and produce the misleading `Extension entrypoint(s) missing`.
+- **A blanket negation of the whole `node-pty` folder in `.vscodeignore`.** `vsce` applies
+  negations after every ignore pattern, so a line like
 
-## What this fork adds
+  ```
+  !node_modules/node-pty/**
+  ```
 
-**Session handling.** Claude Code stores its history per working directory under
-`~/.claude/projects/<path>/`. A panel started in an unexpected folder shows an empty `/resume`
-list with nothing actually broken. Therefore: the tab tooltip carries the cwd, `restart()`
-reuses the tab's own cwd, and `claudeTerminal.cwd` pins the directory.
-
-Four commands expose the session flags, and the difference between the pairs matters:
-`resumeSession` / `continueSession` respawn the **active** tab through `respawnActive()` — same
-tab, same cwd, no new PTY id — and they are the ones in the view title bar (New Tab, Resume,
-Continue, Restart). `newTabResume` / `newTabContinue` open an **additional** tab instead and are
-Command Palette only.
-
-**Status line.** The panel renders Claude's status data natively at the bottom edge
-(`#status-line`, inside `#terminal-column` so it ends where the vertical tab bar starts),
-instead of leaving it as ASCII text in the scrollback.
-The extension host cannot read that data from the PTY — only the configured `statusLine` command
-gets it, on stdin from Claude Code. So the contract runs the other way: `ptyManager` puts
-`CLAUDE_PANEL_TAB_ID` and `CLAUDE_PANEL_STATUS_DIR` into each PTY's env, and the producer writes
-`<tab id>.json` there, atomically and mode 600, printing nothing.
-
-Two providers, `claudeTerminal.statusLineProvider`:
-
-- **`bundled`** (default, works with no setup). `withStatusLineSettings()` appends
-  `--settings '{"statusLine":…}'` pointing at `resources/panel-statusline.js`, which runs under
-  VS Code's own Electron binary (`ELECTRON_RUN_AS_NODE=1` inside the command string, never in the
-  PTY env — otherwise every Electron started from that terminal inherits it). Additional
-  settings for that process only; nothing in `~/.claude/settings.json` changes. An existing
-  `statusLine` command is passed along as `CLAUDE_PANEL_DELEGATE` and executed afterwards with
-  the same stdin but without the `CLAUDE_PANEL_*` variables, so its side effects survive while
-  its text output is dropped. The flag is only added when the command's basename is `claude`.
-- **`own`** — env variables only; the user's own script has to write the snapshot. That is
-  Daniel's setup (`~/.claude/statusline-command.sh`).
-
-Consequences worth knowing:
-
-- With `own`, removing `statusLine` from `~/.claude/settings.json` kills the data source, and
-  with it the script's context warning. `bundled` does not depend on that entry at all.
-- The row only updates when Claude re-renders; `updatedAt` older than 60 s greys it out.
-- Tabs running something other than Claude never write a file, so their row stays hidden.
-- Showing or hiding the row changes the terminal height — the webview refits xterm afterwards.
-- `claudeTerminal.statusLine` (default on) switches the whole path off, env vars included.
-
-**Hardening.** Help probing runs without a shell and only for names matching
-`^[A-Za-z0-9._@/-]+$`; `claudeTerminal.preloadHelp` defaults to off; file links outside the
-workspace and the terminal's cwd ask before opening; the webview nonce comes from
-`crypto.randomBytes`. Keep new code in that spirit: terminal output is partly model-generated,
-so treat it as untrusted input.
-
-## Native module — the load path
-
-`node-pty` loads its binary from `build/Release`, `build/Debug` or
-`prebuilds/<platform>-<arch>` only (`node_modules/node-pty/lib/utils.js`), and `spawn-helper`
-must sit in the same directory as the loaded `pty.node`. `.vscodeignore` keeps exactly those
-paths. Any change there needs the packaged `.vsix` re-checked:
-
-```sh
-unzip -l *.vsix | grep -E "node-pty.*(\.node|spawn-helper)"
-```
-
-Expected: `build/Release/pty.node` and `build/Release/spawn-helper`, plus the same two under
-`prebuilds/darwin-arm64/`. No `win32-*`, no `bin/`.
-
-UI strings are English.
+  pulls the whole module back in regardless of line order. Ignore all of `node_modules`, then
+  negate exactly the paths that ship.
 
 ## Learnings
 
