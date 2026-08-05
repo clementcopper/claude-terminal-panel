@@ -71,6 +71,20 @@ Non-obvious findings and dead ends. Only add what saves future work.
   values the extension provides. There is no `COLORFGBG` in the PTY either, so Claude gets no hint
   about light or dark.
 
+## Prompt input
+
+- **An at-mention pulls the whole file, a line range in it is only prose.** `@src/foo.ts (lines
+264-268)` puts all of `foo.ts` into the context — measured: 7422 bytes arrive for 120 bytes of
+  selection. If the point is to send _the selection_, the selection has to be in the text.
+- **A `\n` written into the PTY submits the prompt.** Multi-line text therefore has to go in
+  wrapped in the bracketed paste markers `\x1b[200~` … `\x1b[201~`, which is what a real paste
+  sends; Claude Code turns the mode on (`CSI ?2004h`). Without them a five-line snippet fires five
+  half-written prompts.
+- **A quoted snippet needs a fence longer than anything inside it.** Selected code containing
+  ```or a template literal would otherwise close the block early. Longest run of backticks plus
+  one, minimum three.
+  ```
+
 ## Webview
 
 - **`xterm.css` paints the viewport `#000`** (`.xterm .xterm-viewport`, line 93 — a workaround for

@@ -66,7 +66,8 @@ export type WebviewIncomingMessage =
   | { type: 'removeTab'; id: string }
   | { type: 'setNotification'; id: string; show: boolean }
   | { type: 'statusLine'; id: string; data: StatusLineSnapshot | null }
-  | { type: 'editorContext'; data: EditorContext | null };
+  | { type: 'editorContext'; data: EditorContext | null }
+  | { type: 'focusTerminal' };
 
 // Message types from webview to extension
 export type WebviewOutgoingMessage =

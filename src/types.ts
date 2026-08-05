@@ -144,7 +144,8 @@ export type ExtensionMessage =
   | { type: 'removeTab'; id: string }
   | { type: 'setNotification'; id: string; show: boolean }
   | { type: 'statusLine'; id: string; data: StatusLineSnapshot | null }
-  | { type: 'editorContext'; data: EditorContext | null };
+  | { type: 'editorContext'; data: EditorContext | null }
+  | { type: 'focusTerminal' };
 
 // Command help parsing types
 export interface CommandFlag {

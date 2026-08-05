@@ -16,6 +16,9 @@ export type EditorContextCallback = (context: EditorContext | null) => void;
  * plus a comparison against the last state that was actually reported.
  */
 export class EditorContextTracker {
+  /** Beyond this the at-mention is both smaller and easier to read than the quoted code. */
+  private static readonly MAX_SNIPPET_CHARS = 8000;
+
   private readonly disposables: vscode.Disposable[] = [];
   private timer: NodeJS.Timeout | undefined;
   private last: EditorContext | null = null;
@@ -33,6 +36,14 @@ export class EditorContextTracker {
       }),
       vscode.window.onDidChangeTextEditorSelection(() => {
         this.publish(false);
+      }),
+      // An image, a PDF or any other custom editor never fires the two events above — it is not
+      // a TextEditor at all. The tab API is the only thing that sees those.
+      vscode.window.tabGroups.onDidChangeTabs(() => {
+        this.publish(true);
+      }),
+      vscode.window.tabGroups.onDidChangeTabGroups(() => {
+        this.publish(true);
       })
     );
 
@@ -42,6 +53,37 @@ export class EditorContextTracker {
   /** The current context, for a command that runs without waiting for an event. */
   get current(): EditorContext | null {
     return this.read();
+  }
+
+  /**
+   * What the reference command puts into the prompt.
+   *
+   * A selection becomes the selected code itself. The at-mention would pull the whole file
+   * instead — measured on a 270-line file: 7422 bytes arrive for 120 bytes of selection — and
+   * the lines someone highlighted are the ones they mean. If more is needed, reading the file
+   * is one tool call away.
+   *
+   * Without a selection there is nothing to quote, so the mention stands.
+   */
+  currentPromptText(): string | null {
+    const context = this.read();
+    if (!context) {
+      return null;
+    }
+
+    const editor = vscode.window.activeTextEditor;
+    const selectedText =
+      editor && context.startLine !== undefined && !editor.selection.isEmpty
+        ? editor.document.getText(editor.selection)
+        : '';
+
+    // Past a certain size the snippet stops being cheaper than the file it came from, and a
+    // paste that long is unwieldy in the prompt either way.
+    if (selectedText.length === 0 || selectedText.length > EditorContextTracker.MAX_SNIPPET_CHARS) {
+      return formatReference(context);
+    }
+
+    return formatSnippet(context, selectedText, editor?.document.languageId ?? '');
   }
 
   dispose(): void {
@@ -87,38 +129,80 @@ export class EditorContextTracker {
   }
 
   /**
-   * Only real files on disk. The output panel, the SCM diff views and the comment editor are
-   * text editors too, and a path from one of them is either meaningless as a reference or not
-   * openable at all.
+   * What the window is showing, from two sources that answer different halves of the question.
+   *
+   * `activeTextEditor` is the only one that knows about a selection, but it covers text editors
+   * alone — open an image, a PDF or any other custom editor and it is simply `undefined`. The tab
+   * API sees every kind of editor but has no notion of a cursor. So: the active tab decides
+   * *which* file, the text editor contributes the lines when it happens to be showing that same
+   * file.
    */
   private read(): EditorContext | null {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.uri.scheme !== 'file') {
-      return null;
+    const active = vscode.window.activeTextEditor;
+    const editor = active?.document.uri.scheme === 'file' ? active : undefined;
+    const tabUri = activeTabUri();
+
+    // Focus in the sidebar or the panel leaves `activeTextEditor` pointing at the last text
+    // editor, which is what should still be shown — so it wins whenever the tab API has nothing
+    // usable to say.
+    if (editor && (!tabUri || tabUri.toString() === editor.document.uri.toString())) {
+      return withSelection(buildContext(editor.document.uri), editor.selection);
     }
 
-    const fsPath = editor.document.uri.fsPath;
-    const context: EditorContext = {
-      fileName: nodePath.basename(fsPath),
-      relativePath: vscode.workspace.asRelativePath(editor.document.uri, false)
-    };
-
-    // A cursor is not a selection. Line numbers without a marked range say nothing worth the
-    // width they take up in a sidebar.
-    const selection = editor.selection;
-    if (!selection.isEmpty) {
-      context.startLine = selection.start.line + 1;
-      // A selection that ends in column 0 stops at the line break above: VS Code's own line
-      // numbers do not count that line either.
-      const endLine =
-        selection.end.character === 0 && selection.end.line > selection.start.line
-          ? selection.end.line
-          : selection.end.line + 1;
-      context.endLine = endLine;
+    if (tabUri) {
+      // A different kind of editor is in front: name it, but there are no lines to report.
+      return buildContext(tabUri);
     }
 
+    return editor ? withSelection(buildContext(editor.document.uri), editor.selection) : null;
+  }
+}
+
+function buildContext(uri: vscode.Uri): EditorContext {
+  return {
+    fileName: nodePath.basename(uri.fsPath),
+    relativePath: vscode.workspace.asRelativePath(uri, false)
+  };
+}
+
+/**
+ * A cursor is not a selection: line numbers without a marked range say nothing worth the width
+ * they take up in a sidebar.
+ */
+function withSelection(context: EditorContext, selection: vscode.Selection): EditorContext {
+  if (selection.isEmpty) {
     return context;
   }
+
+  return {
+    ...context,
+    startLine: selection.start.line + 1,
+    // A selection ending in column 0 stops at the line break above; VS Code's own line numbers
+    // do not count that line either.
+    endLine:
+      selection.end.character === 0 && selection.end.line > selection.start.line
+        ? selection.end.line
+        : selection.end.line + 1
+  };
+}
+
+/**
+ * The file behind the active tab, whatever kind of editor renders it — text, image, notebook,
+ * diff. Only `file:` URIs: the output panel and the SCM views are tabs too, and a path from one
+ * of them is not something anyone can open.
+ */
+function activeTabUri(): vscode.Uri | undefined {
+  const input: unknown = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+  if (input === null || typeof input !== 'object') {
+    return undefined;
+  }
+
+  // Structural rather than `instanceof`: TabInputText, TabInputCustom and TabInputNotebook each
+  // carry `uri`, and a diff carries the modified side as `modified`.
+  const candidate = input as { uri?: unknown; modified?: unknown };
+  const uri = candidate.uri ?? candidate.modified;
+
+  return uri instanceof vscode.Uri && uri.scheme === 'file' ? uri : undefined;
 }
 
 function sameContext(a: EditorContext | null, b: EditorContext | null): boolean {
@@ -149,4 +233,43 @@ export function formatReference(context: EditorContext): string {
     return `${mention} (line ${String(context.startLine)}) `;
   }
   return `${mention} (lines ${String(context.startLine)}-${String(context.endLine)}) `;
+}
+
+/**
+ * The selected code itself, headed by where it came from.
+ *
+ * The location is written as `path:line` rather than as an at-mention: a mention would make
+ * Claude Code pull the whole file, which is exactly what quoting the selection avoids. Plain
+ * text keeps it a label — still clickable in most terminals, and unambiguous to read.
+ *
+ * Fenced, because the block would otherwise run into the surrounding prompt, and a fence is
+ * what a model reads as "this is quoted code, not an instruction".
+ */
+export function formatSnippet(
+  context: EditorContext,
+  selectedText: string,
+  languageId: string
+): string {
+  const range =
+    context.startLine !== undefined && context.endLine !== undefined
+      ? context.startLine === context.endLine
+        ? `:${String(context.startLine)}`
+        : `:${String(context.startLine)}-${String(context.endLine)}`
+      : '';
+
+  // A fence inside the selection would end the block early — make ours longer than any run of
+  // backticks it contains.
+  const longestRun = /`+/g.exec(selectedText) ? longestBacktickRun(selectedText) : 0;
+  const fence = '`'.repeat(Math.max(3, longestRun + 1));
+  const language = /^[a-z0-9+#-]+$/i.test(languageId) ? languageId : '';
+
+  return `${context.relativePath}${range}\n${fence}${language}\n${selectedText}\n${fence}\n`;
+}
+
+function longestBacktickRun(text: string): number {
+  let longest = 0;
+  for (const match of text.matchAll(/`+/g)) {
+    longest = Math.max(longest, match[0].length);
+  }
+  return longest;
 }

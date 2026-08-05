@@ -10,7 +10,21 @@ import { WORKSPACE_ACCENT_COLORS } from './types';
 import { CommandInputPicker } from './commandInputPicker';
 import { PromptDetector, type PromptDetectorConfig } from './promptDetector';
 import { StatusLineWatcher } from './statusLineWatcher';
-import { EditorContextTracker, formatReference } from './editorContextTracker';
+import { EditorContextTracker } from './editorContextTracker';
+
+/**
+ * Wraps text in the bracketed paste markers so a multi-line insert stays one input.
+ *
+ * Without them every `\n` reads as Enter, and a five-line snippet fires five half-written
+ * prompts instead of pasting a block. Claude Code enables bracketed paste mode (`CSI ?2004h`),
+ * which is what makes this the same thing a real paste would send.
+ */
+function bracketedPaste(text: string): string {
+  if (!text.includes('\n')) {
+    return text;
+  }
+  return `\x1b[200~${text}\x1b[201~`;
+}
 
 export class ClaudeTerminalViewProvider
   implements vscode.WebviewViewProvider, MessageHandlerContext
@@ -111,6 +125,10 @@ export class ClaudeTerminalViewProvider
    * Deliberately without a newline: this lands in Claude's prompt, and sending it stays the
    * user's decision. Nothing is appended automatically anywhere else, so context only ever
    * leaves the editor when it is asked for.
+   *
+   * The caret follows the text. The shortcut is pressed with the focus in the editor, so
+   * whatever is typed next would otherwise be typed into the file the reference points at —
+   * an edit nobody asked for, in the document currently under discussion.
    */
   public insertEditorReference(): void {
     const activeId = this.stateManager.getActiveId();
@@ -118,15 +136,20 @@ export class ClaudeTerminalViewProvider
       return;
     }
 
-    const context = this.editorTracker.current;
-    if (!context) {
+    const text = this.editorTracker.currentPromptText();
+    if (text === null) {
       void vscode.window.showInformationMessage(
         'Claude Terminal: no file is open in the editor to reference.'
       );
       return;
     }
 
-    this.ptyManager.write(activeId, formatReference(context));
+    this.ptyManager.write(activeId, bracketedPaste(text));
+
+    // Two steps, and both are needed: `show` reveals the view and moves VS Code's focus to it,
+    // then the webview hands the caret to xterm's textarea.
+    this.view?.show(false);
+    this.postMessage({ type: 'focusTerminal' });
   }
 
   handleOpenFile(id: string, path: string, line?: number, column?: number): void {

@@ -280,6 +280,9 @@ const messageHandlers: MessageHandlers = {
   },
   editorContext: (message, ctx) => {
     ctx.setEditorContext(message.data);
+  },
+  focusTerminal: (_message, ctx) => {
+    ctx.focusActiveTerminal();
   }
 };
 
@@ -715,6 +718,23 @@ class WebviewContext {
 
   setEditorContext(context: EditorContext | null): void {
     this.statusLine.setEditorContext(context);
+  }
+
+  /**
+   * Puts the caret in the terminal. Focusing the view only gets as far as the webview; xterm
+   * listens on its own hidden textarea, and without this the keystrokes go nowhere — or worse,
+   * stay in the editor the reference was taken from.
+   *
+   * Deferred by a frame: VS Code is still moving focus to the view when this arrives.
+   */
+  focusActiveTerminal(): void {
+    const activeId = this.state.getActiveId();
+    const active = activeId ? this.state.get(activeId) : undefined;
+    if (!active) return;
+
+    requestAnimationFrame(() => {
+      active.terminal.focus();
+    });
   }
 
   private refitActive(): void {

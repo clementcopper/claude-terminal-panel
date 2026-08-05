@@ -143,8 +143,7 @@
       {
         "command": "claudeTerminal.insertEditorReference",
         "key": "ctrl+alt+k",
-        "mac": "cmd+alt+k",
-        "when": "editorTextFocus"
+        "mac": "cmd+alt+k"
       }
     ],
     "menus": {
