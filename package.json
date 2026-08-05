@@ -81,6 +81,18 @@
         "icon": "$(history)"
       },
       {
+        "command": "claudeTerminal.resumeSession",
+        "title": "Resume Session in Current Tab…",
+        "category": "Claude Terminal",
+        "icon": "$(history)"
+      },
+      {
+        "command": "claudeTerminal.continueSession",
+        "title": "Continue Last Session in Current Tab",
+        "category": "Claude Terminal",
+        "icon": "$(debug-continue)"
+      },
+      {
         "command": "claudeTerminal.closeTab",
         "title": "Close Terminal Tab",
         "category": "Claude Terminal",
@@ -131,12 +143,12 @@
           "group": "navigation@1"
         },
         {
-          "command": "claudeTerminal.newTabResume",
+          "command": "claudeTerminal.resumeSession",
           "when": "view == claudeTerminal.terminalView",
           "group": "navigation@2"
         },
         {
-          "command": "claudeTerminal.newTabContinue",
+          "command": "claudeTerminal.continueSession",
           "when": "view == claudeTerminal.terminalView",
           "group": "navigation@3"
         },

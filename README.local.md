@@ -50,7 +50,8 @@ Erwartet: `build/Release/pty.node` und `build/Release/spawn-helper`, dazu diesel
 | Bereich | Änderung |
 |---|---|
 | Tab-Tooltip | zeigt das Arbeitsverzeichnis, weil Claude Code seine Session-Historie pro Verzeichnis ablegt |
-| Befehle | „New Terminal Tab (Continue Last Session)" und „(Resume Session…)" — `--continue` / `--resume` |
+| Titelleiste | „Resume Session in Current Tab…" und „Continue Last Session in Current Tab" — starten den **aktiven** Tab mit `--resume` / `--continue` neu, im eigenen cwd des Tabs |
+| Befehle | „New Terminal Tab (Continue Last Session)" und „(Resume Session…)" — dieselben Flags, aber in einem **neuen** Tab; nur über die Command Palette |
 | `claudeTerminal.cwd` | festes Arbeitsverzeichnis, unabhängig vom geöffneten Ordner; `~` erlaubt |
 | `claudeTerminal.preloadHelp` | Vorgabe `false`. An probiert der Start acht CLI-Binaries mit `--help` durch |
 | Help-Ermittlung | ohne `shell: true`, Kommandoname muss `^[A-Za-z0-9._@/-]+$` erfüllen |

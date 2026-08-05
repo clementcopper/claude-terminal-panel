@@ -390,6 +390,28 @@ export class ClaudeTerminalViewProvider
   }
 
   public restart(): void {
+    this.respawnActive([]);
+  }
+
+  /**
+   * Respawns the active tab with `--resume`, so Claude offers the session list for the
+   * tab's own directory instead of starting a fresh conversation. No new tab.
+   */
+  public resumeActiveTerminal(): void {
+    this.respawnActive(['--resume']);
+  }
+
+  /** Respawns the active tab with `--continue`: straight back into its last session. */
+  public continueActiveTerminal(): void {
+    this.respawnActive(['--continue']);
+  }
+
+  /**
+   * Kills the active tab's process and starts it again in the tab's own directory.
+   * Without that cwd the new PTY falls back to the first workspace folder, which
+   * silently changes which session history applies.
+   */
+  private respawnActive(extraArgs: string[]): void {
     const activeId = this.stateManager.getActiveId();
     if (!activeId) return;
 
@@ -402,11 +424,11 @@ export class ClaudeTerminalViewProvider
       this.isRestarting = false;
     }, 100);
 
-    // Restart in the tab's own directory. Without this the new PTY falls back to the
-    // first workspace folder, which silently changes which session history applies.
     const config = this.configManager.getConfig();
     const cwd = this.stateManager.get(activeId)?.cwd;
-    this.ptyManager.spawn(activeId, config, this.lastCols, this.lastRows, cwd);
+    const spawnConfig =
+      extraArgs.length > 0 ? { ...config, args: [...config.args, ...extraArgs] } : config;
+    this.ptyManager.spawn(activeId, spawnConfig, this.lastCols, this.lastRows, cwd);
   }
 
   public clear(): void {

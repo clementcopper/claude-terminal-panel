@@ -39,6 +39,19 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Session commands that act on the current tab instead of opening a new one
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeTerminal.resumeSession', () => {
+      terminalProvider?.resumeActiveTerminal();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeTerminal.continueSession', () => {
+      terminalProvider?.continueActiveTerminal();
+    })
+  );
+
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeTerminal.closeTab', () => {
       terminalProvider?.closeActiveTerminal();

@@ -119,8 +119,13 @@ Supporting modules, each owning one concern:
 **Session handling.** Claude Code stores its history per working directory under
 `~/.claude/projects/<path>/`. A panel started in an unexpected folder shows an empty `/resume`
 list with nothing actually broken. Therefore: the tab tooltip carries the cwd, `restart()`
-reuses the tab's own cwd, `claudeTerminal.cwd` pins the directory, and two commands expose
-`--continue` and `--resume`.
+reuses the tab's own cwd, and `claudeTerminal.cwd` pins the directory.
+
+Four commands expose the session flags, and the difference between the pairs matters:
+`resumeSession` / `continueSession` respawn the **active** tab through `respawnActive()` — same
+tab, same cwd, no new PTY id — and they are the ones in the view title bar (New Tab, Resume,
+Continue, Restart). `newTabResume` / `newTabContinue` open an **additional** tab instead and are
+Command Palette only.
 
 **Hardening.** Help probing runs without a shell and only for names matching
 `^[A-Za-z0-9._@/-]+$`; `claudeTerminal.preloadHelp` defaults to off; file links outside the
