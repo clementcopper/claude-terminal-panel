@@ -73,17 +73,18 @@ Non-obvious findings and dead ends. Only add what saves future work.
 
 ## Prompt input
 
-- **An at-mention pulls the whole file, a line range in it is only prose.** `@src/foo.ts (lines
-264-268)` puts all of `foo.ts` into the context — measured: 7422 bytes arrive for 120 bytes of
-  selection. If the point is to send _the selection_, the selection has to be in the text.
+- **An at-mention pulls the whole file, a line range in it is only prose.**
+  `@src/foo.ts (lines 264-268)` puts all of `foo.ts` into the context — measured: 7422 bytes
+  arrive for 120 bytes of selection. If the point is to send _the selection_, the selection has to
+  be in the text.
 - **A `\n` written into the PTY submits the prompt.** Multi-line text therefore has to go in
   wrapped in the bracketed paste markers `\x1b[200~` … `\x1b[201~`, which is what a real paste
   sends; Claude Code turns the mode on (`CSI ?2004h`). Without them a five-line snippet fires five
   half-written prompts.
-- **A quoted snippet needs a fence longer than anything inside it.** Selected code containing
-  ```or a template literal would otherwise close the block early. Longest run of backticks plus
-  one, minimum three.
-  ```
+- **A quoted snippet needs a fence longer than anything inside it.** Selected code containing a
+  markdown fence or a template literal would otherwise close the block early. Longest run of
+  backticks plus one, minimum three. (Written out rather than shown: prettier reformats an inline
+  triple backtick in this file into a real fence.)
 
 ## Webview
 
