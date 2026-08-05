@@ -1,10 +1,12 @@
 node_modules/
-dist/
 *.vsix
-media/main.js
-media/xterm.css
 .vscode-test/
 .claude/
+.DS_Store
+
+# Build output (dist/, media/main.js, media/xterm.css) is deliberately NOT ignored:
+# vsce 3.9.2 reads this file too, and an entry here drops the file from the package —
+# the build then fails with the misleading "Extension entrypoint(s) missing".
 
 # ESLint
 .eslintcache

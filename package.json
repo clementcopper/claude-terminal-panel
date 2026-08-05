@@ -1,9 +1,9 @@
 {
-  "name": "claude-terminal-panel",
-  "displayName": "Claude Terminal Panel",
+  "name": "claude-terminal-panel-local",
+  "displayName": "Claude Terminal Panel (local)",
   "description": "A dedicated terminal in the secondary panel for running Claude Code",
   "version": "1.0.10",
-  "publisher": "0ly",
+  "publisher": "local",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": {
@@ -69,6 +69,18 @@
         "icon": "$(add)"
       },
       {
+        "command": "claudeTerminal.newTabContinue",
+        "title": "New Terminal Tab (Continue Last Session)",
+        "category": "Claude Terminal",
+        "icon": "$(debug-continue)"
+      },
+      {
+        "command": "claudeTerminal.newTabResume",
+        "title": "New Terminal Tab (Resume Session…)",
+        "category": "Claude Terminal",
+        "icon": "$(history)"
+      },
+      {
         "command": "claudeTerminal.closeTab",
         "title": "Close Terminal Tab",
         "category": "Claude Terminal",
@@ -119,9 +131,19 @@
           "group": "navigation@1"
         },
         {
-          "command": "claudeTerminal.restart",
+          "command": "claudeTerminal.newTabResume",
           "when": "view == claudeTerminal.terminalView",
           "group": "navigation@2"
+        },
+        {
+          "command": "claudeTerminal.newTabContinue",
+          "when": "view == claudeTerminal.terminalView",
+          "group": "navigation@3"
+        },
+        {
+          "command": "claudeTerminal.restart",
+          "when": "view == claudeTerminal.terminalView",
+          "group": "navigation@4"
         }
       ]
     },
@@ -150,6 +172,16 @@
           "type": "string",
           "default": "",
           "description": "Custom shell path (empty = system default)"
+        },
+        "claudeTerminal.cwd": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Fixed working directory for the terminal, `~` allowed (empty = first workspace folder). Claude Code stores its session history per directory, so pinning this keeps `/resume` showing the same sessions no matter which folder is open."
+        },
+        "claudeTerminal.preloadHelp": {
+          "type": "boolean",
+          "default": false,
+          "description": "On startup, probe other CLI agents (gemini, aider, codex, gh, interpreter, opencode) for their --help output. Off means only the configured command is probed."
         },
         "claudeTerminal.env": {
           "type": "object",
@@ -191,9 +223,7 @@
     "compile:media": "esbuild media/main.ts --bundle --outfile=media/main.js --format=iife --platform=browser",
     "copy:xterm-css": "node -e \"require('fs').copyFileSync('node_modules/@xterm/xterm/css/xterm.css', 'media/xterm.css')\"",
     "watch": "npm run compile:extension -- --watch",
-    "rebuild": "npx @electron/rebuild --version 39.2.3",
-    "postinstall": "npm run rebuild",
-    "package": "vsce package",
+    "package": "npx @vscode/vsce package --target darwin-arm64 --skip-license",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.ts\" \"media/**/*.{ts,css}\"",
@@ -217,7 +247,6 @@
     ]
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.0.2",
     "@eslint/js": "^9.39.2",
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.106.0",

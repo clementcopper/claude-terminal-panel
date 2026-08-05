@@ -410,7 +410,9 @@ class WebviewContext {
     const tabElement = document.createElement('div');
     tabElement.className = `tab ${tab.isActive ? 'active' : ''}`;
     tabElement.dataset.id = tab.id;
-    tabElement.title = tab.name;
+    // Show the working directory: Claude Code keeps its session history per directory,
+    // so a tab in an unexpected folder shows an unexpected /resume list.
+    tabElement.title = tab.cwd ? `${tab.name} — ${tab.cwd}` : tab.name;
 
     // Apply accent color if provided (for multi-workspace folder coloring)
     if (tab.accentColor) {

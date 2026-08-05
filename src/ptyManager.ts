@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as os from 'os';
 import * as fs from 'fs';
+import * as path from 'path';
 import type { IPty, INodePty, TerminalConfig } from './types';
 
 /**
@@ -63,7 +64,14 @@ export class PtyManager {
    * Prompts the user to select a workspace folder if multiple are available.
    * Returns the selected folder path and its index for color mapping.
    */
-  async selectWorkingDirectory(): Promise<WorkingDirectorySelection> {
+  async selectWorkingDirectory(configuredCwd = ''): Promise<WorkingDirectorySelection> {
+    // A configured directory wins over the workspace, and skips the folder prompt:
+    // session history lives per directory, so this keeps it stable across windows.
+    const fixed = this.resolveConfiguredCwd(configuredCwd);
+    if (fixed) {
+      return { path: fixed, folderIndex: undefined };
+    }
+
     const folders = vscode.workspace.workspaceFolders;
 
     // If no folders or only one, use default behavior (no color indexing)
@@ -113,9 +121,32 @@ export class PtyManager {
     cwd: string;
   } {
     const shell = config.shell || this.getDefaultShell();
-    const cwd = this.getWorkingDirectory();
+    const cwd = this.resolveConfiguredCwd(config.cwd) ?? this.getWorkingDirectory();
     const env = this.buildEnvironment(config.env);
     return { shell, env, cwd };
+  }
+
+  /**
+   * Resolves the `claudeTerminal.cwd` setting: expands a leading `~` and requires
+   * the directory to exist. Returns undefined when unset or unusable.
+   */
+  private resolveConfiguredCwd(configuredCwd: string): string | undefined {
+    const raw = configuredCwd.trim();
+    if (!raw) {
+      return undefined;
+    }
+
+    const expanded =
+      raw === '~' || raw.startsWith('~/') ? path.join(os.homedir(), raw.slice(1)) : raw;
+
+    if (!fs.existsSync(expanded)) {
+      void vscode.window.showWarningMessage(
+        `Claude Terminal: claudeTerminal.cwd does not exist, falling back to the workspace folder: ${expanded}`
+      );
+      return undefined;
+    }
+
+    return expanded;
   }
 
   private getDefaultShell(): string {

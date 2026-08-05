@@ -20,6 +20,7 @@ export interface TabInfo {
   isActive: boolean;
   accentColor?: string;
   isWaitingForInput?: boolean;
+  cwd?: string;
 }
 
 // Message types from extension to webview

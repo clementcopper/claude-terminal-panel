@@ -126,7 +126,8 @@ export class TerminalStateManager {
       name: t.name,
       isActive: t.isActive,
       accentColor: this.getAccentColor(t.workspaceFolderIndex),
-      isWaitingForInput: t.isWaitingForInput
+      isWaitingForInput: t.isWaitingForInput,
+      cwd: t.cwd
     }));
   }
 

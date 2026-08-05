@@ -41,6 +41,10 @@ export interface TerminalConfig {
   shell: string;
   env: Record<string, string>;
   directMode: boolean;
+  /** Fixed working directory. Empty means: use the workspace folder. */
+  cwd: string;
+  /** Probe other CLI agents for --help output on startup. */
+  preloadHelp: boolean;
 }
 
 // Terminal instance for multi-tab support
@@ -61,6 +65,8 @@ export interface TabInfo {
   isActive: boolean;
   accentColor?: string;
   isWaitingForInput?: boolean;
+  /** Working directory of the terminal — shown as the tab tooltip. */
+  cwd?: string;
 }
 
 // Webview message types (from webview to extension)

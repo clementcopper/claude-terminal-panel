@@ -1,8 +1,6 @@
 .vscode/**
 .vscode-test/**
 src/**
-node_modules/**
-!node_modules/node-pty/**
 .gitignore
 *.map
 *.ts
@@ -17,3 +15,17 @@ eslint.config.mjs
 .github/**
 .claude/**
 *.vsix
+
+# vsce applies negations AFTER every ignore pattern, so a blanket
+# "!node_modules/node-pty/**" would pull the whole module back in regardless of order.
+# Therefore: ignore all of node_modules, then name exactly what ships.
+node_modules/**
+!node_modules/node-pty/package.json
+!node_modules/node-pty/lib/**
+# node-pty's loader (lib/utils.js) checks build/Release first, then
+# prebuilds/<platform>-<arch>; spawn-helper must sit next to the loaded pty.node.
+!node_modules/node-pty/build/Release/pty.node
+!node_modules/node-pty/build/Release/spawn-helper
+!node_modules/node-pty/prebuilds/darwin-arm64/**
+
+!dist/**

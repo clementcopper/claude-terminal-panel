@@ -28,6 +28,18 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand('claudeTerminal.newTabContinue', () => {
+      void terminalProvider?.createTerminalWithSessionFlag('--continue');
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeTerminal.newTabResume', () => {
+      void terminalProvider?.createTerminalWithSessionFlag('--resume');
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('claudeTerminal.closeTab', () => {
       terminalProvider?.closeActiveTerminal();
     })

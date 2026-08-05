@@ -35,7 +35,9 @@ export class ConfigManager {
       autoRun: config.get<boolean>('autoRun', true),
       shell: config.get<string>('shell', ''),
       env: config.get<Record<string, string>>('env', {}),
-      directMode: config.get<boolean>('directMode', true)
+      directMode: config.get<boolean>('directMode', true),
+      cwd: config.get<string>('cwd', ''),
+      preloadHelp: config.get<boolean>('preloadHelp', false)
     };
 
     return this.cachedConfig;

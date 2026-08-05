@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as nodePath from 'path';
+import { randomBytes } from 'crypto';
 import { PtyManager, type PtyEventCallbacks } from './ptyManager';
 import { ConfigManager } from './configManager';
 import { TerminalStateManager } from './terminalStateManager';
@@ -37,18 +39,14 @@ export class ClaudeTerminalViewProvider
       this.handleNotificationChange.bind(this)
     );
 
-    // Pre-load help for CLI agents from README (missing commands are handled gracefully)
+    // Pre-load help for the configured command. Probing the other CLI agents spawns a
+    // process per candidate on every window start, so it is opt-in.
     const config = this.configManager.getConfig();
-    this.commandPicker.preloadCommands([
-      config.command,
-      'claude',
-      'gemini',
-      'aider',
-      'codex',
-      'gh',
-      'interpreter',
-      'opencode'
-    ]);
+    this.commandPicker.preloadCommands(
+      config.preloadHelp
+        ? [config.command, 'claude', 'gemini', 'aider', 'codex', 'gh', 'interpreter', 'opencode']
+        : [config.command]
+    );
   }
 
   // --- MessageHandlerContext Implementation ---
@@ -124,6 +122,19 @@ export class ClaudeTerminalViewProvider
         }
       }
 
+      // Terminal output is partly model-generated, so a link is not proof that opening
+      // the target is wanted. Anything outside the workspace or the terminal's cwd asks.
+      if (!this.isWithinAllowedRoots(uri.fsPath, terminalCwd)) {
+        const open = 'Open anyway';
+        const choice = await vscode.window.showWarningMessage(
+          `Claude Terminal: this path is outside the workspace and the terminal's directory: ${uri.fsPath}`,
+          open
+        );
+        if (choice !== open) {
+          return;
+        }
+      }
+
       const document = await vscode.workspace.openTextDocument(uri);
       const editor = await vscode.window.showTextDocument(document);
 
@@ -143,6 +154,27 @@ export class ClaudeTerminalViewProvider
       // Log error for debugging but don't show disruptive notifications
       console.warn(`[Claude Terminal] Failed to open file: ${filePath}`, error);
     }
+  }
+
+  /**
+   * Whether a resolved path sits inside a workspace folder or the terminal's cwd.
+   * Compares with a trailing separator so `/foo/barbaz` does not count as `/foo/bar`.
+   */
+  private isWithinAllowedRoots(candidate: string, terminalCwd?: string): boolean {
+    const roots = [
+      ...(vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath),
+      ...(terminalCwd ? [terminalCwd] : [])
+    ];
+
+    if (roots.length === 0) {
+      return true;
+    }
+
+    const target = nodePath.resolve(candidate);
+    return roots.some((root) => {
+      const base = nodePath.resolve(root);
+      return target === base || target.startsWith(base + nodePath.sep);
+    });
   }
 
   // --- PTY Event Handlers ---
@@ -204,7 +236,9 @@ export class ClaudeTerminalViewProvider
     const name = this.stateManager.generateName();
 
     // Select working directory first to get folder index
-    const { path: cwd, folderIndex } = await this.ptyManager.selectWorkingDirectory();
+    const { path: cwd, folderIndex } = await this.ptyManager.selectWorkingDirectory(
+      this.configManager.getConfig().cwd
+    );
 
     const instance: TerminalInstance = {
       id,
@@ -250,7 +284,9 @@ export class ClaudeTerminalViewProvider
     const name = this.stateManager.generateName();
 
     // Select working directory first to get folder index
-    const { path: cwd, folderIndex } = await this.ptyManager.selectWorkingDirectory();
+    const { path: cwd, folderIndex } = await this.ptyManager.selectWorkingDirectory(
+      this.configManager.getConfig().cwd
+    );
 
     const instance: TerminalInstance = {
       id,
@@ -276,6 +312,16 @@ export class ClaudeTerminalViewProvider
     this.postMessage({ type: 'switchTab', id });
 
     return id;
+  }
+
+  /**
+   * Opens a tab that resumes earlier work instead of starting a fresh conversation.
+   * Session history is stored per working directory, so the resulting list depends on
+   * the tab's cwd — which the tab tooltip shows.
+   */
+  public async createTerminalWithSessionFlag(flag: '--continue' | '--resume'): Promise<string> {
+    const config = this.configManager.getConfig();
+    return this.createTerminalWithCommand(config.command, [...config.args, flag]);
   }
 
   public closeTerminal(terminalId: string): void {
@@ -356,8 +402,11 @@ export class ClaudeTerminalViewProvider
       this.isRestarting = false;
     }, 100);
 
+    // Restart in the tab's own directory. Without this the new PTY falls back to the
+    // first workspace folder, which silently changes which session history applies.
     const config = this.configManager.getConfig();
-    this.ptyManager.spawn(activeId, config, this.lastCols, this.lastRows);
+    const cwd = this.stateManager.get(activeId)?.cwd;
+    this.ptyManager.spawn(activeId, config, this.lastCols, this.lastRows, cwd);
   }
 
   public clear(): void {
@@ -443,11 +492,6 @@ export class ClaudeTerminalViewProvider
   }
 
   private getNonce(): string {
-    let text = '';
-    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    for (let i = 0; i < 32; i++) {
-      text += possible.charAt(Math.floor(Math.random() * possible.length));
-    }
-    return text;
+    return randomBytes(24).toString('base64url');
   }
 }

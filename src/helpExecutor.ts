@@ -15,6 +15,9 @@ interface CacheEntry {
 }
 
 export class HelpExecutor {
+  /** Command names accepted for help probing — no shell metacharacters, no whitespace. */
+  private static readonly SAFE_COMMAND = /^[A-Za-z0-9._@/-]+$/;
+
   private cache = new Map<string, CacheEntry>();
   private pendingRequests = new Map<string, Promise<ParsedHelp>>();
   private debounceTimers = new Map<string, NodeJS.Timeout>();
@@ -79,6 +82,13 @@ export class HelpExecutor {
 
   private executeHelp(command: string): Promise<ParsedHelp> {
     return new Promise((resolve) => {
+      // Help probing runs while the user is still typing, so anything that a shell would
+      // interpret is rejected instead of executed. Plain command names and paths only.
+      if (!HelpExecutor.SAFE_COMMAND.test(command)) {
+        resolve({ command, flags: [], parseErrors: ['Command name not probed'] });
+        return;
+      }
+
       const helpFlags = ['--help', '-h', 'help'];
       let flagIndex = 0;
 
@@ -106,7 +116,7 @@ export class HelpExecutor {
 
         try {
           proc = spawn(command, [flag], {
-            shell: true,
+            shell: false,
             env: { ...process.env, LANG: 'C', LC_ALL: 'C' }
           });
         } catch {
