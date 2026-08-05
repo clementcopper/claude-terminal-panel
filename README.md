@@ -11,7 +11,7 @@
 
 Run **Claude Code**, **Gemini CLI**, **OpenAI Codex**, **Aider**, **OpenCode** and any other AI CLI tool directly from your VS Code sidebar.
 
-![Claude Terminal Panel Screenshot](media/screenshot.png)
+![Claude Terminal Panel Screenshot](media/screenshot_2.png)
 
 ## Features
 
