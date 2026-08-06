@@ -59,8 +59,13 @@ body {
 
 /* Status line at the bottom edge, fed by the statusLine script through the watcher */
 #status-line {
+  /* One source for the vertical rhythm: the gap between rows, and the distance from the editor
+     row's rule to the text on either side of it. Set it in one place or the halves drift apart —
+     which is how the lower rows ended up at 1px while the top one had 2px and a border. */
+  --status-row-gap: 4px;
+
   flex-shrink: 0;
-  padding: 3px 8px 4px;
+  padding: 4px 8px 6px;
   background-color: var(--vscode-tab-inactiveBackground, #2d2d2d);
   border-top: 1px solid var(--vscode-tab-border, #3c3c3c);
   color: var(--vscode-descriptionForeground, #9d9d9d);
@@ -69,7 +74,7 @@ body {
   line-height: 1.45;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: var(--status-row-gap);
   cursor: default;
   user-select: none;
 }
@@ -86,7 +91,13 @@ body {
 .status-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  /* The panel is resizable and narrow by nature, so a row that cannot wrap gets cut off at the
+     right edge instead. Items wrap; the text inside each one still does not, or a label would
+     break in the middle of "Session 70% · 84 min". */
+  flex-wrap: wrap;
+  column-gap: 6px;
+  /* A wrapped line is a line like any other — same rhythm as the gap between rows */
+  row-gap: var(--status-row-gap);
   white-space: nowrap;
   overflow: hidden;
 }
@@ -132,7 +143,8 @@ body {
 }
 
 .status-row.secondary {
-  gap: 10px;
+  /* Column only: the row gap stays the shared one, so wrapped lines line up with real rows */
+  column-gap: 10px;
   opacity: 0.85;
 }
 
@@ -151,8 +163,9 @@ body {
    does something when clicked, so it has to read as clickable rather than as label text. */
 .status-row.editor {
   border-bottom: 1px solid var(--vscode-tab-border, #3c3c3c);
-  margin-bottom: 2px;
-  padding-bottom: 2px;
+  /* No margin: the container's gap already sits below the rule. Only the distance above it is
+     this row's business, and it uses the same value, so the rule is centred in its own space. */
+  padding-bottom: var(--status-row-gap);
 }
 
 .status-editor {
