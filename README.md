@@ -20,6 +20,7 @@ Run **Claude Code**, **Gemini CLI**, **OpenAI Codex**, **Aider**, **OpenCode** a
 - **Prompt Notifications** - Visual indicator (pulsing red dot) when the terminal is waiting for your input
 - **Native Status Line** - Claude's model, context usage, rate limits and working directory rendered at the bottom edge of the panel instead of as text in the scrollback
 - **Resume Sessions in Place** - Continue or pick an earlier session in the current tab, without piling up new tabs
+- **Editor Context** - The file you are looking at sits above the status line; one click puts the code you selected into the prompt
 - **Custom Commands** - Create new terminals with custom commands, intelligent flag suggestions from `--help`
 - **Working Directory Selection** - Choose which workspace folder to use when creating new terminals
 - **Tab Accent Colors** - Color-coded tabs per workspace folder for easy identification in multi-root workspaces
@@ -103,6 +104,7 @@ npm run package
 | `Claude Terminal: Close Terminal Tab`                       | Close the current terminal tab                            |
 | `Claude Terminal: Next Terminal Tab`                        | Switch to the next tab                                    |
 | `Claude Terminal: Previous Terminal Tab`                    | Switch to the previous tab                                |
+| `Claude Terminal: Add Editor Selection to Prompt`           | Put the selected code, or the open file, into the prompt  |
 
 The four session commands only make sense for Claude Code. Claude stores its history per working
 directory, so which sessions you get depends on the tab's directory — visible in the tab tooltip.
@@ -111,12 +113,13 @@ Access commands via the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) or the 
 
 ### Keyboard Shortcuts
 
-| Action       | Windows/Linux   | macOS           |
-| ------------ | --------------- | --------------- |
-| New Tab      | `Ctrl+Shift+``  | `Cmd+Shift+``   |
-| Close Tab    | `Ctrl+W`        | `Cmd+W`         |
-| Next Tab     | `Ctrl+PageDown` | `Cmd+Alt+Right` |
-| Previous Tab | `Ctrl+PageUp`   | `Cmd+Alt+Left`  |
+| Action                  | Windows/Linux   | macOS           |
+| ----------------------- | --------------- | --------------- |
+| New Tab                 | `Ctrl+Shift+``  | `Cmd+Shift+``   |
+| Close Tab               | `Ctrl+W`        | `Cmd+W`         |
+| Next Tab                | `Ctrl+PageDown` | `Cmd+Alt+Right` |
+| Previous Tab            | `Ctrl+PageUp`   | `Cmd+Alt+Left`  |
+| Add Selection to Prompt | `Ctrl+Alt+K`    | `Cmd+Alt+K`     |
 
 ## Configuration
 
@@ -134,6 +137,7 @@ Configure the extension via VS Code Settings (`Cmd+,` / `Ctrl+,`):
 | `claudeTerminal.statusLine`              | boolean | `true`     | Render Claude's status line at the bottom of the panel                                             |
 | `claudeTerminal.statusLineProvider`      | string  | `bundled`  | `bundled` uses the shipped producer, `own` expects your own `statusLine` command to write the data |
 | `claudeTerminal.statusLineCompactBudget` | number  | `0`        | Target number of compactions shown as `Compacted 1/3`; `0` shows the count alone                   |
+| `claudeTerminal.editorContext`           | boolean | `true`     | Show the open file above the status line; the command works either way                             |
 | `claudeTerminal.directMode`              | boolean | `true`     | Run command directly without shell wrapper                                                         |
 | `claudeTerminal.promptNotification`      | boolean | `true`     | Show notification indicator when terminal awaits input                                             |
 | `claudeTerminal.promptNotificationDelay` | number  | `300`      | Delay (ms) before showing notification after output stops                                          |
@@ -264,6 +268,33 @@ Notes:
 - Tabs running something other than Claude Code have no status row.
 - Claude's own colours (diff blocks and highlights) follow its `theme` setting, not the VS Code
   theme. On a light theme, pick a light theme in Claude too with `/theme`.
+
+## Editor Context
+
+Above the status line sits the file the editor is showing — `main.ts`, or `main.ts:120-134` when
+you have code selected. The panel is next to your editor, so it may as well say what the editor is
+looking at.
+
+Clicking that row, or pressing `Cmd+Alt+K` / `Ctrl+Alt+K`, puts it into Claude's prompt:
+
+- **With a selection**, the selected code goes in as a fenced block headed by `path:lines`.
+- **Without one**, an at-mention of the file: `@src/main.ts`.
+
+The difference matters more than it looks. An at-mention makes Claude read the entire file, and the
+line numbers in it are only prose — measured on a 270-line file, 7422 bytes arrived for 120 bytes of
+selection. Sending the selected lines sends the lines you meant; if Claude needs the rest, it can
+read the file itself. Selections beyond 8000 characters fall back to the mention, where the file
+reference is both smaller and easier to read than the quoted block.
+
+The text is inserted, never submitted, and the caret moves to the terminal with it — the shortcut is
+pressed with the focus in your editor, so without that the next thing you type would land in the
+file you were just pointing at.
+
+Notes:
+
+- Nothing is attached automatically. Context leaves the editor only when you ask for it.
+- Images, PDFs and other non-text editors are named too, but there is no selection to quote in them.
+- `claudeTerminal.editorContext` hides the row; the command and its shortcut keep working.
 
 ## Custom Commands
 

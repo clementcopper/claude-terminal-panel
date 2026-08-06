@@ -233,7 +233,7 @@
         "claudeTerminal.editorContext": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Show the file open in the editor at the top of the status line, with the selected line range when there is one. Clicking it adds the reference to Claude's prompt; the command `Claude Terminal: Add Editor Selection to Prompt` does the same and stays available when this is off. Nothing is sent to Claude unless you ask for it."
+          "markdownDescription": "Show the file open in the editor at the top of the status line, with the selected line range when there is one. Clicking the row puts the selected code into Claude's prompt as a fenced block headed by `path:lines`, or `@path` when nothing is selected — an at-mention would pull the whole file. The command `Claude Terminal: Add Editor Selection to Prompt` does the same and stays available when this is off. Nothing is ever sent without asking, and nothing is submitted: the text waits in the prompt."
         },
         "claudeTerminal.env": {
           "type": "object",

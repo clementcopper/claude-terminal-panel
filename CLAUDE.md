@@ -108,6 +108,7 @@ Supporting modules, each owning one concern:
 | `helpExecutor.ts` + `commandHelpParser.ts` | run `<cmd> --help` and parse it (GNU → argparse → fallback parser chain) into `CommandFlag`s                                                                                                                                         |
 | `pathAutocompleteProvider.ts`              | debounced, cached directory listings for flag values                                                                                                                                                                                 |
 | `statusLineWatcher.ts`                     | watches `<tmpdir>/claude-terminal-panel/status/<tab id>.json`, turns each write into a `statusLine` message, and remembers the last snapshot per cwd plus the account's rate limits under `status/last/` so a fresh tab is not empty |
+| `editorContextTracker.ts`                  | reports the open file and its selected lines, from `activeTextEditor` plus the tab API, and formats what the reference command puts into the prompt — see `README.local.md`                                                          |
 | `resources/panel-statusline.js`            | shipped status line producer, run by Claude Code, not by the extension host                                                                                                                                                          |
 
 `directMode` (default on) spawns the configured command directly; off spawns a shell and writes
@@ -126,6 +127,8 @@ directory.
   it keeps the old row count.
 - **`opacity` on an element dims its children**, so a progress track and its fill need separate
   colors rather than one color plus opacity.
+- **A `\n` written into the PTY submits the prompt.** Anything multi-line has to go in wrapped in
+  the bracketed paste markers `\x1b[200~` … `\x1b[201~`, or each line fires as its own prompt.
 - **`media/xterm.css` is regenerated on every build.** Overrides belong in `media/styles.css`.
 - UI strings are English.
 

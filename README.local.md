@@ -82,7 +82,7 @@ there is nothing to bundle. A Linux binary in the archive does no harm on macOS,
 | Title bar                    | `Resume Session in Current Tab…` and `Continue Last Session in Current Tab` respawn the **active** tab with `--resume` / `--continue`, in the tab's own directory |
 | Commands                     | `New Terminal Tab (Resume Session…)` and `(Continue Last Session)` do the same in an **additional** tab; Command Palette only                                     |
 | Tab tooltip                  | shows the working directory, because Claude Code stores session history per directory                                                                             |
-| Editor row                   | the file open in the editor sits above the status line, with the selected range; clicking it adds the reference to the prompt. `claudeTerminal.editorContext`     |
+| Editor row                   | the open file sits above the status line with its selected range; clicking it puts the **selected code** into the prompt, `@path` only when nothing is selected   |
 | `claudeTerminal.cwd`         | fixed working directory independent of the open folder, `~` allowed                                                                                               |
 | `claudeTerminal.preloadHelp` | defaults to `false`. On, startup probes eight CLI binaries with `--help`                                                                                          |
 | Help probing                 | runs without `shell: true`; command names must match `^[A-Za-z0-9._@/-]+$`                                                                                        |
@@ -195,6 +195,53 @@ ps -o command= -p <pid of the claude process>          # is --settings being pas
 
 An empty directory means the producer never ran; files present but no row means the watcher or
 the webview.
+
+## Editor context
+
+The row above the status line, and the reference command behind it (`src/editorContextTracker.ts`).
+
+### Two sources, because each answers half the question
+
+`vscode.window.activeTextEditor` is the only thing that knows about a selection, but it covers text
+editors alone — open an image, a PDF or any other custom editor and it is simply `undefined`.
+`window.tabGroups` sees every kind of editor but has no notion of a cursor. So the active tab
+decides **which** file, and the text editor contributes the lines when it happens to be showing
+that same file. Only `file:` URIs: the output panel and the SCM views are tabs too.
+
+The tab API needs its own listeners (`onDidChangeTabs`, `onDidChangeTabGroups`) — a non-text editor
+never fires `onDidChangeActiveTextEditor`.
+
+### What goes into the prompt
+
+A selection becomes the selected code, fenced, headed by `path:lines`. Without a selection it is an
+at-mention, `@path`. The at-mention pulls the **whole file** and any line range next to it is only
+prose for the model to read — measured on a 270-line file, 7422 bytes for 120 bytes of selection.
+Above `MAX_SNIPPET_CHARS` (8000) the mention wins anyway, being smaller and more readable than the
+block.
+
+Two traps live here:
+
+- **A `\n` written into the PTY submits the prompt.** Multi-line text has to go in wrapped in the
+  bracketed paste markers `\x1b[200~` … `\x1b[201~` — what a real paste sends, and Claude Code turns
+  the mode on. Without them a five-line snippet fires five half-written prompts.
+- **The fence must outlast anything inside it**: longest run of backticks in the selection plus one,
+  minimum three, or a template literal ends the block early.
+
+The caret follows the text (`view.show(false)` plus a `focusTerminal` message, because showing the
+view only gets as far as the webview and xterm listens on its own textarea). Nothing is ever
+submitted.
+
+### Why Claude Code's own IDE channel is not used
+
+The official `anthropic.claude-code` extension runs an MCP server over WebSocket on `127.0.0.1`,
+writes `~/.claude/ide/<port>.lock` (`{pid, workspaceFolders, ideName, transport, authToken}`, mode 0600) and injects `CLAUDE_CODE_SSE_PORT` through `environmentVariableCollection`. It serves
+`getCurrentSelection`, `getOpenEditors`, `openDiff` and pushes `selection_changed`.
+
+That variable only reaches terminals VS Code creates — this panel spawns its PTY through `node-pty`
+directly, so it never arrives. Reading the lock file and passing the port through would work, but it
+was deliberately not done: it makes the panel depend on another extension's undocumented internals,
+and it would hand Claude the file and selection on every turn, for context it can read on request.
+Do not "fix" this by wiring it up without asking.
 
 ## Gotchas
 
