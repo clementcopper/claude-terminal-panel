@@ -119,7 +119,7 @@ Access commands via the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) or the 
 | Close Tab               | `Ctrl+W`        | `Cmd+W`         |
 | Next Tab                | `Ctrl+PageDown` | `Cmd+Alt+Right` |
 | Previous Tab            | `Ctrl+PageUp`   | `Cmd+Alt+Left`  |
-| Add Selection to Prompt | `Ctrl+Alt+K`    | `Cmd+Alt+K`     |
+| Add Selection to Prompt | `Ctrl+Alt+K`    | `Cmd+Opt+K`     |
 
 ## Configuration
 
@@ -275,7 +275,7 @@ Above the status line sits the file the editor is showing — `main.ts`, or `mai
 you have code selected. The panel is next to your editor, so it may as well say what the editor is
 looking at.
 
-Clicking that row, or pressing `Cmd+Alt+K` / `Ctrl+Alt+K`, puts it into Claude's prompt:
+Clicking that row, or pressing `Cmd+Opt+K` / `Ctrl+Alt+K`, puts it into Claude's prompt:
 
 - **With a selection**, the selected code goes in as a fenced block headed by `path:lines`.
 - **Without one**, an at-mention of the file: `@src/main.ts`.
