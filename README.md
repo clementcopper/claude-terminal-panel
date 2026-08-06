@@ -117,8 +117,8 @@ Access commands via the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) or the 
 | ----------------------- | --------------- | --------------- |
 | New Tab                 | `Ctrl+Shift+``  | `Cmd+Shift+``   |
 | Close Tab               | `Ctrl+W`        | `Cmd+W`         |
-| Next Tab                | `Ctrl+PageDown` | `Cmd+Alt+Right` |
-| Previous Tab            | `Ctrl+PageUp`   | `Cmd+Alt+Left`  |
+| Next Tab                | `Ctrl+PageDown` | `Cmd+Opt+Right` |
+| Previous Tab            | `Ctrl+PageUp`   | `Cmd+Opt+Left`  |
 | Add Selection to Prompt | `Ctrl+Alt+K`    | `Cmd+Opt+K`     |
 
 ## Configuration
