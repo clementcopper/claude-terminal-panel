@@ -9,15 +9,16 @@ packaging and setting the extension up. Findings and dead ends live in `LEARNING
 
 ## Build and install
 
-`vsce` needs Node 20 or newer; the default here is 22.14.0 and works. Node 25 does not — see
-Gotchas. VS Code sits in `~/Applications` on this machine.
+`vsce` needs Node 20 or newer, but not Node 25 — see Gotchas. The default on this machine is
+Node 25, so a usable version goes in front of it. VS Code sits in `/Applications`.
 
 ```sh
 cd ~/claude-terminal-panel
+export PATH="$HOME/.nvm/versions/node/v20.19.0/bin:$PATH"
 npm ci
 npm run lint && npm run compile
 npm run package
-"$HOME/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" \
+"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" \
   --install-extension claude-terminal-panel-local-1.1.0.vsix --force
 ```
 

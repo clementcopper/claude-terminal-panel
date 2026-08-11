@@ -18,8 +18,12 @@ is uninstalled. Renamed on purpose so a Marketplace update cannot overwrite it.
 
 ## Commands
 
-`vsce` needs Node 20 or newer. Node 22.14.0 (the current default here) is fine; Node 25 is not —
-see `LEARNINGS.md`. There is no nvm install of Node 20 on this machine any more.
+`vsce` needs Node 20 or newer, but **not** Node 25 — it collects zero files there, see
+`LEARNINGS.md`. The default on this machine is Node 25, so put a usable one in front of it first:
+
+```sh
+export PATH="$HOME/.nvm/versions/node/v20.19.0/bin:$PATH"
+```
 
 | Task                     | Command                                                                       |
 | ------------------------ | ----------------------------------------------------------------------------- |
@@ -32,8 +36,10 @@ see `LEARNINGS.md`. There is no nvm install of Node 20 on this machine any more.
 | Check the payload alone  | `node scripts/verify-package-payload.js --source` / `--vsix`                  |
 | Install the build        | `code --install-extension claude-terminal-panel-local-<version>.vsix --force` |
 
-VS Code lives in **`~/Applications`** on this machine, not `/Applications` — the CLI is
-`"$HOME/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"`.
+VS Code lives in **`/Applications`** on this machine — the CLI is
+`"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"`. (`~/Applications` holds
+only the Claude Code URL Handler.) Check with `ls -d /Applications/"Visual Studio Code.app"`
+rather than trusting this line; it has been wrong before.
 
 The `.vsix` carries no platform tag and ships the prebuilds for `darwin-x64`, `darwin-arm64`,
 `win32-x64` and `win32-arm64`, so one build installs on Intel and ARM alike. `scripts/verify-package-payload.js`
@@ -53,10 +59,11 @@ touches types.
 
 ## Git — read before running anything
 
-- **Check the remote URLs, not the names** (`git remote -v`). They have been renamed once already,
-  and an earlier version of this file described the opposite of what is configured. As of
-  2026-08-05: **`origin` is ours** (`clementcopper/claude-terminal-panel`, HTTPS) and `main`
-  tracks `origin/main`; **`upstream` is Nolikzero's** (`Nolikzero/claude-terminal-panel`).
+- **Check the remote URLs, not the names** (`git remote -v`). Two versions of this file have now
+  described this backwards, so verify before pushing. As of 2026-08-11: **`origin` is
+  Nolikzero's** (`https://github.com/Nolikzero/claude-terminal-panel.git`) and **`fork` is ours**
+  (`git@github.com:clementcopper/claude-terminal-panel.git`); `main` tracks `fork/main`. There is
+  no remote called `upstream`.
 - **Never push to Nolikzero's repository**, under whatever name it carries. There is no write
   access and it is not ours. Fetch from it to compare or merge. Push to ours only when asked.
 - **Never create a `v*` tag.** `.github/workflows/release.yml` is upstream's, still runs
