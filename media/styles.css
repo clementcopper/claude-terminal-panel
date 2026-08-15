@@ -133,6 +133,11 @@ body {
   background-color: var(--vscode-editorWarning-foreground, #cca700);
 }
 
+/* Past 80% the remaining context is small enough that it is worth acting on */
+.status-bar.danger .status-bar-fill {
+  background-color: var(--vscode-editorError-foreground, #f14c4c);
+}
+
 .status-value {
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
@@ -140,6 +145,10 @@ body {
 
 .status-value.warn {
   color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.status-value.danger {
+  color: var(--vscode-editorError-foreground, #f14c4c);
 }
 
 .status-row.secondary {

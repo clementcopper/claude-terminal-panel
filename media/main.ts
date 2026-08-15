@@ -399,7 +399,9 @@ class TooltipManager {
  */
 class StatusLineView {
   /** Same threshold as the script's macOS notification. */
-  private static readonly WARN_AT_PCT = 61.5;
+  private static readonly WARN_AT_PCT = 60;
+  /** Past this the context is close enough to full that a compaction is imminent. */
+  private static readonly DANGER_AT_PCT = 80;
   /** Nothing written for this long means Claude has not re-rendered since. */
   private static readonly STALE_AFTER_MS = 60_000;
 
@@ -544,7 +546,14 @@ class StatusLineView {
   }
 
   private buildContextRow(snapshot: StatusLineSnapshot): HTMLDivElement | null {
-    const warn = snapshot.usedPercent >= StatusLineView.WARN_AT_PCT;
+    // One name for the level so bar and number can never disagree: '' below the warning,
+    // then warn, then danger.
+    const level =
+      snapshot.usedPercent >= StatusLineView.DANGER_AT_PCT
+        ? ' danger'
+        : snapshot.usedPercent >= StatusLineView.WARN_AT_PCT
+          ? ' warn'
+          : '';
     // A tab that has not been rendered by Claude yet carries no numbers — show nothing rather
     // than a full bar reading "0 / 0"
     const hasContext = snapshot.totalTokens > 0;
@@ -571,7 +580,7 @@ class StatusLineView {
 
     if (hasContext) {
       const bar = document.createElement('div');
-      bar.className = warn ? 'status-bar warn' : 'status-bar';
+      bar.className = `status-bar${level}`;
       const fill = document.createElement('div');
       fill.className = 'status-bar-fill';
       fill.style.width = `${String(Math.min(100, Math.max(0, snapshot.usedPercent)))}%`;
@@ -579,7 +588,7 @@ class StatusLineView {
       row.appendChild(bar);
 
       const percent = document.createElement('span');
-      percent.className = warn ? 'status-value warn' : 'status-value';
+      percent.className = `status-value${level}`;
       percent.textContent = `${String(Math.round(snapshot.usedPercent))}%`;
       row.appendChild(percent);
 
