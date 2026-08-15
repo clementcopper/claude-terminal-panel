@@ -59,18 +59,20 @@ touches types.
 
 ## Git — read before running anything
 
-- **Check the remote URLs, not the names** (`git remote -v`). Two versions of this file have now
-  described this backwards, so verify before pushing. As of 2026-08-11: **`origin` is
-  Nolikzero's** (`https://github.com/Nolikzero/claude-terminal-panel.git`) and **`fork` is ours**
-  (`git@github.com:clementcopper/claude-terminal-panel.git`); `main` tracks `fork/main`. There is
-  no remote called `upstream`.
+- **Check the remote URLs, not the names** (`git remote -v`). Three versions of this file have now
+  described this wrongly, twice with the two sides swapped, so verify before pushing rather than
+  trusting the next line. Measured 2026-08-15: **`origin` is ours**
+  (`https://github.com/clementcopper/claude-terminal-panel`) and **`upstream` is Nolikzero's**
+  (`https://github.com/Nolikzero/claude-terminal-panel.git`); `main` tracks `origin/main`. There is
+  no remote called `fork`.
 - **Never push to Nolikzero's repository**, under whatever name it carries. There is no write
   access and it is not ours. Fetch from it to compare or merge. Push to ours only when asked.
 - **Never create a `v*` tag.** `.github/workflows/release.yml` is upstream's, still runs
   `@electron/rebuild` and ends in `vsce publish` with `VSCE_PAT`. It has no business running for
   this fork.
-- **The clone is shallow** (`--depth 1`). Before comparing against upstream or reading history,
-  run `git fetch --unshallow`.
+- **The clone was shallow** (`--depth 1`) and has since been unshallowed — full history is there.
+  If `git rev-parse --is-shallow-repository` ever says `true` again, run `git fetch --unshallow`
+  before comparing against upstream or reading history.
 - **`git add -A` is unsafe here.** `dist/`, `media/main.js` and `media/xterm.css` are build output
   that must not be committed but also must not enter `.gitignore`; they are hidden through
   `.git/info/exclude`, which does not stop an explicit `add`.
