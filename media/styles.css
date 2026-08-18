@@ -28,6 +28,9 @@ body {
 /* Terminals container - takes most of the space */
 #terminals-container {
   flex: 1;
+  /* Optical correction, paired with the wrapper's uneven top and bottom insets: measured, the
+     terminal sits centred either way, but the last line reads as too low without this. */
+  margin-bottom: 5px;
   position: relative;
   overflow: hidden;
   min-height: 0;
@@ -339,21 +342,35 @@ body {
 }
 
 /* Terminal wrapper */
-/* Breathing room on three sides. The wrapper carries the terminal background itself, so the
+/* Breathing room on all four sides. The wrapper carries the terminal background itself, so the
    inset reads as part of the terminal instead of showing the page behind it as a frame.
-   No padding at the bottom: the terminal ends flush against the status line. */
+
+   Inset, not padding: FitAddon reads `getComputedStyle(parent).height`, which is the content box,
+   so padding here would silently shrink the terminal instead of framing it. Same air, one less
+   thing to reason about.
+
+   Top and bottom are not the same number on purpose. Measured they are symmetric either way; by
+   eye the last line still sat too low, so the top carries the correction. */
 .terminal-wrapper {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 6px 10px 0;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  bottom: 6px;
+  padding: 0;
   background-color: var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e));
+  /* Rows are whole pixels, the wrapper's height is not, so up to one row of slack is left over.
+     Centring splits it evenly instead of letting all of it collect under the last line, which is
+     what made the gap below the mode line jump around as the panel was resized. */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
+/* `height: auto` on purpose — the element has to shrink to the rows FitAddon actually laid out,
+   or centring has nothing to centre. FitAddon measures the wrapper, not this, so it is unaffected. */
 .terminal-wrapper .xterm {
-  height: 100%;
+  height: auto;
 }
 
 /* xterm.css paints the viewport #000 so macOS scrollbars stay opaque (xterm.css:93). xterm
