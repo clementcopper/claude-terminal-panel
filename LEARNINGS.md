@@ -106,3 +106,27 @@ Non-obvious findings and dead ends. Only add what saves future work.
   `MutationObserver` on `class`/`style` of `<html>` and `<body>` is enough — VS Code rewrites the
   `--vscode-*` variables while the theme picker is merely browsed, which is why debouncing is
   needed.
+- **`FitAddon` measures the parent's content box, not `clientHeight`.** addon-fit 0.11.0 reads
+  `getComputedStyle(terminal.element.parentElement).getPropertyValue('height')`, whose resolved
+  value excludes padding even under `box-sizing: border-box`, and subtracts only the padding of
+  `terminal.element` itself. Padding on `.terminal-wrapper` therefore shrinks the terminal rather
+  than clipping it — a report claiming the opposite (padding double-counted, last row cut in half)
+  did not survive reading the addon source. Insets on the absolutely positioned wrapper keep the
+  same air with one less thing to reason about.
+- **Vertical centring needs `.xterm { height: auto }`.** Rows are whole, the wrapper's height is
+  not, so `Math.floor` leaves up to one row of slack. At `height: 100%` the element fills the
+  wrapper, the slack collects under the last line, and `justify-content: center` has nothing to
+  centre. With `auto` the element shrinks to the rows actually laid out. `FitAddon` measures the
+  wrapper, so this does not feed back into the row count. All of xterm's other children
+  (`.xterm-viewport`, `.xterm-helpers`, the decoration containers) are absolutely positioned and
+  contribute no height.
+- **The panel's layout can be measured without VS Code.** Copy `xterm.js`, `xterm.css` and
+  `addon-fit.js` out of `node_modules` into a page that repeats the wrapper rules, then drive it
+  with Playwright (`/usr/local/bin/playwright` is the Python one; Chromium is already in
+  `~/Library/Caches/ms-playwright`). Sweeping the viewport height one pixel at a time settled in
+  minutes what a reload-and-look loop had not: the gaps above and below match to 0.00 px at every
+  height, so what was left was optical, not geometric.
+- **Measured symmetry is not perceived symmetry.** With both gaps provably equal the last line
+  still read as sitting too low; the fix was 4 px more at the top inset and 5 px of margin below
+  the container, both set by eye. Write into the comment that the numbers are deliberately uneven,
+  or the next reader restores the matching values and undoes it.
