@@ -72,6 +72,22 @@ Non-obvious findings and dead ends. Only add what saves future work.
   ANSI slots. The remedy is Claude's own theme (`/theme`); an ANSI-based variant would reuse the
   values the extension provides. There is no `COLORFGBG` in the PTY either, so Claude gets no hint
   about light or dark.
+- **The statusLine command runs on session state changes, not on renders.** Measured with a
+  throwaway node-pty probe that spawned `claude` with the panel's own `--settings` injection and
+  watched the snapshot file: a PTY resize repaints the whole TUI — 2825 to 2908 bytes including a
+  `\x1b[2J` — and still produces no run. Same for terminal focus events, Escape, Ctrl+O, opening
+  and closing the slash menu, and typing a character. The one trigger found was `shift+tab`, the
+  permission-mode cycle, twice at 407 and 447 ms. Two controls with no nudge at all wrote nothing,
+  so those zeros are real and not a broken probe.
+- **That rules out a refresh button that costs no tokens.** Cycling the permission mode to force an
+  update would pass through accept-edits on the way, and a third press in the same run was not
+  consumed at all, so "once around and back" cannot be relied on to end where it started. The CLI
+  has no way in either: `claude --help` lists `agents`, `auth`, `doctor`, `mcp`, `plugin`,
+  `project`, `setup-token`, `update` — nothing that reports usage or rate limits.
+- **What actually goes stale is only the rate limits.** Token counts cannot change without a turn,
+  and a turn makes Claude render anyway. The limits change through other sessions and through time,
+  which is why the countdown is recomputed in the webview from the absolute `sessionResetsAt`
+  rather than fetched.
 
 ## Prompt input
 
