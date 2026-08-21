@@ -86,8 +86,13 @@ body {
   display: none;
 }
 
-/* A snapshot older than a minute means Claude has not re-rendered since — say so quietly */
-#status-line.stale {
+/* A snapshot older than a minute means Claude has not re-rendered since — say so quietly.
+
+   Per row, not on the whole element: `opacity` dims children beyond rescue, and two rows are not
+   stale at all. The editor row comes from VS Code, and the limits row recomputes its countdown
+   from an absolute reset point — that line is at its most useful exactly when Claude has stopped
+   rendering, because the limit is spent. Dimming it then would hide the one number still true. */
+#status-line.stale .status-row:not(.secondary):not(.editor) {
   opacity: 0.55;
 }
 
@@ -158,6 +163,12 @@ body {
   /* Column only: the row gap stays the shared one, so wrapped lines line up with real rows */
   column-gap: 10px;
   opacity: 0.85;
+}
+
+/* The session limit is the live one and stays on the left; compactions and the weekly limit are
+   reference numbers and sit against the right edge. Carried by the first of them alone. */
+.status-row.secondary .status-value.trailing {
+  margin-left: auto;
 }
 
 .status-effort {

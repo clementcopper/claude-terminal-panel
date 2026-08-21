@@ -404,11 +404,22 @@ class StatusLineView {
   private static readonly DANGER_AT_PCT = 80;
   /** Nothing written for this long means Claude has not re-rendered since. */
   private static readonly STALE_AFTER_MS = 60_000;
+  /** Redraw cadence for the reset countdown while no snapshot arrives. */
+  private static readonly TICK_MS = 30_000;
+  /** From here on the session limit is close enough to matter as much as a full context window. */
+  private static readonly LIMIT_DANGER_PCT = 90;
 
   private readonly snapshots = new Map<string, StatusLineSnapshot>();
   private activeId: string | null = null;
   /** Belongs to the window, not to a tab: one editor, however many terminals. */
   private editorContext: EditorContext | null = null;
+  /**
+   * Keeps the countdown honest while nothing else happens. `sessionResetsAt` is an absolute point,
+   * so the remaining time can be recomputed without Claude — which matters most exactly when the
+   * limit is spent: no prompt goes through, Claude never renders, and a frozen "84 min" would be
+   * the one number the row exists for.
+   */
+  private tickTimer: number | undefined;
 
   constructor(
     private readonly element: HTMLElement,
@@ -465,6 +476,7 @@ class StatusLineView {
 
   private draw(): void {
     const snapshot = this.activeId ? this.snapshots.get(this.activeId) : undefined;
+    this.scheduleTick(snapshot);
 
     // The editor row stands on its own: a tab Claude has not rendered yet still has a file open
     // next to it.
@@ -514,6 +526,25 @@ class StatusLineView {
 
     const ageMs = Date.now() - snapshot.updatedAt * 1000;
     this.element.classList.toggle('stale', ageMs > StatusLineView.STALE_AFTER_MS);
+  }
+
+  /**
+   * Runs the redraw timer only while there is a countdown to move. Started for a reset point in
+   * the future, stopped once it passes or the tab has no limits — an interval that redraws a row
+   * whose numbers cannot change is pure churn, and every redraw measures the height.
+   */
+  private scheduleTick(snapshot: StatusLineSnapshot | undefined): void {
+    const resetsAt = snapshot?.sessionResetsAt;
+    const wanted = resetsAt !== undefined && resetsAt * 1000 > Date.now();
+
+    if (wanted && this.tickTimer === undefined) {
+      this.tickTimer = window.setInterval(() => {
+        this.render();
+      }, StatusLineView.TICK_MS);
+    } else if (!wanted && this.tickTimer !== undefined) {
+      window.clearInterval(this.tickTimer);
+      this.tickTimer = undefined;
+    }
   }
 
   /**
@@ -604,16 +635,42 @@ class StatusLineView {
   }
 
   private buildSecondaryRow(snapshot: StatusLineSnapshot): HTMLDivElement | null {
-    const parts: string[] = [];
+    const parts: { text: string; danger?: boolean; trailing?: boolean }[] = [];
+    let sessionExpired = false;
 
     if (snapshot.sessionPercent !== undefined) {
       // Prefer the absolute point: a remembered "84 min" is wrong an hour later
+      const resetsAt = snapshot.sessionResetsAt;
+      const remainingMs = resetsAt !== undefined ? resetsAt * 1000 - Date.now() : undefined;
       const minutes =
-        snapshot.sessionResetsAt !== undefined
-          ? Math.max(0, Math.round((snapshot.sessionResetsAt * 1000 - Date.now()) / 60000))
-          : snapshot.sessionResetsInMin;
-      const resets = minutes !== undefined ? ` · ${String(minutes)} min` : '';
-      parts.push(`Session ${String(Math.round(snapshot.sessionPercent))}%${resets}`);
+        remainingMs !== undefined ? Math.round(remainingMs / 60000) : snapshot.sessionResetsInMin;
+
+      // Past the reset point the percentage describes a window that no longer exists — the
+      // watcher drops it for the same reason when it fills a fresh tab from memory. Measured
+      // against the point itself, not against the rounded minutes: rounding calls anything under
+      // 30 seconds zero, which would blank the row in its last half minute.
+      const expired = remainingMs !== undefined && remainingMs <= 0;
+
+      sessionExpired = expired;
+
+      if (expired) {
+        // Not dropped silently: the row would just lose its left half at the very moment the
+        // waiting is over. Says so until Claude's next render brings a fresh percentage.
+        parts.push({ text: 'Limit reset' });
+      } else {
+        // Both, and in that order: the remaining span is the answer to "can I prompt again yet",
+        // the clock time is what you plan around once you know it is a while.
+        const clock = resetsAt !== undefined ? formatClock(resetsAt) : '';
+        const resets = [minutes !== undefined ? formatRemaining(minutes) : '', clock]
+          .filter((piece) => piece.length > 0)
+          .map((piece) => ` · ${piece}`)
+          .join('');
+        const percent = Math.round(snapshot.sessionPercent);
+        parts.push({
+          text: `Session ${String(percent)}%${resets}`,
+          danger: percent >= StatusLineView.LIMIT_DANGER_PCT
+        });
+      }
     }
 
     if (snapshot.compacted !== undefined) {
@@ -623,12 +680,20 @@ class StatusLineView {
         snapshot.compactAuto !== undefined && snapshot.compactAuto > 0
           ? ` (${String(snapshot.compactAuto)} auto)`
           : '';
-      parts.push(`Compacted ${String(snapshot.compacted)}${budget}${auto}`);
+      parts.push({
+        text: `Compacted ${String(snapshot.compacted)}${budget}${auto}`,
+        trailing: true
+      });
     }
 
     if (snapshot.weekPercent !== undefined) {
       const resets = snapshot.weekResetsAt ? ` · ${snapshot.weekResetsAt}` : '';
-      parts.push(`Week ${String(Math.round(snapshot.weekPercent))}%${resets}`);
+      const percent = Math.round(snapshot.weekPercent);
+      parts.push({
+        text: `Week ${String(percent)}%${resets}`,
+        danger: percent >= StatusLineView.LIMIT_DANGER_PCT,
+        trailing: true
+      });
     }
 
     if (parts.length === 0) {
@@ -637,15 +702,34 @@ class StatusLineView {
 
     const row = document.createElement('div');
     row.className = 'status-row secondary';
-    parts.forEach((text) => {
+    // Only the first of the trailing group carries the push: the ones after it follow at the
+    // normal gap, or each would be shoved to the edge in turn and the group would fall apart.
+    let pushed = false;
+    parts.forEach((part) => {
       const span = document.createElement('span');
-      span.className = 'status-value';
-      span.textContent = text;
+      const classes = ['status-value'];
+      if (part.danger) {
+        classes.push('danger');
+      }
+      if (part.trailing && !pushed) {
+        classes.push('trailing');
+        pushed = true;
+      }
+      span.className = classes.join(' ');
+      span.textContent = part.text;
       row.appendChild(span);
     });
 
+    const tooltip: string[] = [];
+    // A reset time in the past is not worth naming — the row already says the limit is back.
+    if (snapshot.sessionResetsAt !== undefined && !sessionExpired) {
+      tooltip.push(`Session limit resets at ${formatClock(snapshot.sessionResetsAt)}`);
+    }
     if (snapshot.weekResetsAt) {
-      row.dataset.tooltip = `Weekly limit resets on ${snapshot.weekResetsAt}`;
+      tooltip.push(`Weekly limit resets on ${snapshot.weekResetsAt}`);
+    }
+    if (tooltip.length > 0) {
+      row.dataset.tooltip = tooltip.join('\n');
     }
     return row;
   }
@@ -665,6 +749,36 @@ function shortenPath(path: string, maxSegments = 2): string {
     return path;
   }
   return `…/${segments.slice(-maxSegments).join('/')}`;
+}
+
+/**
+ * `42 min` below the hour, `3 h 12` above. A raw minute count stops being readable past 60, and
+ * the whole point of this row is that it can be read at a glance.
+ */
+function formatRemaining(minutes: number): string {
+  // Rounding to zero is not the same as being over: the last half minute still counts.
+  if (minutes < 1) {
+    return '< 1 min';
+  }
+  if (minutes < 60) {
+    return `${String(minutes)} min`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${String(hours)} h` : `${String(hours)} h ${String(rest).padStart(2, '0')}`;
+}
+
+/** `8:40 PM` — same shape the producer already uses for the weekly reset. */
+function formatClock(epochSeconds: number): string {
+  try {
+    return new Date(epochSeconds * 1000).toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  } catch {
+    return '';
+  }
 }
 
 function formatK(tokens: number): string {
