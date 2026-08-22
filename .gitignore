@@ -24,3 +24,4 @@ Bildschirmaufnahme*.mov
 .idea/
 *.swp
 *.swo
+*.code-workspace
