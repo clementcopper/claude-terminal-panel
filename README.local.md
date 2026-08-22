@@ -165,6 +165,13 @@ it last saw, under `status/last/`:
 | `<sha1 of cwd>.json` | the last full snapshot for that working directory — model, context, everything                                                       |
 | `limits.json`        | session and weekly rate limits, which belong to the account rather than a directory, so a first tab in a new folder still shows them |
 
+`limits.json` is a running channel between tabs, not just a starting value. A tab whose Claude is
+idle can show a percentage another tab has already superseded: the number exists only in Claude's
+payload, so unlike the countdown it cannot be recomputed from the clock. The watcher therefore also
+watches `last/` and polls it every 30 s, and hands newer limits to every tab whose own snapshot
+predates them. The tab's `updatedAt` stays as it was — model and context really are old, and the
+limits row is exempt from the stale dimming anyway.
+
 `limits.json` also fills in live snapshots, not just the initial one: Claude Code leaves
 `rate_limits` out of its payload until the session has made a request, so the first snapshots
 carry no Session and Week at all. Only fields the snapshot lacks are filled — a live value always
