@@ -1,18 +1,16 @@
 {
+  // esbuild bundelt; tsc laeuft ausschliesslich als Typpruefer (npm run typecheck) und als Basis
+  // fuer die typgestuetzten ESLint-Regeln. Emit-Optionen waeren hier wirkungslos.
   "compilerOptions": {
     "module": "commonjs",
     "target": "ES2022",
     "lib": ["ES2022"],
-    "outDir": "dist",
     "rootDir": "src",
+    "noEmit": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true
+    "forceConsistentCasingInFileNames": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

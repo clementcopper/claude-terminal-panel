@@ -65,20 +65,10 @@ export default tseslint.config(
     },
   },
 
-  // Shipped scripts that Claude Code runs, plain CommonJS on the Node globals
+  // resources/: shipped scripts that Claude Code runs. scripts/: build tooling, not packaged.
+  // Both are plain CommonJS on the Node globals.
   {
-    files: ['resources/**/*.js'],
-    languageOptions: {
-      sourceType: 'commonjs',
-      globals: {
-        ...globals.node,
-      },
-    },
-  },
-
-  // Build tooling, plain CommonJS on the Node globals. Not packaged.
-  {
-    files: ['scripts/**/*.js'],
+    files: ['resources/**/*.js', 'scripts/**/*.js'],
     languageOptions: {
       sourceType: 'commonjs',
       globals: {

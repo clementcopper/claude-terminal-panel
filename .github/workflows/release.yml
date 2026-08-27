@@ -12,6 +12,11 @@ env:
 
 jobs:
   build:
+    # Upstream's release pipeline: it rebuilds native modules, packages per platform and publishes
+    # to the Marketplace with VSCE_PAT. A fork has neither the token nor any business publishing,
+    # so the whole workflow is inert anywhere but the repository it was written for. Previously the
+    # only thing standing between a `v*` tag and a Marketplace publish was remembering not to tag.
+    if: github.repository == 'Nolikzero/claude-terminal-panel'
     strategy:
       matrix:
         include:
@@ -57,6 +62,7 @@ jobs:
 
   release:
     needs: build
+    if: github.repository == 'Nolikzero/claude-terminal-panel'
     runs-on: ubuntu-latest
     permissions:
       contents: write
