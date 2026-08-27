@@ -301,40 +301,10 @@ export class ClaudeTerminalViewProvider
 
   // --- Terminal Management (Public API) ---
 
-  public async createTerminal(): Promise<string> {
-    const id = this.stateManager.generateId();
-    const name = this.stateManager.generateName();
-
-    // Select working directory first to get folder index
-    const { path: cwd, folderIndex } = await this.ptyManager.selectWorkingDirectory(
-      getConfig().cwd
-    );
-
-    const instance: TerminalInstance = {
-      id,
-      name,
-      isActive: false,
-      workspaceFolderIndex: folderIndex,
-      cwd
-    };
-
-    // Add instance first, then activate (so setActive can find it)
-    this.stateManager.set(id, instance);
-    this.stateManager.setActive(id);
-
-    // Notify webview with accent color
-    this.postMessage({ type: 'createTab', id });
-    this.sendTabsUpdate();
-    this.sendInitialStatusLine(id, cwd);
-
-    // Start the terminal process
+  /** A tab running the configured command — the same path as any other tab. */
+  public createTerminal(): Promise<string> {
     const config = getConfig();
-    this.ptyManager.spawn(id, config, this.lastCols, this.lastRows, cwd);
-
-    // Switch to the new tab
-    this.postMessage({ type: 'switchTab', id });
-
-    return id;
+    return this.createTerminalWithCommand(config.command, config.args);
   }
 
   private async promptAndCreateTerminal(): Promise<void> {
@@ -349,13 +319,12 @@ export class ClaudeTerminalViewProvider
   }
 
   public async createTerminalWithCommand(command: string, args: string[]): Promise<string> {
+    const config = getConfig();
     const id = this.stateManager.generateId();
     const name = this.stateManager.generateName();
 
     // Select working directory first to get folder index
-    const { path: cwd, folderIndex } = await this.ptyManager.selectWorkingDirectory(
-      getConfig().cwd
-    );
+    const { path: cwd, folderIndex } = await this.ptyManager.selectWorkingDirectory(config.cwd);
 
     const instance: TerminalInstance = {
       id,
@@ -365,6 +334,7 @@ export class ClaudeTerminalViewProvider
       cwd
     };
 
+    // Add instance first, then activate (so setActive can find it)
     this.stateManager.set(id, instance);
     this.stateManager.setActive(id);
 
@@ -372,11 +342,9 @@ export class ClaudeTerminalViewProvider
     this.sendTabsUpdate();
     this.sendInitialStatusLine(id, cwd);
 
-    // Use provided command/args instead of config
-    const config = getConfig();
-    const customConfig = { ...config, command, args };
-    this.ptyManager.spawn(id, customConfig, this.lastCols, this.lastRows, cwd);
+    this.ptyManager.spawn(id, { ...config, command, args }, this.lastCols, this.lastRows, cwd);
 
+    // Switch to the new tab
     this.postMessage({ type: 'switchTab', id });
 
     return id;

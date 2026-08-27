@@ -34,30 +34,8 @@ function stripAnsi(text: string): string {
   return text.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
 }
 
-// Sliding buffer to handle PTY data chunks
-class PromptBuffer {
-  private buffer = '';
-  private readonly maxSize: number;
-
-  constructor(maxSize = 500) {
-    this.maxSize = maxSize;
-  }
-
-  append(data: string): void {
-    this.buffer += data;
-    if (this.buffer.length > this.maxSize) {
-      this.buffer = this.buffer.slice(-this.maxSize);
-    }
-  }
-
-  getContent(): string {
-    return this.buffer;
-  }
-
-  clear(): void {
-    this.buffer = '';
-  }
-}
+/** Only the tail of the PTY stream can hold a prompt, so that is all each terminal keeps. */
+const BUFFER_SIZE = 500;
 
 export interface PromptDetectorConfig {
   enabled: boolean;
@@ -68,7 +46,7 @@ export interface PromptDetectorConfig {
 export type NotificationCallback = (terminalId: string, isWaiting: boolean) => void;
 
 export class PromptDetector {
-  private readonly buffers = new Map<string, PromptBuffer>();
+  private readonly buffers = new Map<string, string>();
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private readonly waitingState = new Map<string, boolean>();
   private readonly patterns: RegExp[];
@@ -108,14 +86,8 @@ export class PromptDetector {
       return;
     }
 
-    // Get or create buffer for this terminal
-    let buffer = this.buffers.get(terminalId);
-    if (!buffer) {
-      buffer = new PromptBuffer();
-      this.buffers.set(terminalId, buffer);
-    }
-
-    buffer.append(data);
+    // slice() on a shorter string returns it whole, so no length check is needed
+    this.buffers.set(terminalId, ((this.buffers.get(terminalId) ?? '') + data).slice(-BUFFER_SIZE));
 
     // Clear any pending show timer - more output arrived
     this.clearTimer(terminalId);
@@ -139,20 +111,20 @@ export class PromptDetector {
     this.clearTimer(terminalId);
     this.setWaitingState(terminalId, false);
 
-    // Also clear the buffer since user is interacting
-    const buffer = this.buffers.get(terminalId);
-    if (buffer) {
-      buffer.clear();
+    // Also clear the buffer since user is interacting. Emptied rather than removed, so a check
+    // that still runs reports "not waiting" instead of bailing out before it says anything.
+    if (this.buffers.has(terminalId)) {
+      this.buffers.set(terminalId, '');
     }
   }
 
   private checkForPrompt(terminalId: string): void {
     const buffer = this.buffers.get(terminalId);
-    if (!buffer) {
+    if (buffer === undefined) {
       return;
     }
 
-    const content = stripAnsi(buffer.getContent());
+    const content = stripAnsi(buffer);
 
     // Check last 200 characters for patterns (sufficient for any prompt)
     const tail = content.slice(-200);

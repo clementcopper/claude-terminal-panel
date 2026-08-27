@@ -259,8 +259,7 @@ export function formatSnippet(
 
   // A fence inside the selection would end the block early — make ours longer than any run of
   // backticks it contains.
-  const longestRun = /`+/g.exec(selectedText) ? longestBacktickRun(selectedText) : 0;
-  const fence = '`'.repeat(Math.max(3, longestRun + 1));
+  const fence = '`'.repeat(Math.max(3, longestBacktickRun(selectedText) + 1));
   const language = /^[a-z0-9+#-]+$/i.test(languageId) ? languageId : '';
 
   return `${context.relativePath}${range}\n${fence}${language}\n${selectedText}\n${fence}\n`;
