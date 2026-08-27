@@ -344,16 +344,19 @@ export class PtyManager {
   /**
    * Kills a specific PTY.
    */
-  kill(terminalId: string): void {
+  kill(terminalId: string): boolean {
     const pty = this.ptys.get(terminalId);
-    if (pty) {
-      try {
-        pty.kill();
-      } catch {
-        // Ignore errors when killing
-      }
-      this.ptys.delete(terminalId);
+    if (!pty) {
+      return false;
     }
+    try {
+      pty.kill();
+    } catch {
+      // Ignore errors when killing
+    }
+    this.ptys.delete(terminalId);
+    // Only a PTY that existed will report an exit, which is what a restart has to wait for.
+    return true;
   }
 
   /**

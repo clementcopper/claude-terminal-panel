@@ -31,7 +31,8 @@ export class ClaudeTerminalViewProvider
 {
   private view?: vscode.WebviewView;
   private disposed = false;
-  private isRestarting = false;
+  /** Tabs whose PTY was killed for a restart: their next exit is expected, not worth reporting. */
+  private readonly restarting = new Set<string>();
   private lastCols = 80;
   private lastRows = 24;
 
@@ -255,7 +256,10 @@ export class ClaudeTerminalViewProvider
   }
 
   private handlePtyExit(terminalId: string, exitCode: number): void {
-    if (!this.disposed && this.view && !this.isRestarting) {
+    if (this.restarting.delete(terminalId)) {
+      return;
+    }
+    if (!this.disposed && this.view) {
       this.postMessage({
         type: 'output',
         id: terminalId,
@@ -486,14 +490,10 @@ export class ClaudeTerminalViewProvider
     const activeId = this.stateManager.getActiveId();
     if (!activeId) return;
 
-    this.isRestarting = true;
     this.clear();
-    this.ptyManager.kill(activeId);
-
-    // Delay to let old PTY exit event fire before resetting flag
-    setTimeout(() => {
-      this.isRestarting = false;
-    }, 100);
+    if (this.ptyManager.kill(activeId)) {
+      this.restarting.add(activeId);
+    }
 
     const config = this.configManager.getConfig();
     const cwd = this.stateManager.get(activeId)?.cwd;
