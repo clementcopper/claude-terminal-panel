@@ -19,11 +19,10 @@ is uninstalled. Renamed on purpose so a Marketplace update cannot overwrite it.
 ## Commands
 
 `vsce` needs Node 20 or newer, but **not** Node 25 — it collects zero files there, see
-`LEARNINGS.md`. The default on this machine is Node 25, so put a usable one in front of it first:
-
-```sh
-export PATH="$HOME/.nvm/versions/node/v20.19.0/bin:$PATH"
-```
+`LEARNINGS.md`. Measured 2026-08-27: the machine runs **Node v24.1.0**, and `vsce` 3.9.2 packages
+correctly on it (69 files, 2.53 MB), so no PATH juggling is needed. `vsce` is pinned as a
+devDependency, so `npm run package` uses that version rather than whatever `npx` fetches. The only
+nvm version installed is `v18.20.8`, which is _below_ what `vsce` needs — do not switch to it.
 
 | Task                     | Command                                                                       |
 | ------------------------ | ----------------------------------------------------------------------------- |
@@ -31,6 +30,7 @@ export PATH="$HOME/.nvm/versions/node/v20.19.0/bin:$PATH"
 | Full build               | `npm run compile` (extension bundle + `media/main.js` + copies `xterm.css`)   |
 | Extension only, watching | `npm run watch`                                                               |
 | Lint                     | `npm run lint` / `npm run lint:fix`                                           |
+| Typecheck                | `npm run typecheck` (both projects; also runs in `vscode:prepublish`)         |
 | Format                   | `npm run format` / `npm run format:check`                                     |
 | Package `.vsix`          | `npm run package` (no `--target`, `--skip-license`; guarded on both sides)    |
 | Check the payload alone  | `node scripts/verify-package-payload.js --source` / `--vsix`                  |
@@ -59,23 +59,27 @@ touches types.
 
 ## Git — read before running anything
 
-- **Check the remote URLs, not the names** (`git remote -v`). Three versions of this file have now
+- **Check the remote URLs, not the names** (`git remote -v`). Several versions of this file have
   described this wrongly, twice with the two sides swapped, so verify before pushing rather than
-  trusting the next line. Measured 2026-08-15: **`origin` is ours**
-  (`https://github.com/clementcopper/claude-terminal-panel`) and **`upstream` is Nolikzero's**
-  (`https://github.com/Nolikzero/claude-terminal-panel.git`); `main` tracks `origin/main`. There is
-  no remote called `fork`.
+  trusting any line here.
+- **Measured 2026-08-27: this working copy has no remotes and no upstream at all.** It is an
+  unpacked GitHub ZIP in `~/Downloads` (`claude-terminal-panel-main`), not a clone, with a `git
+init` run on top. History starts at a baseline commit of that unpacked download. Anything below
+  about fetching or pushing applies only once a remote is actually added — and the earlier
+  description of `origin` (`clementcopper`) and `upstream` (`Nolikzero`) belongs to a _different_
+  working copy, so do not assume it here.
 - **Never push to Nolikzero's repository**, under whatever name it carries. There is no write
   access and it is not ours. Fetch from it to compare or merge. Push to ours only when asked.
-- **Never create a `v*` tag.** `.github/workflows/release.yml` is upstream's, still runs
-  `@electron/rebuild` and ends in `vsce publish` with `VSCE_PAT`. It has no business running for
-  this fork.
-- **The clone was shallow** (`--depth 1`) and has since been unshallowed — full history is there.
-  If `git rev-parse --is-shallow-repository` ever says `true` again, run `git fetch --unshallow`
-  before comparing against upstream or reading history.
+- **A `v*` tag is no longer dangerous, but still pointless here.**
+  `.github/workflows/release.yml` is upstream's — `@electron/rebuild`, `--target`, and
+  `vsce publish` with `VSCE_PAT` — and both its jobs are now guarded with
+  `if: github.repository == 'Nolikzero/claude-terminal-panel'`, so it cannot fire in this fork.
+  Before that guard, the only thing standing between a tag and a Marketplace publish was
+  remembering not to tag.
 - **`git add -A` is unsafe here.** `dist/`, `media/main.js` and `media/xterm.css` are build output
   that must not be committed but also must not enter `.gitignore`; they are hidden through
-  `.git/info/exclude`, which does not stop an explicit `add`.
+  `.git/info/exclude`, which does not stop an explicit `add`. That file was the pristine git
+  template until 2026-08-27 — the protection this line describes did not exist; it does now.
 - Unlike the quartz fork, **upstream is a live repository** — merges are realistic here. Keep
   changes small and localized, prefer additive edits over restructuring.
 
@@ -111,7 +115,7 @@ Supporting modules, each owning one concern:
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ptyManager.ts`                            | spawns/kills PTYs, resolves the cwd, builds the env, injects the status line settings, lazily `require`s `node-pty`                                                                                                                                                                                                                 |
 | `terminalStateManager.ts`                  | the tab model — instances, active id, names, accent colors, `TabInfo` for the UI                                                                                                                                                                                                                                                    |
-| `configManager.ts`                         | cached `claudeTerminal.*` settings, invalidated on config change                                                                                                                                                                                                                                                                    |
+| `configManager.ts`                         | one `getConfig()` for the `claudeTerminal.*` settings; uncached, VS Code resolves them from memory                                                                                                                                                                                                                                  |
 | `promptDetector.ts`                        | strips ANSI, buffers output, matches prompt patterns after a delay to flag "waiting for input"                                                                                                                                                                                                                                      |
 | `commandInputPicker.ts`                    | the "new tab with command" QuickPick, with flag and path completion                                                                                                                                                                                                                                                                 |
 | `helpExecutor.ts` + `commandHelpParser.ts` | run `<cmd> --help` and parse it (GNU → argparse → fallback parser chain) into `CommandFlag`s                                                                                                                                                                                                                                        |

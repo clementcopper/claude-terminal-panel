@@ -26,6 +26,22 @@ Non-obvious findings and dead ends. Only add what saves future work.
   cannot go into `.gitignore` by convention here, but sits in the working tree as untracked noise.
   An entry in `.git/info/exclude` hides it locally only; `vsce` does not read that file. Checked:
   `vsce ls` still lists `dist/extension.js`, `media/main.js` and `media/xterm.css` afterwards.
+- **`vsce`'s ignore patterns do not cross directory boundaries.** `.vscodeignore` carried `*.ts`
+  and `tsconfig.json` since the fork began, and both matched only at the top level — so
+  `media/main.ts` (40 KB), `media/types.ts` and `media/tsconfig.json` shipped in every `.vsix`
+  built here, 43 KB of source handed to every user. `src/**` was excluded only because it is
+  written with an explicit `**`. The fix is a path-anchored rule per directory (`media/**/*.ts`).
+  Verified against the 1.1.0 package built before the fix: `unzip -Z1 … | grep '\.ts$'` listed all
+  three. `scripts/verify-package-payload.js` now asserts the archive carries no `.ts` at all —
+  it guarded the prebuilds and the `.pdb` symbols, but nothing stopped source from leaving.
+- **`vsce` packages `README.md` regardless of `.vscodeignore`.** `*.md` is ignored and the readme
+  still ships (`extension/readme.md`, 17.58 KB) — the Marketplace page needs it. A comment in
+  `.vscodeignore` justified excluding the readme's screenshots with "the readme that shows them is
+  not even there"; the premise was wrong, though the exclusion itself is still worth keeping.
+- **`vsce` 3.9.2 works on Node 24.** Measured 2026-08-27 on `v24.1.0`: 69 files, 2.53 MB, payload
+  guards green. The warning above is specifically about Node 25. `vsce` is now pinned as an exact
+  devDependency instead of being fetched by `npx`, so the version the notes here describe is the
+  version the build actually runs.
 
 ## Native module
 
