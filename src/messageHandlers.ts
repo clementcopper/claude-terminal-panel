@@ -92,6 +92,11 @@ const messageHandlers: MessageHandlerMap = {
  * Dispatches a message to its appropriate handler.
  */
 export function dispatchMessage(message: WebviewMessage, ctx: MessageHandlerContext): void {
-  const handler = messageHandlers[message.type] as MessageHandler<typeof message>;
+  const handler = messageHandlers[message.type] as MessageHandler<typeof message> | undefined;
+  // The map is exhaustive by construction, so this can only be a message type the running webview
+  // knows and this build does not — a stale webview after an update. Dropping it beats throwing.
+  if (!handler) {
+    return;
+  }
   handler(message, ctx);
 }
