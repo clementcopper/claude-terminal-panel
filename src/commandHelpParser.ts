@@ -19,10 +19,8 @@ class GnuStyleParser implements HelpParser {
     // -c, --continue         description
     new RegExp(`^\\s*(-\\w),?\\s*(--[\\w-]+)${this.valuePattern}\\s{2,}(.+)$`),
     // --verbose, -v          description
+    // Also covers "--long-only  description": the short group and the separator are optional.
     new RegExp(`^\\s*(--[\\w-]+),?\\s*(-\\w)?${this.valuePattern}\\s{2,}(.+)$`),
-    // --long-only            description (no short form)
-    // --add-dir <dirs...>    description
-    new RegExp(`^\\s*()(--[\\w-]+)${this.valuePattern}\\s{2,}(.+)$`),
     // -v                     description (short only)
     new RegExp(`^\\s*(-\\w)()${this.valuePattern}\\s{2,}(.+)$`),
     // --add-dir <DIR>        (description on next line - Rust clap style)
@@ -64,10 +62,18 @@ class GnuStyleParser implements HelpParser {
           }
 
           const [, first, second, valueHint, description] = match;
-          const short = first.startsWith('-') && !first.startsWith('--') ? first : second;
-          const long = first.startsWith('--') ? first : second;
+          // Which capture holds the short and which the long form differs per pattern, and some
+          // patterns leave one of them empty. Picking by shape instead of by position keeps the
+          // clap-style pattern from reporting the long flag as its own short form ("-c, --config"
+          // rendered as "--config, --config").
+          const parts = [first, second].filter(
+            (part): part is string => Boolean(part) && part.startsWith('-')
+          );
+          const short = parts.find((part) => !part.startsWith('--'));
+          const long = parts.find((part) => part.startsWith('--'));
 
-          if (long || short) {
+          const flag = long ?? short;
+          if (flag) {
             const desc = description.trim();
             // Detect repeatable flags by valueHint pattern (...) or description keywords
             const isRepeatable =
@@ -75,7 +81,7 @@ class GnuStyleParser implements HelpParser {
               /\badditional\b/i.test(desc) ||
               /\bmultiple\b/i.test(desc);
             currentFlag = {
-              flag: long || short,
+              flag,
               shortFlag: short && long ? short : undefined,
               description: desc,
               takesValue: !!valueHint,
