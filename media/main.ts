@@ -103,127 +103,79 @@ class FileLinkProvider implements ILinkProvider {
   }
 }
 
-// State management class replacing closure variables
-class TerminalState {
-  private readonly terminals = new Map<string, TerminalEntry>();
-  private activeTerminalId: string | null = null;
+// Theme and font builder with caching
+const DEFAULT_FONT_FAMILY = 'Menlo, Monaco, "Courier New", monospace';
 
-  get(id: string): TerminalEntry | undefined {
-    return this.terminals.get(id);
-  }
-
-  set(id: string, entry: TerminalEntry): void {
-    this.terminals.set(id, entry);
-  }
-
-  delete(id: string): boolean {
-    return this.terminals.delete(id);
-  }
-
-  forEach(callback: (entry: TerminalEntry, id: string) => void): void {
-    this.terminals.forEach(callback);
-  }
-
-  getActiveId(): string | null {
-    return this.activeTerminalId;
-  }
-
-  setActiveId(id: string | null): void {
-    this.activeTerminalId = id;
-  }
+function cssVar(styles: CSSStyleDeclaration, name: string, fallback: string): string {
+  return styles.getPropertyValue(name).trim() || fallback;
 }
 
-// Theme and font builder with caching
-class ThemeBuilder {
-  private cachedTheme: XTermTheme | null = null;
-  private cachedFontFamily: string | null = null;
+/**
+ * Reads the current VS Code colours. Uncached on purpose: the only caller that could reuse a
+ * cached value is a new tab, while the theme-change path invalidated it immediately before
+ * reading. One getComputedStyle() call now serves the whole theme instead of one per colour.
+ */
+function buildTheme(): XTermTheme {
+  const styles = getComputedStyle(document.documentElement);
+  return {
+    background: cssVar(
+      styles,
+      '--vscode-terminal-background',
+      cssVar(styles, '--vscode-editor-background', '#1e1e1e')
+    ),
+    foreground: cssVar(
+      styles,
+      '--vscode-terminal-foreground',
+      cssVar(styles, '--vscode-editor-foreground', '#d4d4d4')
+    ),
+    cursor: cssVar(styles, '--vscode-terminalCursor-foreground', '#d4d4d4'),
+    cursorAccent: cssVar(styles, '--vscode-terminalCursor-background', '#1e1e1e'),
+    selectionBackground: cssVar(styles, '--vscode-terminal-selectionBackground', '#264f78'),
+    black: cssVar(styles, '--vscode-terminal-ansiBlack', '#000000'),
+    red: cssVar(styles, '--vscode-terminal-ansiRed', '#cd3131'),
+    green: cssVar(styles, '--vscode-terminal-ansiGreen', '#0dbc79'),
+    yellow: cssVar(styles, '--vscode-terminal-ansiYellow', '#e5e510'),
+    blue: cssVar(styles, '--vscode-terminal-ansiBlue', '#2472c8'),
+    magenta: cssVar(styles, '--vscode-terminal-ansiMagenta', '#bc3fbc'),
+    cyan: cssVar(styles, '--vscode-terminal-ansiCyan', '#11a8cd'),
+    white: cssVar(styles, '--vscode-terminal-ansiWhite', '#e5e5e5'),
+    brightBlack: cssVar(styles, '--vscode-terminal-ansiBrightBlack', '#666666'),
+    brightRed: cssVar(styles, '--vscode-terminal-ansiBrightRed', '#f14c4c'),
+    brightGreen: cssVar(styles, '--vscode-terminal-ansiBrightGreen', '#23d18b'),
+    brightYellow: cssVar(styles, '--vscode-terminal-ansiBrightYellow', '#f5f543'),
+    brightBlue: cssVar(styles, '--vscode-terminal-ansiBrightBlue', '#3b8eea'),
+    brightMagenta: cssVar(styles, '--vscode-terminal-ansiBrightMagenta', '#d670d6'),
+    brightCyan: cssVar(styles, '--vscode-terminal-ansiBrightCyan', '#29b8db'),
+    brightWhite: cssVar(styles, '--vscode-terminal-ansiBrightWhite', '#ffffff')
+  };
+}
 
-  private static readonly DEFAULT_FONT_FAMILY = 'Menlo, Monaco, "Courier New", monospace';
-
-  private getCssVar(name: string, fallback: string): string {
-    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    return value || fallback;
-  }
-
-  getFontFamily(): string {
-    if (this.cachedFontFamily) {
-      return this.cachedFontFamily;
-    }
-
-    // Read VSCode's editor font family from CSS variable
-    const editorFont = this.getCssVar('--vscode-editor-font-family', '');
-    this.cachedFontFamily = editorFont || ThemeBuilder.DEFAULT_FONT_FAMILY;
-
-    return this.cachedFontFamily;
-  }
-
-  getTheme(): XTermTheme {
-    if (this.cachedTheme) {
-      return this.cachedTheme;
-    }
-
-    this.cachedTheme = {
-      background: this.getCssVar(
-        '--vscode-terminal-background',
-        this.getCssVar('--vscode-editor-background', '#1e1e1e')
-      ),
-      foreground: this.getCssVar(
-        '--vscode-terminal-foreground',
-        this.getCssVar('--vscode-editor-foreground', '#d4d4d4')
-      ),
-      cursor: this.getCssVar('--vscode-terminalCursor-foreground', '#d4d4d4'),
-      cursorAccent: this.getCssVar('--vscode-terminalCursor-background', '#1e1e1e'),
-      selectionBackground: this.getCssVar('--vscode-terminal-selectionBackground', '#264f78'),
-      black: this.getCssVar('--vscode-terminal-ansiBlack', '#000000'),
-      red: this.getCssVar('--vscode-terminal-ansiRed', '#cd3131'),
-      green: this.getCssVar('--vscode-terminal-ansiGreen', '#0dbc79'),
-      yellow: this.getCssVar('--vscode-terminal-ansiYellow', '#e5e510'),
-      blue: this.getCssVar('--vscode-terminal-ansiBlue', '#2472c8'),
-      magenta: this.getCssVar('--vscode-terminal-ansiMagenta', '#bc3fbc'),
-      cyan: this.getCssVar('--vscode-terminal-ansiCyan', '#11a8cd'),
-      white: this.getCssVar('--vscode-terminal-ansiWhite', '#e5e5e5'),
-      brightBlack: this.getCssVar('--vscode-terminal-ansiBrightBlack', '#666666'),
-      brightRed: this.getCssVar('--vscode-terminal-ansiBrightRed', '#f14c4c'),
-      brightGreen: this.getCssVar('--vscode-terminal-ansiBrightGreen', '#23d18b'),
-      brightYellow: this.getCssVar('--vscode-terminal-ansiBrightYellow', '#f5f543'),
-      brightBlue: this.getCssVar('--vscode-terminal-ansiBrightBlue', '#3b8eea'),
-      brightMagenta: this.getCssVar('--vscode-terminal-ansiBrightMagenta', '#d670d6'),
-      brightCyan: this.getCssVar('--vscode-terminal-ansiBrightCyan', '#29b8db'),
-      brightWhite: this.getCssVar('--vscode-terminal-ansiBrightWhite', '#ffffff')
-    };
-
-    return this.cachedTheme;
-  }
-
-  invalidateCache(): void {
-    this.cachedTheme = null;
-    this.cachedFontFamily = null;
-  }
+function terminalFontFamily(): string {
+  const styles = getComputedStyle(document.documentElement);
+  return cssVar(styles, '--vscode-editor-font-family', '') || DEFAULT_FONT_FAMILY;
 }
 
 // Scroll management for terminal viewport
-class ScrollManager {
-  static isAtBottom(terminal: InstanceType<typeof Terminal>): boolean {
-    const buffer = terminal.buffer.active;
-    return buffer.viewportY >= buffer.baseY - 1;
-  }
+function isAtBottom(terminal: InstanceType<typeof Terminal>): boolean {
+  const buffer = terminal.buffer.active;
+  return buffer.viewportY >= buffer.baseY - 1;
+}
 
-  static setupScrollTracking(entry: TerminalEntry): void {
-    entry.terminal.onScroll(() => {
-      entry.isAtBottom = this.isAtBottom(entry.terminal);
-    });
+function setupScrollTracking(entry: TerminalEntry): void {
+  entry.terminal.onScroll(() => {
+    entry.isAtBottom = isAtBottom(entry.terminal);
+  });
 
-    const viewport = entry.element.querySelector('.xterm-viewport') as HTMLElement;
-    if (viewport) {
-      viewport.addEventListener(
-        'scroll',
-        () => {
-          entry.lastScrollTop = viewport.scrollTop;
-          entry.isAtBottom = this.isAtBottom(entry.terminal);
-        },
-        { passive: true }
-      );
-    }
+  const viewport = entry.element.querySelector('.xterm-viewport') as HTMLElement;
+  if (viewport) {
+    viewport.addEventListener(
+      'scroll',
+      () => {
+        entry.lastScrollTop = viewport.scrollTop;
+        entry.isAtBottom = isAtBottom(entry.terminal);
+      },
+      { passive: true }
+    );
   }
 }
 
@@ -243,9 +195,9 @@ type MessageHandlers = {
 
 const messageHandlers: MessageHandlers = {
   output: (message, ctx) => {
-    const t = ctx.state.get(message.id);
+    const t = ctx.terminals.get(message.id);
     if (t) {
-      const wasAtBottom = ScrollManager.isAtBottom(t.terminal);
+      const wasAtBottom = isAtBottom(t.terminal);
       t.terminal.write(message.data);
       if (wasAtBottom) {
         requestAnimationFrame(() => t.terminal.scrollToBottom());
@@ -253,7 +205,7 @@ const messageHandlers: MessageHandlers = {
     }
   },
   clear: (message, ctx) => {
-    const t = ctx.state.get(message.id);
+    const t = ctx.terminals.get(message.id);
     if (t) {
       t.terminal.clear();
       t.isAtBottom = true;
@@ -799,8 +751,8 @@ function formatK(tokens: number): string {
 
 // Main webview context class
 class WebviewContext {
-  readonly state = new TerminalState();
-  private readonly themeBuilder = new ThemeBuilder();
+  readonly terminals = new Map<string, TerminalEntry>();
+  private activeTerminalId: string | null = null;
   private readonly vscode: VSCodeAPI;
   private readonly tabBar: HTMLElement;
   private readonly terminalsContainer: HTMLElement;
@@ -851,8 +803,8 @@ class WebviewContext {
    * Deferred by a frame: VS Code is still moving focus to the view when this arrives.
    */
   focusActiveTerminal(): void {
-    const activeId = this.state.getActiveId();
-    const active = activeId ? this.state.get(activeId) : undefined;
+    const activeId = this.activeTerminalId;
+    const active = activeId ? this.terminals.get(activeId) : undefined;
     if (!active) return;
 
     requestAnimationFrame(() => {
@@ -861,8 +813,8 @@ class WebviewContext {
   }
 
   private refitActive(): void {
-    const activeId = this.state.getActiveId();
-    const active = activeId ? this.state.get(activeId) : undefined;
+    const activeId = this.activeTerminalId;
+    const active = activeId ? this.terminals.get(activeId) : undefined;
     if (!active || !activeId) return;
 
     requestAnimationFrame(() => {
@@ -913,11 +865,10 @@ class WebviewContext {
   }
 
   private applyTheme(): void {
-    this.themeBuilder.invalidateCache();
-    const theme = this.themeBuilder.getTheme();
-    const fontFamily = this.themeBuilder.getFontFamily();
+    const theme = buildTheme();
+    const fontFamily = terminalFontFamily();
 
-    this.state.forEach((entry) => {
+    this.terminals.forEach((entry) => {
       entry.terminal.options.theme = theme;
       entry.terminal.options.fontFamily = fontFamily;
     });
@@ -928,11 +879,11 @@ class WebviewContext {
 
   private setupResizeObserver(): void {
     this.resizeObserver = new ResizeObserver(() => {
-      const activeId = this.state.getActiveId();
+      const activeId = this.activeTerminalId;
       if (activeId) {
-        const active = this.state.get(activeId);
+        const active = this.terminals.get(activeId);
         if (active) {
-          const wasAtBottom = ScrollManager.isAtBottom(active.terminal);
+          const wasAtBottom = isAtBottom(active.terminal);
           const viewport = active.element.querySelector('.xterm-viewport') as HTMLElement;
           const savedScrollTop = viewport?.scrollTop ?? 0;
 
@@ -976,7 +927,7 @@ class WebviewContext {
       if (this.themeApplyTimer !== null) {
         clearTimeout(this.themeApplyTimer);
       }
-      this.state.forEach((t) => {
+      this.terminals.forEach((t) => {
         t.terminal.dispose();
       });
     });
@@ -997,7 +948,7 @@ class WebviewContext {
     const tempTerminal = new Terminal({
       cursorBlink: true,
       fontSize: 12,
-      fontFamily: this.themeBuilder.getFontFamily(),
+      fontFamily: terminalFontFamily(),
       lineHeight: 1.2
     });
     const tempFitAddon = new FitAddon();
@@ -1113,10 +1064,10 @@ class WebviewContext {
     const terminal = new Terminal({
       cursorBlink: true,
       fontSize: 12,
-      fontFamily: this.themeBuilder.getFontFamily(),
+      fontFamily: terminalFontFamily(),
       lineHeight: 1.2,
       letterSpacing: 0,
-      theme: this.themeBuilder.getTheme(),
+      theme: buildTheme(),
       allowProposedApi: true
     });
 
@@ -1144,21 +1095,21 @@ class WebviewContext {
       this.postMessage({ type: 'input', id, data });
     });
 
-    ScrollManager.setupScrollTracking(entry);
-    this.state.set(id, entry);
+    setupScrollTracking(entry);
+    this.terminals.set(id, entry);
 
     return entry;
   }
 
   switchToTerminal(id: string): void {
-    this.state.forEach((t, tid) => {
+    this.terminals.forEach((t, tid) => {
       t.element.style.display = tid === id ? 'block' : 'none';
     });
 
-    this.state.setActiveId(id);
+    this.activeTerminalId = id;
     this.statusLine.setActive(id);
 
-    const active = this.state.get(id);
+    const active = this.terminals.get(id);
     if (active) {
       const wasAtBottom = active.isAtBottom;
       const savedScrollTop = active.lastScrollTop;
@@ -1192,11 +1143,11 @@ class WebviewContext {
   }
 
   removeTerminal(id: string): void {
-    const t = this.state.get(id);
+    const t = this.terminals.get(id);
     if (t) {
       t.terminal.dispose();
       t.element.remove();
-      this.state.delete(id);
+      this.terminals.delete(id);
     }
     this.statusLine.remove(id);
   }
