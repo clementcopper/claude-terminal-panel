@@ -136,7 +136,7 @@ body {
   background-color: var(--vscode-progressBar-background, #0e70c0);
 }
 
-/* Same threshold the script uses for its macOS notification */
+/* Matches StatusLineView.WARN_AT_PCT in media/main.ts */
 .status-bar.warn .status-bar-fill {
   background-color: var(--vscode-editorWarning-foreground, #cca700);
 }

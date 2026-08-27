@@ -257,10 +257,6 @@ export class PathAutocompleteProvider {
     }));
   }
 
-  clearCache(): void {
-    this.cache.clear();
-  }
-
   dispose(): void {
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);

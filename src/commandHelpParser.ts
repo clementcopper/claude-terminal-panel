@@ -204,8 +204,7 @@ class FallbackParser implements HelpParser {
 
     return {
       command,
-      flags,
-      parseErrors: flags.length === 0 ? ['Could not parse help output'] : undefined
+      flags
     };
   }
 }
@@ -226,6 +225,6 @@ export class CommandHelpParser {
         }
       }
     }
-    return { command, flags: [], parseErrors: ['No flags found in help output'] };
+    return { command, flags: [] };
   }
 }

@@ -73,7 +73,7 @@ export class HelpExecutor {
           callback(result);
         })
         .catch(() => {
-          callback({ command, flags: [], parseErrors: ['Failed to get help'] });
+          callback({ command, flags: [] });
         });
     }, this.options.debounceMs);
 
@@ -85,7 +85,7 @@ export class HelpExecutor {
       // Help probing runs while the user is still typing, so anything that a shell would
       // interpret is rejected instead of executed. Plain command names and paths only.
       if (!HelpExecutor.SAFE_COMMAND.test(command)) {
-        resolve({ command, flags: [], parseErrors: ['Command name not probed'] });
+        resolve({ command, flags: [] });
         return;
       }
 
@@ -94,11 +94,7 @@ export class HelpExecutor {
 
       const tryNextFlag = (): void => {
         if (flagIndex >= helpFlags.length) {
-          resolve({
-            command,
-            flags: [],
-            parseErrors: ['Command does not support --help']
-          });
+          resolve({ command, flags: [] });
           return;
         }
 
@@ -172,10 +168,6 @@ export class HelpExecutor {
         // Fire and forget
       });
     }
-  }
-
-  clearCache(): void {
-    this.cache.clear();
   }
 
   dispose(): void {

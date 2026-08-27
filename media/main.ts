@@ -398,7 +398,7 @@ class TooltipManager {
  * extension host — the terminal stream itself carries no session state.
  */
 class StatusLineView {
-  /** Same threshold as the script's macOS notification. */
+  /** Context filling up: worth noticing, but nothing is imminent yet. */
   private static readonly WARN_AT_PCT = 60;
   /** Past this the context is close enough to full that a compaction is imminent. */
   private static readonly DANGER_AT_PCT = 80;
@@ -736,10 +736,6 @@ class StatusLineView {
 }
 
 /**
- * Compact token counts the way the statusLine script does: integers from 100k up, one
- * decimal below that, comma as the decimal separator.
- */
-/**
  * Keeps the tail of a path, which is the part that identifies the project.
  * `~/work/clients/acme/api` becomes `…/acme/api`; short paths stay whole.
  */
@@ -781,6 +777,10 @@ function formatClock(epochSeconds: number): string {
   }
 }
 
+/**
+ * Compact token counts the way the statusLine script does: integers from 100k up, one
+ * decimal below that, comma as the decimal separator.
+ */
 function formatK(tokens: number): string {
   // A 1M context window would read as "1000k" otherwise
   if (tokens >= 1_000_000) {

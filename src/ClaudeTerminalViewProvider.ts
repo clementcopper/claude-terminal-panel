@@ -6,7 +6,6 @@ import { ConfigManager } from './configManager';
 import { TerminalStateManager } from './terminalStateManager';
 import { dispatchMessage, type MessageHandlerContext } from './messageHandlers';
 import type { WebviewMessage, TerminalInstance, ExtensionMessage, EditorContext } from './types';
-import { WORKSPACE_ACCENT_COLORS } from './types';
 import { CommandInputPicker } from './commandInputPicker';
 import { PromptDetector, type PromptDetectorConfig } from './promptDetector';
 import { StatusLineWatcher } from './statusLineWatcher';
@@ -315,7 +314,6 @@ export class ClaudeTerminalViewProvider
     const instance: TerminalInstance = {
       id,
       name,
-      pty: undefined,
       isActive: false,
       workspaceFolderIndex: folderIndex,
       cwd
@@ -326,8 +324,7 @@ export class ClaudeTerminalViewProvider
     this.stateManager.setActive(id);
 
     // Notify webview with accent color
-    const accentColor = this.getAccentColor(folderIndex);
-    this.postMessage({ type: 'createTab', id, name, accentColor });
+    this.postMessage({ type: 'createTab', id });
     this.sendTabsUpdate();
     this.sendInitialStatusLine(id, cwd);
 
@@ -364,7 +361,6 @@ export class ClaudeTerminalViewProvider
     const instance: TerminalInstance = {
       id,
       name,
-      pty: undefined,
       isActive: false,
       workspaceFolderIndex: folderIndex,
       cwd
@@ -373,8 +369,7 @@ export class ClaudeTerminalViewProvider
     this.stateManager.set(id, instance);
     this.stateManager.setActive(id);
 
-    const accentColor = this.getAccentColor(folderIndex);
-    this.postMessage({ type: 'createTab', id, name, accentColor });
+    this.postMessage({ type: 'createTab', id });
     this.sendTabsUpdate();
     this.sendInitialStatusLine(id, cwd);
 
@@ -538,17 +533,17 @@ export class ClaudeTerminalViewProvider
     };
   }
 
-  /**
-   * Fills the status line the moment a tab exists. Claude Code only runs the statusLine command
-   * once it renders, which is after its first output, so without this the row would appear
-   * several seconds late — and change the terminal height while the user is already typing.
-   */
   /** Suppressed as `null` rather than skipped, so switching the setting off clears the row. */
   private sendEditorContext(context: EditorContext | null): void {
     const enabled = this.configManager.getConfig().editorContext;
     this.postMessage({ type: 'editorContext', data: enabled ? context : null });
   }
 
+  /**
+   * Fills the status line the moment a tab exists. Claude Code only runs the statusLine command
+   * once it renders, which is after its first output, so without this the row would appear
+   * several seconds late — and change the terminal height while the user is already typing.
+   */
   private sendInitialStatusLine(terminalId: string, cwd: string | undefined): void {
     const snapshot = this.statusLineWatcher.getInitialSnapshot(cwd);
     if (snapshot) {
@@ -559,13 +554,6 @@ export class ClaudeTerminalViewProvider
   private handleNotificationChange(terminalId: string, isWaiting: boolean): void {
     this.stateManager.setWaitingForInput(terminalId, isWaiting);
     this.postMessage({ type: 'setNotification', id: terminalId, show: isWaiting });
-  }
-
-  private getAccentColor(folderIndex: number | undefined): string | undefined {
-    if (folderIndex === undefined) {
-      return undefined;
-    }
-    return WORKSPACE_ACCENT_COLORS[folderIndex % WORKSPACE_ACCENT_COLORS.length];
   }
 
   private postMessage(message: ExtensionMessage): void {

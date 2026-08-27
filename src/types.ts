@@ -10,6 +10,14 @@ export const WORKSPACE_ACCENT_COLORS = [
   '#7a8c9e' // Muted steel
 ] as const;
 
+/** Maps a workspace folder index onto its accent color; undefined when the tab has no folder. */
+export function accentColorFor(folderIndex: number | undefined): string | undefined {
+  if (folderIndex === undefined) {
+    return undefined;
+  }
+  return WORKSPACE_ACCENT_COLORS[folderIndex % WORKSPACE_ACCENT_COLORS.length];
+}
+
 // node-pty types
 export interface IPty {
   onData: (callback: (data: string) => void) => void;
@@ -103,7 +111,6 @@ export interface EditorContext {
 export interface TerminalInstance {
   id: string;
   name: string;
-  pty: IPty | undefined;
   isActive: boolean;
   workspaceFolderIndex?: number;
   isWaitingForInput?: boolean;
@@ -139,7 +146,9 @@ export type ExtensionMessage =
   | { type: 'output'; id: string; data: string }
   | { type: 'clear'; id: string }
   | { type: 'tabsUpdate'; tabs: TabInfo[] }
-  | { type: 'createTab'; id: string; name: string; accentColor?: string }
+  // Name and accent color are deliberately absent: the tabsUpdate that always follows carries
+  // them, and the webview only needs the id to create the terminal element.
+  | { type: 'createTab'; id: string }
   | { type: 'switchTab'; id: string }
   | { type: 'removeTab'; id: string }
   | { type: 'setNotification'; id: string; show: boolean }
@@ -160,8 +169,6 @@ export interface CommandFlag {
 export interface ParsedHelp {
   command: string;
   flags: CommandFlag[];
-  subcommands?: string[];
-  parseErrors?: string[];
 }
 
 // Path autocomplete types

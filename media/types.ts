@@ -4,8 +4,6 @@ import type { FitAddon as XTermFitAddon } from '@xterm/addon-fit';
 // VS Code API types for webview
 export interface VSCodeAPI {
   postMessage(message: WebviewOutgoingMessage): void;
-  getState<T>(): T | undefined;
-  setState<T>(state: T): void;
 }
 
 // Global declarations for VSCode webview API
@@ -61,7 +59,9 @@ export type WebviewIncomingMessage =
   | { type: 'output'; id: string; data: string }
   | { type: 'clear'; id: string }
   | { type: 'tabsUpdate'; tabs: TabInfo[] }
-  | { type: 'createTab'; id: string; name: string; accentColor?: string }
+  // Name and accent color are deliberately absent: the tabsUpdate that always follows carries
+  // them, and the webview only needs the id to create the terminal element.
+  | { type: 'createTab'; id: string }
   | { type: 'switchTab'; id: string }
   | { type: 'removeTab'; id: string }
   | { type: 'setNotification'; id: string; show: boolean }
