@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as nodePath from 'path';
 import { randomBytes } from 'crypto';
 import { PtyManager, type PtyEventCallbacks } from './ptyManager';
-import { ConfigManager } from './configManager';
+import { getConfig } from './configManager';
 import { TerminalStateManager } from './terminalStateManager';
 import { dispatchMessage, type MessageHandlerContext } from './messageHandlers';
 import type { WebviewMessage, TerminalInstance, ExtensionMessage, EditorContext } from './types';
@@ -35,7 +35,6 @@ export class ClaudeTerminalViewProvider
   private lastCols = 80;
   private lastRows = 24;
 
-  private readonly configManager = new ConfigManager();
   private readonly stateManager = new TerminalStateManager();
   private readonly ptyManager: PtyManager;
   private readonly commandPicker = new CommandInputPicker();
@@ -70,7 +69,7 @@ export class ClaudeTerminalViewProvider
 
     // Pre-load help for the configured command. Probing the other CLI agents spawns a
     // process per candidate on every window start, so it is opt-in.
-    const config = this.configManager.getConfig();
+    const config = getConfig();
     this.commandPicker.preloadCommands(
       config.preloadHelp
         ? [config.command, 'claude', 'gemini', 'aider', 'codex', 'gh', 'interpreter', 'opencode']
@@ -308,7 +307,7 @@ export class ClaudeTerminalViewProvider
 
     // Select working directory first to get folder index
     const { path: cwd, folderIndex } = await this.ptyManager.selectWorkingDirectory(
-      this.configManager.getConfig().cwd
+      getConfig().cwd
     );
 
     const instance: TerminalInstance = {
@@ -329,7 +328,7 @@ export class ClaudeTerminalViewProvider
     this.sendInitialStatusLine(id, cwd);
 
     // Start the terminal process
-    const config = this.configManager.getConfig();
+    const config = getConfig();
     this.ptyManager.spawn(id, config, this.lastCols, this.lastRows, cwd);
 
     // Switch to the new tab
@@ -339,7 +338,7 @@ export class ClaudeTerminalViewProvider
   }
 
   private async promptAndCreateTerminal(): Promise<void> {
-    const config = this.configManager.getConfig();
+    const config = getConfig();
     const defaultCommand = [config.command, ...config.args].join(' ');
 
     const result = await this.commandPicker.promptForCommand(defaultCommand);
@@ -355,7 +354,7 @@ export class ClaudeTerminalViewProvider
 
     // Select working directory first to get folder index
     const { path: cwd, folderIndex } = await this.ptyManager.selectWorkingDirectory(
-      this.configManager.getConfig().cwd
+      getConfig().cwd
     );
 
     const instance: TerminalInstance = {
@@ -374,7 +373,7 @@ export class ClaudeTerminalViewProvider
     this.sendInitialStatusLine(id, cwd);
 
     // Use provided command/args instead of config
-    const config = this.configManager.getConfig();
+    const config = getConfig();
     const customConfig = { ...config, command, args };
     this.ptyManager.spawn(id, customConfig, this.lastCols, this.lastRows, cwd);
 
@@ -389,7 +388,7 @@ export class ClaudeTerminalViewProvider
    * the tab's cwd — which the tab tooltip shows.
    */
   public async createTerminalWithSessionFlag(flag: '--continue' | '--resume'): Promise<string> {
-    const config = this.configManager.getConfig();
+    const config = getConfig();
     return this.createTerminalWithCommand(config.command, [...config.args, flag]);
   }
 
@@ -490,7 +489,7 @@ export class ClaudeTerminalViewProvider
       this.restarting.add(activeId);
     }
 
-    const config = this.configManager.getConfig();
+    const config = getConfig();
     const cwd = this.stateManager.get(activeId)?.cwd;
     const spawnConfig =
       extraArgs.length > 0 ? { ...config, args: [...config.args, ...extraArgs] } : config;
@@ -505,7 +504,6 @@ export class ClaudeTerminalViewProvider
   }
 
   public updateConfig(): void {
-    this.configManager.invalidateCache();
     this.promptDetector.updateConfig(this.getPromptDetectorConfig());
     // `editorContext` may have just been switched: redraw the row rather than wait for the next
     // time the user happens to move the cursor
@@ -518,7 +516,6 @@ export class ClaudeTerminalViewProvider
     this.promptDetector.dispose();
     this.statusLineWatcher.dispose();
     this.editorTracker.dispose();
-    this.configManager.dispose();
     this.commandPicker.dispose();
   }
 
@@ -535,7 +532,7 @@ export class ClaudeTerminalViewProvider
 
   /** Suppressed as `null` rather than skipped, so switching the setting off clears the row. */
   private sendEditorContext(context: EditorContext | null): void {
-    const enabled = this.configManager.getConfig().editorContext;
+    const enabled = getConfig().editorContext;
     this.postMessage({ type: 'editorContext', data: enabled ? context : null });
   }
 
