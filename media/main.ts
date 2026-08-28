@@ -9,8 +9,7 @@ import type {
   TerminalEntry,
   XTermTheme,
   StatusLineSnapshot,
-  EditorContext,
-  SessionControlAction
+  EditorContext
 } from './types';
 
 // File path link provider for terminal
@@ -284,6 +283,9 @@ const messageHandlers: MessageHandlers = {
   },
   focusTerminal: (_message, ctx) => {
     ctx.focusActiveTerminal();
+  },
+  contextThreshold: (message, ctx) => {
+    ctx.setContextThreshold(message.value);
   }
 };
 
@@ -399,10 +401,11 @@ class TooltipManager {
  * extension host — the terminal stream itself carries no session state.
  */
 class StatusLineView {
-  /** Same threshold as the script's macOS notification. */
-  private static readonly WARN_AT_PCT = 60;
-  /** Past this the context is close enough to full that a compaction is imminent. */
-  private static readonly DANGER_AT_PCT = 80;
+  /** How far below the threshold the bar already turns orange, in points of the window. */
+  private static readonly WARN_LEAD_PCT = 10;
+  /** The slider cannot be dragged to the very ends — a threshold of 0 or 100 says nothing. */
+  private static readonly MIN_THRESHOLD_PCT = 5;
+  private static readonly MAX_THRESHOLD_PCT = 95;
   /** Nothing written for this long means Claude has not re-rendered since. */
   private static readonly STALE_AFTER_MS = 60_000;
   /** Redraw cadence for the reset countdown while no snapshot arrives. */
@@ -422,19 +425,28 @@ class StatusLineView {
    */
   private tickTimer: number | undefined;
 
+  /** Mirrors the setting; the extension host owns the value, this is the drawn copy. */
+  private threshold = 60;
   /**
-   * Built once and re-appended after every redraw: `draw()` empties the element, and these two do
-   * not belong to any row. They sit in the corner whatever the rows above them are doing.
+   * A snapshot arriving mid-drag would empty the element and take the handle out from under the
+   * pointer. Redraws are held back until the pointer is released, then run once.
    */
-  private readonly controls: HTMLDivElement;
+  private dragging = false;
+  private redrawPending = false;
 
   constructor(
     private readonly element: HTMLElement,
     private readonly onHeightChange: () => void,
     private readonly onEditorReferenceClick: () => void,
-    private readonly onSessionControl: (action: SessionControlAction) => void
-  ) {
-    this.controls = this.buildControls();
+    private readonly onStopTurn: () => void,
+    private readonly onThresholdChange: (value: number) => void
+  ) {}
+
+  setThreshold(value: number): void {
+    const clamped = StatusLineView.clampThreshold(value);
+    if (clamped === this.threshold) return;
+    this.threshold = clamped;
+    this.render();
   }
 
   set(id: string, snapshot: StatusLineSnapshot | null): void {
@@ -475,6 +487,11 @@ class StatusLineView {
    * keeps its old row count.
    */
   private render(): void {
+    if (this.dragging) {
+      this.redrawPending = true;
+      return;
+    }
+
     const previousHeight = this.element.hidden ? 0 : this.element.offsetHeight;
     this.draw();
     const currentHeight = this.element.hidden ? 0 : this.element.offsetHeight;
@@ -497,7 +514,6 @@ class StatusLineView {
     }
 
     this.element.textContent = '';
-    this.element.appendChild(this.controls);
 
     // First, so it sits at the top edge — closest to the editor it describes
     if (this.editorContext) {
@@ -511,10 +527,7 @@ class StatusLineView {
       return;
     }
 
-    const context = this.buildContextRow(snapshot);
-    if (context) {
-      this.element.appendChild(context);
-    }
+    this.element.appendChild(this.buildContextRow(snapshot));
 
     const secondary = this.buildSecondaryRow(snapshot);
     if (secondary) {
@@ -540,42 +553,20 @@ class StatusLineView {
   }
 
   /**
-   * Stop and continue, in the bottom right corner. Positioned absolutely so they cannot change the
-   * height of the bar — that would move the terminal's bottom edge and cost a refit on every draw.
+   * The stop button, at the head of the context row.
+   *
+   * It sits in the flow rather than in a corner: it is the only control left, and the row it
+   * leads is the one that says how the turn is going. Fixed 16px box so the row's height is a
+   * constant — a control that grows with its content would move the terminal's bottom edge.
    */
-  private buildControls(): HTMLDivElement {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'status-controls';
-
-    wrapper.appendChild(
-      this.buildControl(
-        'stop',
-        'Stop the current turn (same as Escape). Claude keeps the work done so far.',
-        'M2 2h6v6H2z'
-      )
-    );
-    wrapper.appendChild(
-      this.buildControl(
-        'continue',
-        'Continue: submits a prompt, so it starts a turn and costs tokens. An interrupted tool call is not picked up again.',
-        'M2.5 1.5 9 5l-6.5 3.5z'
-      )
-    );
-
-    return wrapper;
-  }
-
-  private buildControl(
-    action: SessionControlAction,
-    tooltip: string,
-    path: string
-  ): HTMLButtonElement {
+  private buildStopButton(): HTMLButtonElement {
     const button = document.createElement('button');
-    button.className = 'status-control';
+    button.className = 'status-stop';
     button.type = 'button';
-    button.dataset.tooltip = tooltip;
+    button.dataset.tooltip =
+      'Stop the current turn (same as Escape). Claude keeps the work done so far.';
     // The tooltip is a div elsewhere on the page, so the button still needs its own name
-    button.setAttribute('aria-label', action === 'stop' ? 'Stop the current turn' : 'Continue');
+    button.setAttribute('aria-label', 'Stop the current turn');
 
     // createElementNS rather than innerHTML: SVG in an HTML string needs the namespace anyway,
     // and this keeps the webview free of markup assignment.
@@ -583,16 +574,115 @@ class StatusLineView {
     svg.setAttribute('viewBox', '0 0 10 10');
     svg.setAttribute('aria-hidden', 'true');
     const shape = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    shape.setAttribute('d', path);
+    shape.setAttribute('d', 'M2 2h6v6H2z');
     shape.setAttribute('fill', 'currentColor');
     svg.appendChild(shape);
     button.appendChild(svg);
 
     button.addEventListener('click', () => {
-      this.onSessionControl(action);
+      this.onStopTurn();
     });
 
     return button;
+  }
+
+  private static clampThreshold(value: number): number {
+    if (!Number.isFinite(value)) return 60;
+    return Math.min(
+      StatusLineView.MAX_THRESHOLD_PCT,
+      Math.max(StatusLineView.MIN_THRESHOLD_PCT, Math.round(value))
+    );
+  }
+
+  /**
+   * The context bar plus the threshold handle above it.
+   *
+   * Two layers on purpose: the track has to clip its fill (`overflow: hidden` for the rounded
+   * ends), while the handle has to stand proud of a 4px bar. The wrapper carries the grab zone,
+   * padded upwards and pulled back with a negative margin so the row's height does not change.
+   */
+  private buildBar(usedPercent: number, level: string): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'status-bar-wrap';
+
+    const bar = document.createElement('div');
+    bar.className = `status-bar${level}`;
+    const fill = document.createElement('div');
+    fill.className = 'status-bar-fill';
+    fill.style.width = `${String(Math.min(100, Math.max(0, usedPercent)))}%`;
+    bar.appendChild(fill);
+    wrap.appendChild(bar);
+
+    const handle = document.createElement('div');
+    handle.className = 'status-threshold';
+    handle.setAttribute('role', 'slider');
+    handle.setAttribute('aria-label', 'Context threshold');
+    this.positionHandle(handle, this.threshold);
+    wrap.appendChild(handle);
+
+    this.wireThresholdDrag(wrap, handle);
+    return wrap;
+  }
+
+  private positionHandle(handle: HTMLElement, value: number): void {
+    handle.style.left = `${String(value)}%`;
+    handle.dataset.tooltip = `Context threshold ${String(value)}% — drag to change`;
+    handle.setAttribute('aria-valuenow', String(value));
+  }
+
+  /**
+   * Dragging the handle, and clicking the track to jump to a point.
+   *
+   * The value is only reported once the pointer is released: the setting is written to disk, and
+   * writing it on every pixel of a drag would be a file write per frame.
+   */
+  private wireThresholdDrag(wrap: HTMLElement, handle: HTMLElement): void {
+    const valueAt = (clientX: number): number => {
+      const box = wrap.getBoundingClientRect();
+      if (box.width <= 0) return this.threshold;
+      return StatusLineView.clampThreshold(((clientX - box.left) / box.width) * 100);
+    };
+
+    const commit = (): void => {
+      this.dragging = false;
+      this.onThresholdChange(this.threshold);
+      if (this.redrawPending) {
+        this.redrawPending = false;
+        this.render();
+      }
+    };
+
+    handle.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      this.dragging = true;
+      handle.setPointerCapture(event.pointerId);
+    });
+
+    handle.addEventListener('pointermove', (event) => {
+      if (!this.dragging) return;
+      this.threshold = valueAt(event.clientX);
+      this.positionHandle(handle, this.threshold);
+    });
+
+    handle.addEventListener('pointerup', (event) => {
+      if (!this.dragging) return;
+      handle.releasePointerCapture(event.pointerId);
+      commit();
+    });
+
+    handle.addEventListener('pointercancel', () => {
+      if (this.dragging) commit();
+    });
+
+    // A click anywhere on the track moves the threshold there — the handle is 8px wide and the
+    // panel is narrow, so aiming for it is not always worth it.
+    wrap.addEventListener('pointerdown', (event) => {
+      if (event.target === handle) return;
+      this.threshold = valueAt(event.clientX);
+      this.positionHandle(handle, this.threshold);
+      this.onThresholdChange(this.threshold);
+      this.render();
+    });
   }
 
   /**
@@ -643,24 +733,23 @@ class StatusLineView {
     return row;
   }
 
-  private buildContextRow(snapshot: StatusLineSnapshot): HTMLDivElement | null {
-    // One name for the level so bar and number can never disagree: '' below the warning,
-    // then warn, then danger.
+  private buildContextRow(snapshot: StatusLineSnapshot): HTMLDivElement {
+    // One name for the level so bar and number can never disagree: '' below the lead-in,
+    // then warn, then danger at the threshold itself.
     const level =
-      snapshot.usedPercent >= StatusLineView.DANGER_AT_PCT
+      snapshot.usedPercent >= this.threshold
         ? ' danger'
-        : snapshot.usedPercent >= StatusLineView.WARN_AT_PCT
+        : snapshot.usedPercent >= this.threshold - StatusLineView.WARN_LEAD_PCT
           ? ' warn'
           : '';
     // A tab that has not been rendered by Claude yet carries no numbers — show nothing rather
-    // than a full bar reading "0 / 0"
+    // than a full bar reading "0 / 0". The row itself still exists: it carries the stop button,
+    // which is worth having before the first render just as much as after it.
     const hasContext = snapshot.totalTokens > 0;
-    if (!hasContext && snapshot.model.length === 0 && !snapshot.effort) {
-      return null;
-    }
 
     const row = document.createElement('div');
     row.className = 'status-row';
+    row.appendChild(this.buildStopButton());
 
     if (snapshot.model) {
       const model = document.createElement('span');
@@ -677,25 +766,21 @@ class StatusLineView {
     }
 
     if (hasContext) {
-      const bar = document.createElement('div');
-      bar.className = `status-bar${level}`;
-      const fill = document.createElement('div');
-      fill.className = 'status-bar-fill';
-      fill.style.width = `${String(Math.min(100, Math.max(0, snapshot.usedPercent)))}%`;
-      bar.appendChild(fill);
-      row.appendChild(bar);
+      row.appendChild(this.buildBar(snapshot.usedPercent, level));
 
       const percent = document.createElement('span');
       percent.className = `status-value${level}`;
       percent.textContent = `${String(Math.round(snapshot.usedPercent))}%`;
       row.appendChild(percent);
 
+      // Only what is spent. The window size stays in the tooltip: it is the same number all
+      // session long, so it earns its space once, not on every row.
       const tokens = document.createElement('span');
       tokens.className = 'status-value';
-      tokens.textContent = `${formatK(snapshot.usedTokens)} / ${formatK(snapshot.totalTokens)}`;
+      tokens.textContent = formatK(snapshot.usedTokens);
       row.appendChild(tokens);
 
-      row.dataset.tooltip = `Context: ${String(snapshot.usedTokens)} of ${String(snapshot.totalTokens)} tokens`;
+      row.dataset.tooltip = `Context: ${String(snapshot.usedTokens)} of ${String(snapshot.totalTokens)} tokens · threshold ${String(this.threshold)}%`;
     }
 
     return row;
@@ -899,13 +984,20 @@ class WebviewContext {
       () => {
         this.postMessage({ type: 'insertEditorReference' });
       },
-      (action) => {
+      () => {
         const id = this.state.getActiveId();
         if (id) {
-          this.postMessage({ type: 'sessionControl', id, action });
+          this.postMessage({ type: 'stopTurn', id });
         }
+      },
+      (value) => {
+        this.postMessage({ type: 'setContextThreshold', value });
       }
     );
+  }
+
+  setContextThreshold(value: number): void {
+    this.statusLine.setThreshold(value);
   }
 
   setStatusLine(id: string, snapshot: StatusLineSnapshot | null): void {

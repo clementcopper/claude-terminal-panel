@@ -56,8 +56,8 @@ export interface TerminalConfig {
   statusLineCompactBudget: number;
   /** Show the open file, and any selected lines, at the top of the status line. */
   editorContext: boolean;
-  /** What the status line's continue button submits after a stop. */
-  continueText: string;
+  /** Percentage of the context window at which the status line warns that a `/clear` is due. */
+  contextThreshold: number;
 }
 
 /**
@@ -140,10 +140,9 @@ export type WebviewMessage =
    * model-generated output, and a channel from there into the terminal has to stay a command,
    * not a keyboard.
    */
-  | { type: 'sessionControl'; id: string; action: SessionControlAction };
-
-/** `stop` interrupts the current turn, `continue` starts a new one. */
-export type SessionControlAction = 'stop' | 'continue';
+  | { type: 'stopTurn'; id: string }
+  // The slider on the context bar; the value is written back to the workspace settings
+  | { type: 'setContextThreshold'; value: number };
 
 // Extension message types (from extension to webview)
 export type ExtensionMessage =
@@ -156,7 +155,9 @@ export type ExtensionMessage =
   | { type: 'setNotification'; id: string; show: boolean }
   | { type: 'statusLine'; id: string; data: StatusLineSnapshot | null }
   | { type: 'editorContext'; data: EditorContext | null }
-  | { type: 'focusTerminal' };
+  | { type: 'focusTerminal' }
+  // The threshold lives in the settings; the webview only draws and drags it
+  | { type: 'contextThreshold'; value: number };
 
 // Command help parsing types
 export interface CommandFlag {

@@ -10,7 +10,7 @@ import type {
   TerminalInstance,
   ExtensionMessage,
   EditorContext,
-  SessionControlAction
+  StatusLineSnapshot
 } from './types';
 import { WORKSPACE_ACCENT_COLORS } from './types';
 import { CommandInputPicker } from './commandInputPicker';
@@ -49,6 +49,13 @@ export class ClaudeTerminalViewProvider
   private readonly statusLineWatcher: StatusLineWatcher;
   private readonly editorTracker: EditorContextTracker;
 
+  /**
+   * Tabs that have already been told they are over the context threshold. Cleared again only once
+   * the tab drops a full ten points below it — right at the line a snapshot arrives every few
+   * seconds and would otherwise raise the same warning over and over.
+   */
+  private readonly thresholdNotified = new Set<string>();
+
   constructor(private readonly extensionUri: vscode.Uri) {
     const callbacks: PtyEventCallbacks = {
       onData: this.handlePtyData.bind(this),
@@ -65,6 +72,7 @@ export class ClaudeTerminalViewProvider
 
     this.statusLineWatcher = new StatusLineWatcher((terminalId, snapshot) => {
       this.postMessage({ type: 'statusLine', id: terminalId, data: snapshot });
+      this.checkContextThreshold(terminalId, snapshot);
     });
 
     // The tracker runs whatever the setting says: `editorContext` only decides whether the row
@@ -91,6 +99,7 @@ export class ClaudeTerminalViewProvider
     this.lastRows = rows;
     // A reloaded webview starts empty; the editor is whatever it was before the reload
     this.sendEditorContext(this.editorTracker.current);
+    this.sendContextThreshold();
     void this.createTerminal();
   }
 
@@ -100,26 +109,37 @@ export class ClaudeTerminalViewProvider
   }
 
   /**
-   * The status line's stop and continue buttons.
+   * The status line's stop button: the Escape key. Claude interrupts the turn and keeps the work
+   * done so far.
    *
-   * `stop` is the Escape key: Claude interrupts the turn and keeps the work done so far. `continue`
-   * is not a resume — an interrupted tool call is not picked up again. It submits a prompt, so it
-   * starts a turn and costs tokens, which is why the button says so.
+   * A named message rather than a general "write these bytes to the PTY" — the webview renders
+   * model-generated output, so the channel out of it has to stay a command, not a keyboard.
    */
-  handleSessionControl(id: string, action: SessionControlAction): void {
-    if (action === 'stop') {
-      this.ptyManager.write(id, '\x1b');
-      return;
-    }
+  handleStopTurn(id: string): void {
+    this.ptyManager.write(id, '\x1b');
+  }
 
-    const text = this.configManager.getConfig().continueText.trim();
-    if (text.length === 0) {
-      return;
-    }
-    // `\r` is Enter, the same way autoRun submits its command. No bracketed paste: this one line
-    // is meant to be sent, and the markers exist for the opposite case.
-    this.ptyManager.write(id, `${text}\r`);
-    this.promptDetector.onUserInput(id);
+  /**
+   * The slider on the context bar. Written to the workspace so it travels with the project — a
+   * 1M window and a 200k one do not want the same warning point.
+   *
+   * Falls back through the targets rather than assuming one: `update` with a workspace target
+   * throws when no folder is open, which is exactly the case a scratch window is in.
+   */
+  handleSetContextThreshold(value: number): void {
+    const clamped = Math.min(95, Math.max(5, Math.round(value)));
+    const target = vscode.workspace.workspaceFolders?.length
+      ? vscode.ConfigurationTarget.Workspace
+      : vscode.ConfigurationTarget.Global;
+
+    void vscode.workspace
+      .getConfiguration('claudeTerminal')
+      .update('contextThreshold', clamped, target)
+      .then(undefined, (error: unknown) => {
+        void vscode.window.showWarningMessage(
+          `Could not save the context threshold: ${String(error)}`
+        );
+      });
   }
 
   handleResize(id: string, cols: number, rows: number): void {
@@ -430,6 +450,7 @@ export class ClaudeTerminalViewProvider
     this.ptyManager.kill(terminalId);
     this.promptDetector.removeTerminal(terminalId);
     this.statusLineWatcher.removeTerminal(terminalId);
+    this.thresholdNotified.delete(terminalId);
     this.stateManager.delete(terminalId);
     this.postMessage({ type: 'removeTab', id: terminalId });
 
@@ -517,6 +538,7 @@ export class ClaudeTerminalViewProvider
 
     this.isRestarting = true;
     this.clear();
+    this.thresholdNotified.delete(activeId);
     this.ptyManager.kill(activeId);
 
     // Delay to let old PTY exit event fire before resetting flag
@@ -544,6 +566,7 @@ export class ClaudeTerminalViewProvider
     // `editorContext` may have just been switched: redraw the row rather than wait for the next
     // time the user happens to move the cursor
     this.sendEditorContext(this.editorTracker.current);
+    this.sendContextThreshold();
   }
 
   public dispose(): void {
@@ -576,6 +599,53 @@ export class ClaudeTerminalViewProvider
   private sendEditorContext(context: EditorContext | null): void {
     const enabled = this.configManager.getConfig().editorContext;
     this.postMessage({ type: 'editorContext', data: enabled ? context : null });
+  }
+
+  private sendContextThreshold(): void {
+    this.postMessage({
+      type: 'contextThreshold',
+      value: this.configManager.getConfig().contextThreshold
+    });
+  }
+
+  /**
+   * Warns once when a tab crosses the threshold, and re-arms only well below it.
+   *
+   * The tab is named because the warning can come from a tab that is not on screen — the watcher
+   * reports every tab, not just the active one.
+   */
+  private checkContextThreshold(terminalId: string, snapshot: StatusLineSnapshot | null): void {
+    const threshold = this.configManager.getConfig().contextThreshold;
+    const percent = snapshot?.usedPercent;
+
+    if (percent === undefined || snapshot === null || snapshot.totalTokens <= 0) {
+      return;
+    }
+
+    if (percent < threshold - 10) {
+      this.thresholdNotified.delete(terminalId);
+      return;
+    }
+
+    if (percent < threshold || this.thresholdNotified.has(terminalId)) {
+      return;
+    }
+
+    this.thresholdNotified.add(terminalId);
+    const name = this.stateManager.get(terminalId)?.name ?? 'Terminal';
+    void vscode.window
+      .showWarningMessage(
+        `${name}: context at ${String(Math.round(percent))}% of the ${String(threshold)}% threshold — consider /clear.`,
+        'Run /clear',
+        'Dismiss'
+      )
+      .then((choice) => {
+        if (choice !== 'Run /clear') return;
+        // Straight into the tab that raised it, which is not necessarily the active one.
+        // `\r` is Enter, the same way autoRun submits its command.
+        this.ptyManager.write(terminalId, '/clear\r');
+        this.promptDetector.onUserInput(terminalId);
+      });
   }
 
   private sendInitialStatusLine(terminalId: string, cwd: string | undefined): void {

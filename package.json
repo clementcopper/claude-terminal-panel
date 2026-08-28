@@ -235,10 +235,13 @@
           "default": true,
           "markdownDescription": "Show the file open in the editor at the top of the status line, with the selected line range when there is one. Clicking the row puts the selected code into Claude's prompt as a fenced block headed by `path:lines`, or `@path` when nothing is selected — an at-mention would pull the whole file. The command `Claude Terminal: Add Editor Selection to Prompt` does the same and stays available when this is off. Nothing is ever sent without asking, and nothing is submitted: the text waits in the prompt."
         },
-        "claudeTerminal.continueText": {
-          "type": "string",
-          "default": "continue",
-          "markdownDescription": "What the status line's continue button submits. It is not a resume: an interrupted tool call is not picked up again, Claude starts a new turn from the conversation so far — so the button costs tokens, unlike stop. Empty disables the button's effect."
+        "claudeTerminal.contextThreshold": {
+          "type": "number",
+          "default": 60,
+          "minimum": 5,
+          "maximum": 95,
+          "scope": "resource",
+          "markdownDescription": "Percentage of the context window at which the status line turns red and warns that a `/clear` is due. The bar's fill turns orange ten points before it. Drag the handle on the context bar to change it — that writes the value back here, for this workspace."
         },
         "claudeTerminal.env": {
           "type": "object",

@@ -189,6 +189,15 @@ new one. `status/last/` deliberately survives a window reload; the per-tab files
   `updatedAt` older than 60 s greys the row out.
 - Tabs running something other than Claude never write a file, so their row stays hidden.
 - Showing or hiding the row changes the terminal height, so the webview refits xterm afterwards.
+- The stop button leads the context row and writes Escape into the PTY. Its 16px box sets the
+  row's height, measured at 16px against 15px without it — one refit, not one per draw.
+- The context bar carries a threshold handle. Drag it, or click the track, and the value is
+  written to `claudeTerminal.contextThreshold` for the workspace (globally when no folder is
+  open). Default 60.
+- The bar's fill turns orange ten points below the threshold and red at it. Crossing it warns
+  once per tab, naming the tab because the warning can come from one that is off screen; the
+  warning offers to run `/clear` in that same tab. It re-arms only once the tab falls ten points
+  back below the threshold, so a session sitting on the line does not warn every few seconds.
 - Claude's own colours — diff blocks, highlights — are absolute truecolor sequences chosen for
   its `theme` setting. They do not follow the VS Code theme; the extension only supplies
   background, foreground and the 16 ANSI slots. On a light VS Code theme with Claude's dark

@@ -67,7 +67,8 @@ export type WebviewIncomingMessage =
   | { type: 'setNotification'; id: string; show: boolean }
   | { type: 'statusLine'; id: string; data: StatusLineSnapshot | null }
   | { type: 'editorContext'; data: EditorContext | null }
-  | { type: 'focusTerminal' };
+  | { type: 'focusTerminal' }
+  | { type: 'contextThreshold'; value: number };
 
 // Message types from webview to extension
 export type WebviewOutgoingMessage =
@@ -80,10 +81,8 @@ export type WebviewOutgoingMessage =
   | { type: 'switchTab'; id: string }
   | { type: 'openFile'; id: string; path: string; line?: number; column?: number }
   | { type: 'insertEditorReference' }
-  | { type: 'sessionControl'; id: string; action: SessionControlAction };
-
-/** `stop` interrupts the current turn, `continue` starts a new one. */
-export type SessionControlAction = 'stop' | 'continue';
+  | { type: 'stopTurn'; id: string }
+  | { type: 'setContextThreshold'; value: number };
 
 // Terminal entry in the map
 export interface TerminalEntry {

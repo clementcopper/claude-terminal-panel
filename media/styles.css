@@ -68,9 +68,7 @@ body {
   --status-row-gap: 4px;
 
   flex-shrink: 0;
-  /* Right side reserved for the stop and continue buttons in the corner, so no row can run under
-     them. Constant: the buttons are there whenever the bar is. */
-  padding: 4px 46px 6px 8px;
+  padding: 4px 8px 6px;
   position: relative;
   background-color: var(--vscode-tab-inactiveBackground, #2d2d2d);
   border-top: 1px solid var(--vscode-tab-border, #3c3c3c);
@@ -139,12 +137,13 @@ body {
   background-color: var(--vscode-progressBar-background, #0e70c0);
 }
 
-/* Same threshold the script uses for its macOS notification */
+/* Ten points before the threshold. Orange, not the editor's warning yellow: yellow next to the
+   red below it reads as a second neutral state rather than as the step before it. */
 .status-bar.warn .status-bar-fill {
-  background-color: var(--vscode-editorWarning-foreground, #cca700);
+  background-color: var(--vscode-charts-orange, #d18616);
 }
 
-/* Past 80% the remaining context is small enough that it is worth acting on */
+/* At the threshold: the context is full enough that a /clear is due */
 .status-bar.danger .status-bar-fill {
   background-color: var(--vscode-editorError-foreground, #f14c4c);
 }
@@ -155,7 +154,7 @@ body {
 }
 
 .status-value.warn {
-  color: var(--vscode-editorWarning-foreground, #cca700);
+  color: var(--vscode-charts-orange, #d18616);
 }
 
 .status-value.danger {
@@ -219,44 +218,70 @@ body {
   outline-offset: 1px;
 }
 
-/* Stop and continue, anchored to the corner rather than placed in a row: a row of their own would
-   make the bar taller, and taller means refitting xterm on every draw. */
-.status-controls {
-  position: absolute;
-  right: 8px;
-  bottom: 6px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.status-control {
+/* The stop button leads the context row. Fixed 16px box: the row is 10px/1.45 ≈ 14.5px, so the
+   button sets the row height — but sets it to a constant, which costs one refit, not one per draw. */
+.status-stop {
   appearance: none;
   border: none;
-  background: none;
-  padding: 2px;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--vscode-icon-foreground, #c5c5c5);
-  cursor: pointer;
   border-radius: 3px;
+  cursor: pointer;
+  /* An own surface rather than a bare glyph: at 10px type a lone icon disappears into the row */
+  background-color: var(--vscode-toolbar-hoverBackground, #383838);
+  color: var(--vscode-icon-foreground, #c5c5c5);
 }
 
-.status-control svg {
-  width: 10px;
-  height: 10px;
+.status-stop svg {
+  width: 8px;
+  height: 8px;
   display: block;
 }
 
-.status-control:hover {
-  background-color: var(--vscode-toolbar-hoverBackground, #383838);
-  color: var(--vscode-foreground, #ccc);
+.status-stop:hover {
+  background-color: var(--vscode-inputValidation-errorBorder, #be1100);
+  color: #fff;
 }
 
-.status-control:focus-visible {
+.status-stop:focus-visible {
   outline: 1px solid var(--vscode-focusBorder, #0078d4);
   outline-offset: 1px;
+}
+
+/* Carries the grab zone for the threshold handle. Padded up and pulled back by the same amount,
+   so the pointer gets 14px to aim at while the row stays exactly as tall as it was. */
+.status-bar-wrap {
+  flex: 1;
+  min-width: 24px;
+  position: relative;
+  padding: 5px 0;
+  margin: -5px 0;
+  cursor: pointer;
+}
+
+/* The handle stands proud of a 4px bar, so it cannot live inside the track — the track clips. */
+.status-threshold {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background-color: var(--vscode-foreground, #ccc);
+  border: 1px solid var(--vscode-tab-inactiveBackground, #2d2d2d);
+  box-sizing: border-box;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.status-threshold:hover {
+  background-color: var(--vscode-focusBorder, #0078d4);
 }
 
 /* Working directory last: least urgent, and the only part that can get long */
