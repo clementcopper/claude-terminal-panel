@@ -369,21 +369,37 @@ class TooltipManager {
     this.element.hidden = false;
 
     // Measure after the text is in, then place it. The tab bar sits on the right edge, so the
-    // preferred side is to the left of the element; above is the fallback for wide targets.
+    // default side is to the left of the element; above is the fallback for wide targets.
     const targetRect = target.getBoundingClientRect();
     const tip = this.element.getBoundingClientRect();
     const gap = TooltipManager.GAP_PX;
 
-    let left = targetRect.left - tip.width - gap;
-    let top = targetRect.top + targetRect.height / 2 - tip.height / 2;
+    let left: number;
+    let top: number;
 
-    if (left < gap) {
-      left = Math.min(targetRect.left, window.innerWidth - tip.width - gap);
+    if (target.dataset.tooltipPlacement === 'above') {
+      // Centred over the target. The threshold handle asks for this: it travels the width of the
+      // bar, and a tooltip beside it would read as belonging to whatever it happens to sit next
+      // to. Below is the fallback when the target is close to the top edge.
+      left = targetRect.left + targetRect.width / 2 - tip.width / 2;
       top = targetRect.top - tip.height - gap;
       if (top < gap) {
         top = targetRect.bottom + gap;
       }
+    } else {
+      left = targetRect.left - tip.width - gap;
+      top = targetRect.top + targetRect.height / 2 - tip.height / 2;
+
+      if (left < gap) {
+        left = Math.min(targetRect.left, window.innerWidth - tip.width - gap);
+        top = targetRect.top - tip.height - gap;
+        if (top < gap) {
+          top = targetRect.bottom + gap;
+        }
+      }
     }
+
+    left = Math.min(left, window.innerWidth - tip.width - gap);
 
     this.element.style.left = `${String(Math.max(gap, left))}px`;
     this.element.style.top = `${String(Math.max(gap, Math.min(top, window.innerHeight - tip.height - gap)))}px`;
@@ -644,6 +660,7 @@ class StatusLineView {
 
     const handle = document.createElement('div');
     handle.className = 'status-threshold';
+    handle.dataset.tooltipPlacement = 'above';
     handle.setAttribute('role', 'slider');
     handle.setAttribute('aria-label', 'Context threshold');
     this.positionHandle(handle, this.threshold);
