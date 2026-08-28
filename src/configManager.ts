@@ -31,6 +31,7 @@ export class ConfigManager {
     const config = vscode.workspace.getConfiguration('claudeTerminal');
     this.cachedConfig = {
       command: config.get<string>('command', 'claude'),
+      opencodeCommand: config.get<string>('opencodeCommand', 'opencode'),
       args: config.get<string[]>('args', []),
       autoRun: config.get<boolean>('autoRun', true),
       shell: config.get<string>('shell', ''),

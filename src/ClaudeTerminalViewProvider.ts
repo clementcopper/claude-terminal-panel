@@ -8,11 +8,13 @@ import { dispatchMessage, type MessageHandlerContext } from './messageHandlers';
 import type {
   WebviewMessage,
   TerminalInstance,
+  TerminalConfig,
   ExtensionMessage,
   EditorContext,
-  StatusLineSnapshot
+  StatusLineSnapshot,
+  Engine
 } from './types';
-import { WORKSPACE_ACCENT_COLORS } from './types';
+import { ENGINE_ACCENT_COLORS } from './types';
 import { CommandInputPicker } from './commandInputPicker';
 import { PromptDetector, type PromptDetectorConfig } from './promptDetector';
 import { StatusLineWatcher } from './statusLineWatcher';
@@ -56,6 +58,17 @@ export class ClaudeTerminalViewProvider
    */
   private readonly thresholdNotified = new Set<string>();
 
+  /**
+   * Tracks the last known terminal appearance. OpenCode's TUI only re-resolves its static theme
+   * when it is poked (the `\x1b[?997;1n` notification), and that poke has to land only after the
+   * webview has actually re-painted xterm's new background — otherwise OpenCode re-queries against
+   * the still-stale colour and flips the wrong way. So the poke itself is deferred to the webview's
+   * `themeApplied` message; this flag records whether the appearance actually changed.
+   */
+  private appearanceChanged = false;
+  private lastAppearance: 'dark' | 'light' = this.resolveAppearance();
+  private readonly themeSubscription: vscode.Disposable;
+
   constructor(private readonly extensionUri: vscode.Uri) {
     const callbacks: PtyEventCallbacks = {
       onData: this.handlePtyData.bind(this),
@@ -90,6 +103,49 @@ export class ClaudeTerminalViewProvider
         ? [config.command, 'claude', 'gemini', 'aider', 'codex', 'gh', 'interpreter', 'opencode']
         : [config.command]
     );
+
+    // OpenCode's TUI only re-resolves its static theme after a `\x1b[?997;1n` notification triggers
+    // a palette re-query (see `handleThemeNotification` in opencode's `packages/tui/src/context/theme.tsx`).
+    // But poking at the moment VS Code's theme event fires races the webview's 50 ms sample delay,
+    // so this only records that the appearance bucket changed; the actual poke is deferred to the
+    // webview's `themeApplied` message in `handleThemeApplied()`.
+    this.themeSubscription = vscode.window.onDidChangeActiveColorTheme(() => {
+      const current = this.resolveAppearance();
+      const last = this.lastAppearance;
+      this.lastAppearance = current;
+      if (current !== last) {
+        this.appearanceChanged = true;
+      }
+    });
+  }
+
+  /** The appearance bucket OpenCode derives its theme mode from. */
+  private resolveAppearance(): 'dark' | 'light' {
+    switch (vscode.window.activeColorTheme.kind) {
+      case vscode.ColorThemeKind.Light:
+      case vscode.ColorThemeKind.HighContrastLight:
+        return 'light';
+      default:
+        return 'dark';
+    }
+  }
+
+  /**
+   * Called from the webview after it has re-applied its xterm theme (so xterm's background is
+   * already the new one). Only then is it safe to poke the OpenCode tabs: OpenCode re-queries the
+   * terminal palette, derives the mode from the background it gets back, and flips its static
+   * theme's light/dark variant.
+   */
+  handleThemeApplied(): void {
+    if (!this.appearanceChanged) {
+      return;
+    }
+    this.appearanceChanged = false;
+    for (const tab of this.stateManager.getAll()) {
+      if (tab.engine === 'opencode') {
+        this.ptyManager.write(tab.id, '\x1b[?997;1n');
+      }
+    }
   }
 
   // --- MessageHandlerContext Implementation ---
@@ -149,13 +205,21 @@ export class ClaudeTerminalViewProvider
   }
 
   handleNewTab(): void {
-    void this.createTerminal();
+    this.promptNewTab();
   }
 
-  handleNewTabWithCommand(): void {
+  /**
+   * New tab entry point for the `+` button and the `claudeTerminal.newTab` shortcut:
+   * ask which engine to run, then open the tab. The very first tab (empty panel) is
+   * spawned directly with the configured engine instead of asking.
+   */
+  public promptNewTab(): void {
     void this.promptAndCreateTerminal();
   }
 
+  handleNewTabWithCommand(): void {
+    void this.promptAndCreateTerminalWithCommand();
+  }
   handleCloseTab(id: string): void {
     this.closeTerminal(id);
   }
@@ -348,9 +412,14 @@ export class ClaudeTerminalViewProvider
 
   // --- Terminal Management (Public API) ---
 
-  public async createTerminal(): Promise<string> {
+  /**
+   * Opens a new tab with the given engine. The engineering lives in the tab model:
+   * `restart`/`resume`/`continue` read the engine back from the active tab instead of
+   * assuming the configured engine, so a tab keeps its CLI across respawns.
+   */
+  public async createTerminal(engine: Engine = 'claude'): Promise<string> {
     const id = this.stateManager.generateId();
-    const name = this.stateManager.generateName();
+    const name = this.stateManager.generateName(engine);
 
     // Select working directory first to get folder index
     const { path: cwd, folderIndex } = await this.ptyManager.selectWorkingDirectory(
@@ -363,7 +432,8 @@ export class ClaudeTerminalViewProvider
       pty: undefined,
       isActive: false,
       workspaceFolderIndex: folderIndex,
-      cwd
+      cwd,
+      engine
     };
 
     // Add instance first, then activate (so setActive can find it)
@@ -371,13 +441,13 @@ export class ClaudeTerminalViewProvider
     this.stateManager.setActive(id);
 
     // Notify webview with accent color
-    const accentColor = this.getAccentColor(folderIndex);
+    const accentColor = this.getAccentColor(engine);
     this.postMessage({ type: 'createTab', id, name, accentColor });
     this.sendTabsUpdate();
     this.sendInitialStatusLine(id, cwd);
 
     // Start the terminal process
-    const config = this.configManager.getConfig();
+    const config = this.engineConfig(engine);
     this.ptyManager.spawn(id, config, this.lastCols, this.lastRows, cwd);
 
     // Switch to the new tab
@@ -386,7 +456,46 @@ export class ClaudeTerminalViewProvider
     return id;
   }
 
+  /**
+   * Asks the user which CLI to run before opening a new tab.
+   */
   private async promptAndCreateTerminal(): Promise<void> {
+    const engine = await this.promptForEngine();
+    if (!engine) {
+      return;
+    }
+    await this.createTerminal(engine);
+  }
+
+  /**
+   * QuickPick for the engine choice behind `+` and the new-tab shortcut: Claude Code or
+   * OpenCode. Everything else (custom command, --resume/--continue) is reachable through
+   * its own entry points.
+   */
+  private async promptForEngine(): Promise<Engine | undefined> {
+    const config = this.configManager.getConfig();
+    const items = [
+      {
+        label: '$(comment-discussion) Claude Code',
+        description: `Run: ${[config.command, ...config.args].join(' ')}`,
+        engine: 'claude' as const
+      },
+      {
+        label: '$(terminal-bash) OpenCode',
+        description: `Run: ${config.opencodeCommand}`,
+        engine: 'opencode' as const
+      }
+    ];
+
+    const picked = await vscode.window.showQuickPick(items, {
+      title: 'New Terminal',
+      placeHolder: 'Choose the CLI to run'
+    });
+
+    return picked?.engine;
+  }
+
+  private async promptAndCreateTerminalWithCommand(): Promise<void> {
     const config = this.configManager.getConfig();
     const defaultCommand = [config.command, ...config.args].join(' ');
 
@@ -399,7 +508,13 @@ export class ClaudeTerminalViewProvider
 
   public async createTerminalWithCommand(command: string, args: string[]): Promise<string> {
     const id = this.stateManager.generateId();
-    const name = this.stateManager.generateName();
+    // A hand-typed command is not necessarily Claude; only Claude gets the engineered tab
+    // semantics. Careful with opencode: the name/label still follows the command.
+    const engine: Engine =
+      nodePath.basename(command).replace(/\.(exe|cmd|bat)$/i, '') === 'claude'
+        ? 'claude'
+        : 'opencode';
+    const name = this.stateManager.generateName(engine);
 
     // Select working directory first to get folder index
     const { path: cwd, folderIndex } = await this.ptyManager.selectWorkingDirectory(
@@ -412,20 +527,20 @@ export class ClaudeTerminalViewProvider
       pty: undefined,
       isActive: false,
       workspaceFolderIndex: folderIndex,
-      cwd
+      cwd,
+      engine
     };
 
     this.stateManager.set(id, instance);
     this.stateManager.setActive(id);
 
-    const accentColor = this.getAccentColor(folderIndex);
+    const accentColor = this.getAccentColor(engine);
     this.postMessage({ type: 'createTab', id, name, accentColor });
     this.sendTabsUpdate();
     this.sendInitialStatusLine(id, cwd);
 
     // Use provided command/args instead of config
-    const config = this.configManager.getConfig();
-    const customConfig = { ...config, command, args };
+    const customConfig = { ...this.engineConfig(engine), command, args };
     this.ptyManager.spawn(id, customConfig, this.lastCols, this.lastRows, cwd);
 
     this.postMessage({ type: 'switchTab', id });
@@ -437,9 +552,13 @@ export class ClaudeTerminalViewProvider
    * Opens a tab that resumes earlier work instead of starting a fresh conversation.
    * Session history is stored per working directory, so the resulting list depends on
    * the tab's cwd — which the tab tooltip shows.
+   *
+   * `--resume`/`--continue` are Claude-specific flags; OpenCode has its own session flow
+   * under `/sessions`, so this is only wired to the Claude engine.
    */
   public async createTerminalWithSessionFlag(flag: '--continue' | '--resume'): Promise<string> {
-    const config = this.configManager.getConfig();
+    const engine: Engine = 'claude';
+    const config = this.engineConfig(engine);
     return this.createTerminalWithCommand(config.command, [...config.args, flag]);
   }
 
@@ -546,11 +665,30 @@ export class ClaudeTerminalViewProvider
       this.isRestarting = false;
     }, 100);
 
-    const config = this.configManager.getConfig();
-    const cwd = this.stateManager.get(activeId)?.cwd;
+    // The tab keeps its own engine: a restart on an OpenCode tab must come back as
+    // OpenCode, not silently fall back to the configured Claude command. Resume/continue
+    // flags are Claude-specific, so they only apply to Claude tabs.
+    const active = this.stateManager.get(activeId);
+    const engine = active?.engine ?? 'claude';
+    const config = this.engineConfig(engine);
+    const cwd = active?.cwd;
     const spawnConfig =
-      extraArgs.length > 0 ? { ...config, args: [...config.args, ...extraArgs] } : config;
+      engine === 'claude' && extraArgs.length > 0
+        ? { ...config, args: [...config.args, ...extraArgs] }
+        : config;
     this.ptyManager.spawn(activeId, spawnConfig, this.lastCols, this.lastRows, cwd);
+  }
+
+  /**
+   * The effective command for an engine. OpenCode tabs run the configured OpenCode command
+   * (default `opencode`) with no Claude-specific args; Claude tabs use `command` + `args`.
+   */
+  private engineConfig(engine: Engine): TerminalConfig {
+    const config = this.configManager.getConfig();
+    if (engine === 'opencode') {
+      return { ...config, command: config.opencodeCommand, args: [] };
+    }
+    return config;
   }
 
   public clear(): void {
@@ -571,6 +709,7 @@ export class ClaudeTerminalViewProvider
 
   public dispose(): void {
     this.disposed = true;
+    this.themeSubscription.dispose();
     this.ptyManager.killAll();
     this.promptDetector.dispose();
     this.statusLineWatcher.dispose();
@@ -649,6 +788,11 @@ export class ClaudeTerminalViewProvider
   }
 
   private sendInitialStatusLine(terminalId: string, cwd: string | undefined): void {
+    // Only Claude tabs have a status line; an OpenCode tab must not inherit a stale
+    // remembered snapshot from a previous Claude session in the same directory.
+    if (this.stateManager.get(terminalId)?.engine !== 'claude') {
+      return;
+    }
     const snapshot = this.statusLineWatcher.getInitialSnapshot(cwd);
     if (snapshot) {
       this.postMessage({ type: 'statusLine', id: terminalId, data: snapshot });
@@ -660,11 +804,8 @@ export class ClaudeTerminalViewProvider
     this.postMessage({ type: 'setNotification', id: terminalId, show: isWaiting });
   }
 
-  private getAccentColor(folderIndex: number | undefined): string | undefined {
-    if (folderIndex === undefined) {
-      return undefined;
-    }
-    return WORKSPACE_ACCENT_COLORS[folderIndex % WORKSPACE_ACCENT_COLORS.length];
+  private getAccentColor(engine: Engine): string {
+    return ENGINE_ACCENT_COLORS[engine];
   }
 
   private postMessage(message: ExtensionMessage): void {

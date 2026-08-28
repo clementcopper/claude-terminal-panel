@@ -21,6 +21,7 @@ export interface TabInfo {
   accentColor?: string;
   isWaitingForInput?: boolean;
   cwd?: string;
+  engine?: 'claude' | 'opencode';
 }
 
 /**
@@ -82,7 +83,8 @@ export type WebviewOutgoingMessage =
   | { type: 'openFile'; id: string; path: string; line?: number; column?: number }
   | { type: 'insertEditorReference' }
   | { type: 'stopTurn'; id: string }
-  | { type: 'setContextThreshold'; value: number };
+  | { type: 'setContextThreshold'; value: number }
+  | { type: 'themeApplied' };
 
 // Terminal entry in the map
 export interface TerminalEntry {

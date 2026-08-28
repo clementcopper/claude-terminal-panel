@@ -1143,6 +1143,11 @@ class WebviewContext {
 
     // A different font family changes the cell size, so the column count can change with it
     this.refitActive();
+
+    // The new background is now live in every xterm. Only from here on is it safe for the host to
+    // poke OpenCode tabs (which re-query the palette for their theme mode); kicking earlier would
+    // race this 50 ms sample delay and flip them against the still-stale background.
+    this.postMessage({ type: 'themeApplied' });
   }
 
   private setupResizeObserver(): void {
@@ -1256,9 +1261,12 @@ class WebviewContext {
     const tabElement = document.createElement('div');
     tabElement.className = `tab ${tab.isActive ? 'active' : ''}`;
     tabElement.dataset.id = tab.id;
-    // Show the working directory: Claude Code keeps its session history per directory,
-    // so a tab in an unexpected folder shows an unexpected /resume list.
-    tabElement.dataset.tooltip = tab.cwd ? `${tab.name} — ${tab.cwd}` : tab.name;
+    // Show the engine and the working directory: Claude Code keeps its session history per
+    // directory, so a tab in an unexpected folder shows an unexpected /resume list.
+    const engineLabel = tab.engine === 'opencode' ? 'OpenCode' : 'Claude';
+    tabElement.dataset.tooltip = tab.cwd
+      ? `${tab.name} — ${engineLabel} — ${tab.cwd}`
+      : `${tab.name} — ${engineLabel}`;
 
     // Apply accent color if provided (for multi-workspace folder coloring)
     if (tab.accentColor) {

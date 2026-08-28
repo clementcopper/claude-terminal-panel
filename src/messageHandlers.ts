@@ -16,6 +16,7 @@ export interface MessageHandlerContext {
   handleInsertEditorReference(): void;
   handleStopTurn(id: string): void;
   handleSetContextThreshold(value: number): void;
+  handleThemeApplied(): void;
 }
 
 type MessageHandler<T extends WebviewMessage> = (message: T, ctx: MessageHandlerContext) => void;
@@ -61,6 +62,9 @@ const messageHandlers: MessageHandlerMap = {
   },
   setContextThreshold: (message, ctx) => {
     ctx.handleSetContextThreshold(message.value);
+  },
+  themeApplied: (_message, ctx) => {
+    ctx.handleThemeApplied();
   }
 };
 

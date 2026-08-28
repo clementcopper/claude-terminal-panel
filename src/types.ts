@@ -1,15 +1,3 @@
-// Muted but distinct workspace accent colors
-export const WORKSPACE_ACCENT_COLORS = [
-  '#6b9ac4', // Muted blue
-  '#82b366', // Muted green
-  '#c4a46b', // Muted gold
-  '#b36b82', // Muted rose
-  '#9b82b3', // Muted purple
-  '#6bc4b3', // Muted teal
-  '#c47a6b', // Muted coral
-  '#7a8c9e' // Muted steel
-] as const;
-
 // node-pty types
 export interface IPty {
   onData: (callback: (data: string) => void) => void;
@@ -33,9 +21,28 @@ export interface INodePty {
   ) => IPty;
 }
 
+/**
+ * The CLI agent a tab runs. Claude Code is the default; OpenCode is the alternative
+ * the user picks when opening a new tab. Session flags and the status line are
+ * Claude-specific.
+ */
+export type Engine = 'claude' | 'opencode';
+
+/**
+ * The accent line colour for a tab, keyed by engine. Claude Code uses Anthropic's orange;
+ * OpenCode uses the accent purple of its terminal UI (the opencode.ai logo itself is
+ * monochrome, so the violet is the one its TUI draws).
+ */
+export const ENGINE_ACCENT_COLORS: Record<Engine, string> = {
+  claude: '#d97757',
+  opencode: '#9d7cd8'
+};
+
 // Configuration
 export interface TerminalConfig {
   command: string;
+  /** Command for an OpenCode tab; what `+` → OpenCode spawns. */
+  opencodeCommand: string;
   args: string[];
   autoRun: boolean;
   shell: string;
@@ -110,6 +117,8 @@ export interface TerminalInstance {
   workspaceFolderIndex?: number;
   isWaitingForInput?: boolean;
   cwd?: string;
+  /** Which CLI agent this tab runs; drives restart/resume/continue. */
+  engine: Engine;
 }
 
 // Tab information for UI
@@ -121,6 +130,8 @@ export interface TabInfo {
   isWaitingForInput?: boolean;
   /** Working directory of the terminal — shown as the tab tooltip. */
   cwd?: string;
+  /** Which CLI agent this tab runs. */
+  engine: Engine;
 }
 
 // Webview message types (from webview to extension)
@@ -142,7 +153,13 @@ export type WebviewMessage =
    */
   | { type: 'stopTurn'; id: string }
   // The slider on the context bar; the value is written back to the workspace settings
-  | { type: 'setContextThreshold'; value: number };
+  | { type: 'setContextThreshold'; value: number }
+  /**
+   * The webview just re-applied its xterm theme after a VS Code colour-theme change. This is the
+   * point in time (after the new background is live in xterm) at which OpenCode tabs can safely be
+   * poked to re-resolve their theme — poking earlier races the 50 ms sample delay in the webview.
+   */
+  | { type: 'themeApplied' };
 
 // Extension message types (from extension to webview)
 export type ExtensionMessage =

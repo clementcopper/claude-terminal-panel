@@ -89,7 +89,7 @@ npm run package
 
 1. **Open the Sidebar** - Click the Claude icon in the activity bar (secondary sidebar)
 2. **Interact with your AI** - Type your prompts and interact with your AI assistant directly in the terminal
-3. **Use Quick Actions** - Click the restart icon in the view title bar, or use the + button to add new tabs
+3. **Use Quick Actions** - Click the restart icon in the view title bar, or use the + button to add new tabs. The + button (and `Cmd+Shift+\``) ask which engine to run — **Claude Code** or **OpenCode** — before spawning the tab.
 
 ### Commands
 
@@ -125,23 +125,24 @@ Access commands via the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) or the 
 
 Configure the extension via VS Code Settings (`Cmd+,` / `Ctrl+,`):
 
-| Setting                                  | Type    | Default    | Description                                                                                        |
-| ---------------------------------------- | ------- | ---------- | -------------------------------------------------------------------------------------------------- |
-| `claudeTerminal.command`                 | string  | `"claude"` | The command to run in the terminal                                                                 |
-| `claudeTerminal.args`                    | array   | `[]`       | Arguments to pass to the command                                                                   |
-| `claudeTerminal.autoRun`                 | boolean | `true`     | Automatically run the command when the terminal opens                                              |
-| `claudeTerminal.shell`                   | string  | `""`       | Custom shell to use (empty for system default)                                                     |
-| `claudeTerminal.cwd`                     | string  | `""`       | Fixed working directory, `~` allowed (empty for the first workspace folder)                        |
-| `claudeTerminal.env`                     | object  | `{}`       | Additional environment variables                                                                   |
-| `claudeTerminal.preloadHelp`             | boolean | `false`    | Probe other CLI agents for `--help` output on startup                                              |
-| `claudeTerminal.statusLine`              | boolean | `true`     | Render Claude's status line at the bottom of the panel                                             |
-| `claudeTerminal.statusLineProvider`      | string  | `bundled`  | `bundled` uses the shipped producer, `own` expects your own `statusLine` command to write the data |
-| `claudeTerminal.statusLineCompactBudget` | number  | `0`        | Target number of compactions shown as `Compacted 1/3`; `0` shows the count alone                   |
-| `claudeTerminal.editorContext`           | boolean | `true`     | Show the open file above the status line; the command works either way                             |
-| `claudeTerminal.directMode`              | boolean | `true`     | Run command directly without shell wrapper                                                         |
-| `claudeTerminal.promptNotification`      | boolean | `true`     | Show notification indicator when terminal awaits input                                             |
-| `claudeTerminal.promptNotificationDelay` | number  | `300`      | Delay (ms) before showing notification after output stops                                          |
-| `claudeTerminal.promptPatterns`          | array   | `[]`       | Additional regex patterns to detect input prompts                                                  |
+| Setting                                  | Type    | Default      | Description                                                                                        |
+| ---------------------------------------- | ------- | ------------ | -------------------------------------------------------------------------------------------------- |
+| `claudeTerminal.command`                 | string  | `"claude"`   | The command to run in the terminal                                                                 |
+| `claudeTerminal.opencodeCommand`         | string  | `"opencode"` | Command run by an OpenCode tab picked from the new-tab menu                                        |
+| `claudeTerminal.args`                    | array   | `[]`         | Arguments to pass to the command                                                                   |
+| `claudeTerminal.autoRun`                 | boolean | `true`       | Automatically run the command when the terminal opens                                              |
+| `claudeTerminal.shell`                   | string  | `""`         | Custom shell to use (empty for system default)                                                     |
+| `claudeTerminal.cwd`                     | string  | `""`         | Fixed working directory, `~` allowed (empty for the first workspace folder)                        |
+| `claudeTerminal.env`                     | object  | `{}`         | Additional environment variables                                                                   |
+| `claudeTerminal.preloadHelp`             | boolean | `false`      | Probe other CLI agents for `--help` output on startup                                              |
+| `claudeTerminal.statusLine`              | boolean | `true`       | Render Claude's status line at the bottom of the panel                                             |
+| `claudeTerminal.statusLineProvider`      | string  | `bundled`    | `bundled` uses the shipped producer, `own` expects your own `statusLine` command to write the data |
+| `claudeTerminal.statusLineCompactBudget` | number  | `0`          | Target number of compactions shown as `Compacted 1/3`; `0` shows the count alone                   |
+| `claudeTerminal.editorContext`           | boolean | `true`       | Show the open file above the status line; the command works either way                             |
+| `claudeTerminal.directMode`              | boolean | `true`       | Run command directly without shell wrapper                                                         |
+| `claudeTerminal.promptNotification`      | boolean | `true`       | Show notification indicator when terminal awaits input                                             |
+| `claudeTerminal.promptNotificationDelay` | number  | `300`        | Delay (ms) before showing notification after output stops                                          |
+| `claudeTerminal.promptPatterns`          | array   | `[]`         | Additional regex patterns to detect input prompts                                                  |
 
 ### Configuration Examples
 
@@ -298,7 +299,12 @@ Notes:
 
 ## Custom Commands
 
-Click the CLI icon button (next to the + button) in the tab bar to create a terminal with a custom command instead of the default.
+Click the CLI icon button (next to the + button) in the tab bar to create a terminal with a custom command instead of picking from the engine menu.
+
+Each tab remembers the engine it was started with, so `Restart Terminal` and the Resume/Continue
+commands reuse it instead of falling back to the configured command. OpenCode tabs get no status
+line (that row is Claude-specific), and the Claude-only `--resume` / `--continue` flags are not
+applied to them.
 
 ### Command Input
 

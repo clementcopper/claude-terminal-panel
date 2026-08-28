@@ -178,6 +178,11 @@
           "default": "claude",
           "description": "Command to run on terminal start"
         },
+        "claudeTerminal.opencodeCommand": {
+          "type": "string",
+          "default": "opencode",
+          "markdownDescription": "Command used for an OpenCode tab, picked from the new-tab menu. The tab remembers its engine, so restart/resume/continue keep using this."
+        },
         "claudeTerminal.args": {
           "type": "array",
           "items": {

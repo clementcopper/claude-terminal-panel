@@ -77,19 +77,20 @@ there is nothing to bundle. A Linux binary in the archive does no harm on macOS,
 
 ## Differences from upstream
 
-| Area                         | Change                                                                                                                                                            |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status line                  | Claude's status data rendered natively at the bottom edge instead of as text in the scrollback; `claudeTerminal.statusLine` switches it off                       |
-| Title bar                    | `Resume Session in Current Tab…` and `Continue Last Session in Current Tab` respawn the **active** tab with `--resume` / `--continue`, in the tab's own directory |
-| Commands                     | `New Terminal Tab (Resume Session…)` and `(Continue Last Session)` do the same in an **additional** tab; Command Palette only                                     |
-| Tab tooltip                  | shows the working directory, because Claude Code stores session history per directory                                                                             |
-| Editor row                   | the open file sits above the status line with its selected range; clicking it puts the **selected code** into the prompt, `@path` only when nothing is selected   |
-| `claudeTerminal.cwd`         | fixed working directory independent of the open folder, `~` allowed                                                                                               |
-| `claudeTerminal.preloadHelp` | defaults to `false`. On, startup probes eight CLI binaries with `--help`                                                                                          |
-| Help probing                 | runs without `shell: true`; command names must match `^[A-Za-z0-9._@/-]+$`                                                                                        |
-| File links                   | paths outside the workspace and the terminal's cwd ask before opening                                                                                             |
-| Nonce                        | `crypto.randomBytes` instead of `Math.random`                                                                                                                     |
-| Build chain                  | no `@electron/rebuild`, no `node-abi`, no `postinstall`                                                                                                           |
+| Area                         | Change                                                                                                                                                                                                                            |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status line                  | Claude's status data rendered natively at the bottom edge instead of as text in the scrollback; `claudeTerminal.statusLine` switches it off                                                                                       |
+| Title bar                    | `Resume Session in Current Tab…` and `Continue Last Session in Current Tab` respawn the **active** tab with `--resume` / `--continue`, in the tab's own directory                                                                 |
+| Commands                     | `New Terminal Tab (Resume Session…)` and `(Continue Last Session)` do the same in an **additional** tab; Command Palette only                                                                                                     |
+| Tab tooltip                  | shows the working directory, because Claude Code stores session history per directory                                                                                                                                             |
+| Engine choice                | the `+` button and `New Terminal Tab` ask **Claude Code** or **OpenCode** before spawning; each tab remembers its engine for restart/resume/continue; Claude-only session flags and the status line are skipped for OpenCode tabs |
+| Editor row                   | the open file sits above the status line with its selected range; clicking it puts the **selected code** into the prompt, `@path` only when nothing is selected                                                                   |
+| `claudeTerminal.cwd`         | fixed working directory independent of the open folder, `~` allowed                                                                                                                                                               |
+| `claudeTerminal.preloadHelp` | defaults to `false`. On, startup probes eight CLI binaries with `--help`                                                                                                                                                          |
+| Help probing                 | runs without `shell: true`; command names must match `^[A-Za-z0-9._@/-]+$`                                                                                                                                                        |
+| File links                   | paths outside the workspace and the terminal's cwd ask before opening                                                                                                                                                             |
+| Nonce                        | `crypto.randomBytes` instead of `Math.random`                                                                                                                                                                                     |
+| Build chain                  | no `@electron/rebuild`, no `node-abi`, no `postinstall`                                                                                                                                                                           |
 
 ## Status line
 

@@ -316,9 +316,75 @@ export class PtyManager {
     };
 
     if (config.directMode && config.command) {
-      return this.nodePty.spawn(config.command, config.args, spawnOptions);
+      const resolved = this.resolveCommand(config.command);
+      return this.nodePty.spawn(resolved, config.args, spawnOptions);
     }
     return this.nodePty.spawn(shell, [], spawnOptions);
+  }
+
+  /**
+   * Turns a bare command name into an absolute path so it spawns regardless of the PATH the
+   * extension host was launched with. On macOS that PATH comes from Finder/Dock, which often
+   * omits the user-local dirs where CLI agents actually live (`~/.local/bin`, `~/.opencode/bin`).
+   * A missing binary is not reported — node-pty silently exits with code 1 — so `claude` from
+   * `~/.local/bin` works while `opencode` from `~/.opencode/bin` failed on this machine.
+   *
+   * Given a path already, it is passed through unchanged. Unresolvable names fall back to the
+   * original, preserving the not-found behaviour the user can see and fix in their settings.
+   */
+  private resolveCommand(command: string): string {
+    if (!command || command.includes('/') || path.isAbsolute(command)) {
+      return command;
+    }
+
+    const candidates = this.searchDirs();
+    for (const abs of this.commandCandidates(command)) {
+      for (const dir of candidates) {
+        if (this.isExecutableFile(path.join(dir, abs))) {
+          return path.join(dir, abs);
+        }
+      }
+    }
+    return command;
+  }
+
+  /** Directories searched for a CLI binary: the extension-host PATH plus agent bin dirs. */
+  private searchDirs(): string[] {
+    const dirs = new Set<string>();
+    for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
+      if (dir) dirs.add(dir);
+    }
+    // Where CLIs land that a login shell adds to PATH but a Finder-launched host does not.
+    for (const dir of [
+      path.join(os.homedir(), '.local', 'bin'),
+      path.join(os.homedir(), '.opencode', 'bin'),
+      path.join(os.homedir(), 'bin')
+    ]) {
+      dirs.add(dir);
+    }
+    return Array.from(dirs);
+  }
+
+  /** The command name plus its platform executable extensions. */
+  private commandCandidates(command: string): string[] {
+    const candidates = [command];
+    if (process.platform === 'win32') {
+      const match = command.match(/\.(exe|cmd|bat)$/i);
+      if (match) {
+        return [command];
+      }
+      candidates.push(`${command}.exe`, `${command}.cmd`, `${command}.bat`);
+    }
+    return candidates;
+  }
+
+  private isExecutableFile(file: string): boolean {
+    try {
+      fs.accessSync(file, fs.constants.X_OK);
+      return fs.statSync(file).isFile();
+    } catch {
+      return false;
+    }
   }
 
   private setupPtyEventHandlers(terminalId: string, pty: IPty): void {

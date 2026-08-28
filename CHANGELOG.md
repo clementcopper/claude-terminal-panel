@@ -5,6 +5,23 @@ All notable changes to the "Claude Terminal Panel" extension will be documented 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Choose the engine when opening a new tab: the `+` button and `Claude Terminal: New Terminal Tab`
+  (`Cmd+Shift+\``) now ask **Claude Code** or **OpenCode** instead of spawning the configured
+  command without asking. The first tab after the panel opens still starts the configured engine.
+- Each tab remembers its engine (`claude` / `opencode`); `Restart`, `Resume` and `Continue` reuse
+  the tab's own engine instead of falling back to the configured Claude command.
+- `claudeTerminal.opencodeCommand` (default `opencode`) — the command an OpenCode tab runs.
+- Tab tooltips show the engine alongside the working directory.
+
+### Notes
+
+- OpenCode tabs get no status line (that row is Claude-specific), and the Claude-only
+  `--resume` / `--continue` session flags do not apply to them.
+
 ## [1.1.0] - 2026-08-05
 
 Local fork, published nowhere: built and installed as `local.claude-terminal-panel-local`.

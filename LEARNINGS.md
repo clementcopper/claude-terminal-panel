@@ -62,6 +62,16 @@ Non-obvious findings and dead ends. Only add what saves future work.
 
 ## Claude Code
 
+- **The extension host inherits Finder's PATH, not the login shell's.** On macOS a window launched
+  from Finder/Dock is missing the user-local dirs where CLI agents live (`~/.local/bin`,
+  `~/.opencode/bin`). `claude` was in `~/.local/bin` and worked, `opencode` in `~/.opencode/bin`
+  failed — the asymmetry looked like an opencode bug but was a PATH gap.
+- **node-pty reports a binary that is not on PATH as `[Process exited with code 1]`, silently** —
+  no error text, no throw. Reproduced: spawning `opencode` with a stripped `env.PATH` exits 1 with
+  empty output. The `/bin/sh`-style fallback masks "command not found" as a plain exit. Fix in
+  `PtyManager.resolveCommand`: resolve the command to an absolute path across the host PATH plus
+  `~/.local/bin`, `~/.opencode/bin` and `~/bin` before `spawn`, so a bare name works regardless
+  of how the host was launched. This applies to every custom-command agent, not just opencode.
 - **Claude Code stores session history per working directory** under `~/.claude/projects/<path>/`.
   A panel that starts in the wrong folder shows an empty `/resume` list with nothing actually
   broken. Hence the cwd in the tab tooltip and the `claudeTerminal.cwd` setting.
@@ -146,3 +156,24 @@ Non-obvious findings and dead ends. Only add what saves future work.
   still read as sitting too low; the fix was 4 px more at the top inset and 5 px of margin below
   the container, both set by eye. Write into the comment that the numbers are deliberately uneven,
   or the next reader restores the matching values and undoes it.
+
+## OpenCode theme in the panel
+
+- **OpenCode derives its terminal theme mode from one colour only: `defaultBackground`.** Its
+  `system` theme and its static themes all decide dark/light via `terminalMode()`, which buckets the
+  OSC-11 background by luminance (Rec.601). So to make an OpenCode tab in the panel follow the
+  system appearance, the lever is the background our xterm reports on an OSC-11 query — not the
+  theme file. xterm answers such a query from `themeService.colors.background`
+  (`CoreBrowserTerminal.ts`), which is exactly the `theme.background` the webview sets.
+- **A static OpenCode theme does not live-switch on its own — it needs a poke after the new
+  background is live.** `packages/tui/src/context/theme.tsx` watches the input
+  `\x1b[?997;1n`/`\x1b[?997;2n` (`handleThemeNotification`), which triggers a palette re-query that
+  flips `store.mode`; the static theme's variant only re-resolves once `store.mode` changes. The
+  `system` theme in the PTY was no better — it re-derives the same way and flipped just as
+  unreliably.
+- **The poke must ride on the webview's own `themeApplied`, not on VS Code's theme event.** Kicking
+  from `onDidChangeActiveColorTheme` fires before the webview's 50 ms `MutationObserver` sample has
+  repainted xterm's new background, so OpenCode re-queries against the still-stale colour and flips
+  the wrong way (observed: stuck dark while the system was light). Serialising — webview sends
+  `themeApplied` after `applyTheme()`, host then writes `\x1b[?997;1n` into each OpenCode tab, only
+  when the appearance bucket actually changed — made the flip reliable in both directions.
