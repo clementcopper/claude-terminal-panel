@@ -33,7 +33,7 @@ tabs that remember which engine they belong to.
   piling up new tabs, in the tab's own directory.
 - **Editor context** — the open file sits above the status line; one click (or a shortcut) puts
   the **selected code** into the prompt, `@path` only when nothing is selected.
-- **Custom commands** — create terminals with any command, with flag suggestions from `--help`.
+- **Custom commands** — create terminals with a command of your own, with flag suggestions from `--help`.
 - **Working directory control** — per-tab `cwd` (`~` allowed), so Claude's session history per
   directory stays visible.
 - **Theme aware** — the panel follows VS Code's light/dark theme, including the OpenCode tab, which
@@ -56,10 +56,10 @@ tabs that remember which engine they belong to.
 | Claude Code | `claude`   | `npm install -g @anthropic-ai/claude-code` |
 | OpenCode    | `opencode` | `brew install opencode-ai/tap/opencode`    |
 
-Any other CLI (Gemini, Aider, Codex…) can still run, configured via `claudeTerminal.command` and
-`args`, or as a custom-command tab. The engineered extras — status line, `--resume`/`--continue`,
-editor context — are Claude-specific; OpenCode tabs get the engine accent and live theme switching
-instead.
+Both engines share the panel's terminal behaviour — PTY spawning, multi-tab sessions, prompt
+notifications, custom-command tabs. The engineered extras — native status line, `--resume` /
+`--continue`, editor context — are Claude-specific; OpenCode tabs get the engine accent and live
+light/dark theme switching instead.
 
 ## Usage
 
@@ -111,7 +111,7 @@ Set via VS Code Settings (`Cmd+,` / `Ctrl+,`):
 | `claudeTerminal.cwd`                     | string  | `""`         | Fixed working directory, `~` allowed (empty = first workspace folder)         |
 | `claudeTerminal.env`                     | object  | `{}`         | Additional environment variables                                              |
 | `claudeTerminal.directMode`              | boolean | `true`       | Run directly, no shell wrapper                                                |
-| `claudeTerminal.preloadHelp`             | boolean | `false`      | On startup, probe other CLI agents for `--help` (for flag suggestions)        |
+| `claudeTerminal.preloadHelp`             | boolean | `false`      | On startup, probe the engines' CLIs for `--help` (for flag suggestions)       |
 | `claudeTerminal.statusLine`              | boolean | `true`       | Render Claude's native status line at the bottom of the panel                 |
 | `claudeTerminal.statusLineProvider`      | string  | `"bundled"`  | `bundled` ships the producer; `own` expects your script to write the snapshot |
 | `claudeTerminal.statusLineCompactBudget` | number  | `0`          | Compaction target, shown as `Compacted 1/3`; `0` shows the count alone        |
@@ -169,8 +169,7 @@ get no status line, and the Claude-only `--resume` / `--continue` flags are not 
 
 When creating a custom terminal you are asked for the **command** and its **arguments**. As you type
 the argument, the extension fetches available flags from the command's `--help` output (running
-without a shell, against an allowlist) and suggests them — for Claude Code, OpenCode, Gemini, Aider
-and anything else that supports `--help`.
+without a shell, against an allowlist) and suggests them — for Claude Code and OpenCode alike.
 
 ## Prompt Notifications
 
