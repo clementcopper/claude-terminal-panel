@@ -831,7 +831,9 @@ class StatusLineView {
       tokens.textContent = formatK(snapshot.usedTokens);
       row.appendChild(tokens);
 
-      row.dataset.tooltip = `Context: ${String(snapshot.usedTokens)} of ${String(snapshot.totalTokens)} tokens · threshold ${String(this.threshold)}%`;
+      // Terse on purpose: the row it describes is already labelled, so the tooltip only fills in
+      // the two numbers the row drops — the window size and the threshold.
+      row.dataset.tooltip = `${String(Math.round(snapshot.usedPercent))}% ${formatK(snapshot.usedTokens)} / ${formatK(snapshot.totalTokens)} · thr ${String(this.threshold)}%`;
     }
 
     return row;
