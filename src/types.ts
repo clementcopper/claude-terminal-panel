@@ -56,6 +56,8 @@ export interface TerminalConfig {
   statusLineCompactBudget: number;
   /** Show the open file, and any selected lines, at the top of the status line. */
   editorContext: boolean;
+  /** What the status line's continue button submits after a stop. */
+  continueText: string;
 }
 
 /**
@@ -132,7 +134,16 @@ export type WebviewMessage =
   | { type: 'switchTab'; id: string }
   | { type: 'openFile'; id: string; path: string; line?: number; column?: number }
   // No tab id: the reference goes to whichever tab is active when it is asked for
-  | { type: 'insertEditorReference' };
+  | { type: 'insertEditorReference' }
+  /**
+   * A closed set of actions rather than a general "write this to the PTY": the webview renders
+   * model-generated output, and a channel from there into the terminal has to stay a command,
+   * not a keyboard.
+   */
+  | { type: 'sessionControl'; id: string; action: SessionControlAction };
+
+/** `stop` interrupts the current turn, `continue` starts a new one. */
+export type SessionControlAction = 'stop' | 'continue';
 
 // Extension message types (from extension to webview)
 export type ExtensionMessage =

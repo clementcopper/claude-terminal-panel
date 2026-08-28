@@ -68,7 +68,10 @@ body {
   --status-row-gap: 4px;
 
   flex-shrink: 0;
-  padding: 4px 8px 6px;
+  /* Right side reserved for the stop and continue buttons in the corner, so no row can run under
+     them. Constant: the buttons are there whenever the bar is. */
+  padding: 4px 46px 6px 8px;
+  position: relative;
   background-color: var(--vscode-tab-inactiveBackground, #2d2d2d);
   border-top: 1px solid var(--vscode-tab-border, #3c3c3c);
   color: var(--vscode-descriptionForeground, #9d9d9d);
@@ -212,6 +215,46 @@ body {
 }
 
 .status-editor:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #0078d4);
+  outline-offset: 1px;
+}
+
+/* Stop and continue, anchored to the corner rather than placed in a row: a row of their own would
+   make the bar taller, and taller means refitting xterm on every draw. */
+.status-controls {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-control {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-icon-foreground, #c5c5c5);
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.status-control svg {
+  width: 10px;
+  height: 10px;
+  display: block;
+}
+
+.status-control:hover {
+  background-color: var(--vscode-toolbar-hoverBackground, #383838);
+  color: var(--vscode-foreground, #ccc);
+}
+
+.status-control:focus-visible {
   outline: 1px solid var(--vscode-focusBorder, #0078d4);
   outline-offset: 1px;
 }

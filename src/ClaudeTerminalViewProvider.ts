@@ -5,7 +5,13 @@ import { PtyManager, type PtyEventCallbacks } from './ptyManager';
 import { ConfigManager } from './configManager';
 import { TerminalStateManager } from './terminalStateManager';
 import { dispatchMessage, type MessageHandlerContext } from './messageHandlers';
-import type { WebviewMessage, TerminalInstance, ExtensionMessage, EditorContext } from './types';
+import type {
+  WebviewMessage,
+  TerminalInstance,
+  ExtensionMessage,
+  EditorContext,
+  SessionControlAction
+} from './types';
 import { WORKSPACE_ACCENT_COLORS } from './types';
 import { CommandInputPicker } from './commandInputPicker';
 import { PromptDetector, type PromptDetectorConfig } from './promptDetector';
@@ -90,6 +96,29 @@ export class ClaudeTerminalViewProvider
 
   handleInput(id: string, data: string): void {
     this.ptyManager.write(id, data);
+    this.promptDetector.onUserInput(id);
+  }
+
+  /**
+   * The status line's stop and continue buttons.
+   *
+   * `stop` is the Escape key: Claude interrupts the turn and keeps the work done so far. `continue`
+   * is not a resume — an interrupted tool call is not picked up again. It submits a prompt, so it
+   * starts a turn and costs tokens, which is why the button says so.
+   */
+  handleSessionControl(id: string, action: SessionControlAction): void {
+    if (action === 'stop') {
+      this.ptyManager.write(id, '\x1b');
+      return;
+    }
+
+    const text = this.configManager.getConfig().continueText.trim();
+    if (text.length === 0) {
+      return;
+    }
+    // `\r` is Enter, the same way autoRun submits its command. No bracketed paste: this one line
+    // is meant to be sent, and the markers exist for the opposite case.
+    this.ptyManager.write(id, `${text}\r`);
     this.promptDetector.onUserInput(id);
   }
 

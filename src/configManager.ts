@@ -41,7 +41,8 @@ export class ConfigManager {
       statusLine: config.get<boolean>('statusLine', true),
       statusLineProvider: config.get<'bundled' | 'own'>('statusLineProvider', 'bundled'),
       statusLineCompactBudget: config.get<number>('statusLineCompactBudget', 0),
-      editorContext: config.get<boolean>('editorContext', true)
+      editorContext: config.get<boolean>('editorContext', true),
+      continueText: config.get<string>('continueText', 'continue')
     };
 
     return this.cachedConfig;

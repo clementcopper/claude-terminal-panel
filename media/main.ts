@@ -9,7 +9,8 @@ import type {
   TerminalEntry,
   XTermTheme,
   StatusLineSnapshot,
-  EditorContext
+  EditorContext,
+  SessionControlAction
 } from './types';
 
 // File path link provider for terminal
@@ -421,11 +422,20 @@ class StatusLineView {
    */
   private tickTimer: number | undefined;
 
+  /**
+   * Built once and re-appended after every redraw: `draw()` empties the element, and these two do
+   * not belong to any row. They sit in the corner whatever the rows above them are doing.
+   */
+  private readonly controls: HTMLDivElement;
+
   constructor(
     private readonly element: HTMLElement,
     private readonly onHeightChange: () => void,
-    private readonly onEditorReferenceClick: () => void
-  ) {}
+    private readonly onEditorReferenceClick: () => void,
+    private readonly onSessionControl: (action: SessionControlAction) => void
+  ) {
+    this.controls = this.buildControls();
+  }
 
   set(id: string, snapshot: StatusLineSnapshot | null): void {
     if (snapshot) {
@@ -487,6 +497,7 @@ class StatusLineView {
     }
 
     this.element.textContent = '';
+    this.element.appendChild(this.controls);
 
     // First, so it sits at the top edge — closest to the editor it describes
     if (this.editorContext) {
@@ -526,6 +537,62 @@ class StatusLineView {
 
     const ageMs = Date.now() - snapshot.updatedAt * 1000;
     this.element.classList.toggle('stale', ageMs > StatusLineView.STALE_AFTER_MS);
+  }
+
+  /**
+   * Stop and continue, in the bottom right corner. Positioned absolutely so they cannot change the
+   * height of the bar — that would move the terminal's bottom edge and cost a refit on every draw.
+   */
+  private buildControls(): HTMLDivElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'status-controls';
+
+    wrapper.appendChild(
+      this.buildControl(
+        'stop',
+        'Stop the current turn (same as Escape). Claude keeps the work done so far.',
+        'M2 2h6v6H2z'
+      )
+    );
+    wrapper.appendChild(
+      this.buildControl(
+        'continue',
+        'Continue: submits a prompt, so it starts a turn and costs tokens. An interrupted tool call is not picked up again.',
+        'M2.5 1.5 9 5l-6.5 3.5z'
+      )
+    );
+
+    return wrapper;
+  }
+
+  private buildControl(
+    action: SessionControlAction,
+    tooltip: string,
+    path: string
+  ): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.className = 'status-control';
+    button.type = 'button';
+    button.dataset.tooltip = tooltip;
+    // The tooltip is a div elsewhere on the page, so the button still needs its own name
+    button.setAttribute('aria-label', action === 'stop' ? 'Stop the current turn' : 'Continue');
+
+    // createElementNS rather than innerHTML: SVG in an HTML string needs the namespace anyway,
+    // and this keeps the webview free of markup assignment.
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 10 10');
+    svg.setAttribute('aria-hidden', 'true');
+    const shape = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    shape.setAttribute('d', path);
+    shape.setAttribute('fill', 'currentColor');
+    svg.appendChild(shape);
+    button.appendChild(svg);
+
+    button.addEventListener('click', () => {
+      this.onSessionControl(action);
+    });
+
+    return button;
   }
 
   /**
@@ -831,6 +898,12 @@ class WebviewContext {
       },
       () => {
         this.postMessage({ type: 'insertEditorReference' });
+      },
+      (action) => {
+        const id = this.state.getActiveId();
+        if (id) {
+          this.postMessage({ type: 'sessionControl', id, action });
+        }
       }
     );
   }

@@ -79,7 +79,11 @@ export type WebviewOutgoingMessage =
   | { type: 'closeTab'; id: string }
   | { type: 'switchTab'; id: string }
   | { type: 'openFile'; id: string; path: string; line?: number; column?: number }
-  | { type: 'insertEditorReference' };
+  | { type: 'insertEditorReference' }
+  | { type: 'sessionControl'; id: string; action: SessionControlAction };
+
+/** `stop` interrupts the current turn, `continue` starts a new one. */
+export type SessionControlAction = 'stop' | 'continue';
 
 // Terminal entry in the map
 export interface TerminalEntry {

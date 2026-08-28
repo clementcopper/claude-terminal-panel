@@ -1,4 +1,4 @@
-import type { WebviewMessage } from './types';
+import type { SessionControlAction, WebviewMessage } from './types';
 
 /**
  * Context interface that message handlers use to perform actions.
@@ -14,6 +14,7 @@ export interface MessageHandlerContext {
   handleSwitchTab(id: string): void;
   handleOpenFile(id: string, path: string, line?: number, column?: number): void;
   handleInsertEditorReference(): void;
+  handleSessionControl(id: string, action: SessionControlAction): void;
 }
 
 type MessageHandler<T extends WebviewMessage> = (message: T, ctx: MessageHandlerContext) => void;
@@ -53,6 +54,9 @@ const messageHandlers: MessageHandlerMap = {
   },
   insertEditorReference: (_message, ctx) => {
     ctx.handleInsertEditorReference();
+  },
+  sessionControl: (message, ctx) => {
+    ctx.handleSessionControl(message.id, message.action);
   }
 };
 
