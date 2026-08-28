@@ -304,6 +304,12 @@ class TooltipManager {
   private readonly element: HTMLDivElement;
   private timer: number | null = null;
   private target: HTMLElement | null = null;
+  /**
+   * While something is pinned the tooltip belongs to it and to nothing else: hover, mousedown and
+   * scroll stop dismissing it. Dragging the threshold handle is the case — the pointer is
+   * captured, the value changes under it, and the number is the whole point of the gesture.
+   */
+  private pinned: HTMLElement | null = null;
 
   constructor() {
     this.element = document.createElement('div');
@@ -314,6 +320,7 @@ class TooltipManager {
     // Delegated, because tabs are rebuilt on every update — per-element listeners would have to
     // be reattached each time.
     document.addEventListener('mouseover', (event) => {
+      if (this.pinned) return;
       const found = this.findTarget(event.target);
       if (found !== this.target) {
         this.schedule(found);
@@ -382,7 +389,28 @@ class TooltipManager {
     this.element.style.top = `${String(Math.max(gap, Math.min(top, window.innerHeight - tip.height - gap)))}px`;
   }
 
+  /** Shows the element's tooltip at once — no delay — and holds it until `unpin`. */
+  pin(target: HTMLElement): void {
+    this.clearTimer();
+    this.pinned = target;
+    this.target = target;
+    this.show(target);
+  }
+
+  /** Re-reads `data-tooltip` and places it again; the pinned value changes while it is shown. */
+  refresh(): void {
+    if (this.pinned) {
+      this.show(this.pinned);
+    }
+  }
+
+  unpin(): void {
+    this.pinned = null;
+    this.hide();
+  }
+
   private hide(): void {
+    if (this.pinned) return;
     this.clearTimer();
     this.target = null;
     this.element.hidden = true;
@@ -439,7 +467,8 @@ class StatusLineView {
     private readonly onHeightChange: () => void,
     private readonly onEditorReferenceClick: () => void,
     private readonly onStopTurn: () => void,
-    private readonly onThresholdChange: (value: number) => void
+    private readonly onThresholdChange: (value: number) => void,
+    private readonly tooltips: TooltipManager
   ) {}
 
   setThreshold(value: number): void {
@@ -626,7 +655,7 @@ class StatusLineView {
 
   private positionHandle(handle: HTMLElement, value: number): void {
     handle.style.left = `${String(value)}%`;
-    handle.dataset.tooltip = `Context threshold ${String(value)}% — drag to change`;
+    handle.dataset.tooltip = `${String(value)}%`;
     handle.setAttribute('aria-valuenow', String(value));
   }
 
@@ -645,6 +674,7 @@ class StatusLineView {
 
     const commit = (): void => {
       this.dragging = false;
+      this.tooltips.unpin();
       this.onThresholdChange(this.threshold);
       if (this.redrawPending) {
         this.redrawPending = false;
@@ -656,12 +686,16 @@ class StatusLineView {
       event.preventDefault();
       this.dragging = true;
       handle.setPointerCapture(event.pointerId);
+      // Straight away and held: the number is what the gesture is for, and the pointer capture
+      // means the usual hover rules stop applying the moment the handle moves under it.
+      this.tooltips.pin(handle);
     });
 
     handle.addEventListener('pointermove', (event) => {
       if (!this.dragging) return;
       this.threshold = valueAt(event.clientX);
       this.positionHandle(handle, this.threshold);
+      this.tooltips.refresh();
     });
 
     handle.addEventListener('pointerup', (event) => {
@@ -992,7 +1026,8 @@ class WebviewContext {
       },
       (value) => {
         this.postMessage({ type: 'setContextThreshold', value });
-      }
+      },
+      this.tooltips
     );
   }
 
