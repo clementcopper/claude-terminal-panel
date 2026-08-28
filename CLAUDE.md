@@ -36,10 +36,12 @@ export PATH="$HOME/.nvm/versions/node/v20.19.0/bin:$PATH"
 | Check the payload alone  | `node scripts/verify-package-payload.js --source` / `--vsix`                  |
 | Install the build        | `code --install-extension claude-terminal-panel-local-<version>.vsix --force` |
 
-VS Code lives in **`/Applications`** on this machine — the CLI is
-`"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"`. (`~/Applications` holds
-only the Claude Code URL Handler.) Check with `ls -d /Applications/"Visual Studio Code.app"`
-rather than trusting this line; it has been wrong before.
+VS Code lives in **`~/Applications`** on this machine — the CLI is
+`"$HOME/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"`. `/Applications` has
+no VS Code at all, and there is no `code` on PATH. Measured 2026-08-28, after this file claimed
+`/Applications` and the install failed with `no such file or directory`. Check with
+`ls -d ~/Applications/"Visual Studio Code.app"` rather than trusting this line; it has been wrong
+before.
 
 The `.vsix` carries no platform tag and ships the prebuilds for `darwin-x64`, `darwin-arm64`,
 `win32-x64` and `win32-arm64`, so one build installs on Intel and ARM alike. `scripts/verify-package-payload.js`
