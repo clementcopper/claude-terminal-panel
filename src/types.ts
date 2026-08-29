@@ -174,7 +174,18 @@ export type ExtensionMessage =
   | { type: 'output'; id: string; data: string }
   | { type: 'clear'; id: string }
   | { type: 'tabsUpdate'; tabs: TabInfo[] }
-  | { type: 'createTab'; id: string; name: string; accentColor?: string }
+  /**
+   * `awaitingStart` distinguishes a brand new tab from one being restored after the webview was
+   * rebuilt: only the new one has a process that has yet to print anything, and only there is a
+   * "starting…" indicator the truth. A restored tab hangs on a process that may simply be idle.
+   */
+  | {
+      type: 'createTab';
+      id: string;
+      name: string;
+      accentColor?: string;
+      awaitingStart: boolean;
+    }
   | { type: 'switchTab'; id: string }
   | { type: 'removeTab'; id: string }
   | { type: 'setNotification'; id: string; show: boolean }

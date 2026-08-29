@@ -416,8 +416,20 @@ export class PtyManager {
    * the current instance, so anything else is a process this class has already retired.
    */
   private setupPtyEventHandlers(terminalId: string, pty: IPty): void {
+    // The one number that separates the panel's share of a slow start from the CLI's. Measured
+    // here rather than guessed: OpenCode takes about five seconds to its first visible output,
+    // Claude Code a fraction of that, and both go through exactly this line.
+    let firstOutput = true;
+
     pty.onData((data: string) => {
       if (this.ptys.get(terminalId) !== pty) return;
+      if (firstOutput) {
+        firstOutput = false;
+        const started = this.startedAt.get(terminalId);
+        if (started !== undefined) {
+          log('pty', `${terminalId} first output after ${String(Date.now() - started)} ms`);
+        }
+      }
       this.callbacks.onData(terminalId, data);
     });
 

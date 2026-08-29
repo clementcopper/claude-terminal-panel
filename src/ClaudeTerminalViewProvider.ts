@@ -209,7 +209,8 @@ export class ClaudeTerminalViewProvider
         type: 'createTab',
         id: tab.id,
         name: tab.name,
-        accentColor: this.getAccentColor(tab.engine)
+        accentColor: this.getAccentColor(tab.engine),
+        awaitingStart: false
       });
       const snapshot = this.statusLineWatcher.get(tab.id);
       if (snapshot) {
@@ -567,7 +568,7 @@ export class ClaudeTerminalViewProvider
 
     // Notify webview with accent color
     const accentColor = this.getAccentColor(engine);
-    this.postMessage({ type: 'createTab', id, name, accentColor });
+    this.postMessage({ type: 'createTab', id, name, accentColor, awaitingStart: true });
     this.sendTabsUpdate();
     this.sendInitialStatusLine(id, cwd);
 
@@ -678,7 +679,7 @@ export class ClaudeTerminalViewProvider
     this.stateManager.setActive(id);
 
     const accentColor = this.getAccentColor(engine);
-    this.postMessage({ type: 'createTab', id, name, accentColor });
+    this.postMessage({ type: 'createTab', id, name, accentColor, awaitingStart: true });
     this.sendTabsUpdate();
     this.sendInitialStatusLine(id, cwd);
 

@@ -245,6 +245,9 @@ const messageHandlers: MessageHandlers = {
   output: (message, ctx) => {
     const t = ctx.state.get(message.id);
     if (t) {
+      // The process has spoken — including when what it says is that it exited. Either way the
+      // waiting is over and the indicator must not sit on top of the answer.
+      ctx.clearStartupIndicator(t);
       const wasAtBottom = ScrollManager.isAtBottom(t.terminal);
       t.terminal.write(message.data);
       if (wasAtBottom) {
@@ -264,7 +267,7 @@ const messageHandlers: MessageHandlers = {
     ctx.renderTabBar(message.tabs);
   },
   createTab: (message, ctx) => {
-    ctx.createTerminalElement(message.id);
+    ctx.createTerminalElement(message.id, message.name, message.awaitingStart);
   },
   switchTab: (message, ctx) => {
     ctx.switchToTerminal(message.id);
@@ -1027,6 +1030,9 @@ class WebviewContext {
   /** How long a fresh tab's size has to hold still before it is reported to the host. */
   private static readonly READY_SETTLE_MS = 80;
 
+  /** Grace period before a starting tab admits that it is starting. */
+  private static readonly STARTUP_INDICATOR_DELAY_MS = 250;
+
   readonly state = new TerminalState();
   private readonly themeBuilder = new ThemeBuilder();
   private readonly vscode: VSCodeAPI;
@@ -1354,7 +1360,7 @@ class WebviewContext {
     return button;
   }
 
-  createTerminalElement(id: string): TerminalEntry {
+  createTerminalElement(id: string, name = '', awaitingStart = false): TerminalEntry {
     const container = document.createElement('div');
     container.className = 'terminal-wrapper';
     container.id = `terminal-${id}`;
@@ -1402,6 +1408,10 @@ class WebviewContext {
     ScrollManager.setupScrollTracking(entry);
     this.state.set(id, entry);
 
+    if (awaitingStart) {
+      this.startStartupIndicator(entry, name);
+    }
+
     // Fit right away, so nothing can land in an 80x24 default buffer, then let the report
     // settle: the status line and the editor row arrive in the messages right behind `createTab`
     // and take up to seven rows off the terminal's height.
@@ -1417,6 +1427,67 @@ class WebviewContext {
     });
 
     return entry;
+  }
+
+  /**
+   * The "starting…" indicator, shown while a fresh tab waits for its process to print anything.
+   *
+   * Purely DOM: it never touches the PTY, so it cannot disturb the alternate-screen setup a TUI
+   * does on its first frame. Measured on this machine, OpenCode needs 5.1–5.4 s from spawn to its
+   * first visible output — until now that was five seconds of blank surface with nothing to say
+   * whether anything was happening at all. Claude Code answers in a fraction of that, which is
+   * why the indicator waits a quarter second before appearing: a fast start must never flash it.
+   */
+  private startStartupIndicator(entry: TerminalEntry, name: string): void {
+    const startedAt = Date.now();
+    // "OpenCode 2" is the tab, "OpenCode" is the program — the number says nothing here.
+    const label = name.replace(/\s+\d+$/, '') || 'the terminal';
+
+    entry.startupShowTimer = window.setTimeout(() => {
+      entry.startupShowTimer = undefined;
+
+      const indicator = document.createElement('div');
+      indicator.className = 'terminal-startup';
+
+      const spinner = document.createElement('span');
+      spinner.className = 'terminal-startup-spinner';
+      indicator.appendChild(spinner);
+
+      const text = document.createElement('span');
+      text.className = 'terminal-startup-label';
+      text.textContent = `Starting ${label}…`;
+      indicator.appendChild(text);
+
+      const elapsed = document.createElement('span');
+      elapsed.className = 'terminal-startup-elapsed';
+      indicator.appendChild(elapsed);
+
+      entry.element.appendChild(indicator);
+      entry.startupIndicator = indicator;
+
+      // Seconds only from the second one: a counter that starts at "0 s" reads like a stopwatch
+      // nobody asked for, while a wait that has visibly passed two seconds is worth quantifying.
+      entry.startupTickTimer = window.setInterval(() => {
+        const seconds = Math.floor((Date.now() - startedAt) / 1000);
+        elapsed.textContent = seconds >= 2 ? `${String(seconds)} s` : '';
+      }, 250);
+    }, WebviewContext.STARTUP_INDICATOR_DELAY_MS);
+  }
+
+  /** Removes the indicator and both its timers, whichever of them are still around. */
+  clearStartupIndicator(entry: TerminalEntry): void {
+    if (entry.startupShowTimer !== undefined) {
+      window.clearTimeout(entry.startupShowTimer);
+      entry.startupShowTimer = undefined;
+    }
+    if (entry.startupTickTimer !== undefined) {
+      window.clearInterval(entry.startupTickTimer);
+      entry.startupTickTimer = undefined;
+    }
+    if (entry.startupIndicator) {
+      entry.startupIndicator.remove();
+      entry.startupIndicator = undefined;
+    }
   }
 
   /**
@@ -1495,6 +1566,9 @@ class WebviewContext {
   removeTerminal(id: string): void {
     const t = this.state.get(id);
     if (t) {
+      // A tab can be closed while it is still starting; its timers would otherwise keep ticking
+      // against an element that is already gone.
+      this.clearStartupIndicator(t);
       t.terminal.dispose();
       t.element.remove();
       this.state.delete(id);

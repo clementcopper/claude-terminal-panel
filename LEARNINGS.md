@@ -228,3 +228,22 @@ Non-obvious findings and dead ends. Only add what saves future work.
 code 129]` (128 + SIGHUP, der Kill selbst) in der frisch gestarteten Sitzung — und Restbytes der
   alten PTY gleich hinterher. `PtyManager` vergleicht jetzt in beiden Handlern die PTY-Instanz mit
   der, die für die Tab-ID eingetragen ist; alles andere ist ein bereits abgeräumter Prozess.
+
+## OpenCode-Startzeit
+
+- **OpenCodes Wartezeit steckt im Server, nicht im TUI — aber ein warmer Server holt sie kaum
+  zurück.** Gemessen mit node-pty (62 × 18, erstes Byte / erste 1 kB Ausgabe): `opencode` pur
+  braucht 1,9 s bis zum ersten Byte und **5,1–5,4 s bis zur ersten sichtbaren Ausgabe**; die ersten
+  ~280 Bytes sind nur Escape-Sequenzen, der Bildschirm bleibt leer. `opencode attach <url> --dir …`
+  gegen ein laufendes `opencode serve` kommt auf 4,0–4,2 s — **1,3 s Gewinn**, nicht mehr, weil der
+  Rest Bun-Start plus TUI-Init ist. Dafür einen dauerhaften Hintergrundprozess samt Lebenszyklus
+  und einen unauthentifizierten lokalen Agent-Endpunkt (`serve` warnt selbst:
+  „OPENCODE_SERVER_PASSWORD is not set; server is unsecured") einzuhandeln, lohnt nicht. Ein
+  laufender Server beschleunigt `opencode` pur übrigens **nicht** — ohne `attach` startet das TUI
+  seinen eigenen.
+- **Wo die Zeit hingeht, steht in OpenCodes eigenem Log** (`~/.local/share/opencode/log/opencode.log`):
+  pro Lauf eine `run=`-ID, darin `creating instance`, `init count=41`, `watcher backend`,
+  `booting location services`. Erst dort nachsehen, bevor man dem Panel die Schuld gibt.
+- **Fünf Sekunden einfarbige Fläche sind kein Ladezustand.** Der Startanzeiger ist reines DOM im
+  Terminal-Wrapper — kein Byte in die PTY, damit er den Alternate-Screen-Aufbau eines TUI nicht
+  stören kann — und erscheint erst nach 250 ms, damit ein schneller Start nicht aufblitzt.

@@ -62,7 +62,13 @@ export type WebviewIncomingMessage =
   | { type: 'output'; id: string; data: string }
   | { type: 'clear'; id: string }
   | { type: 'tabsUpdate'; tabs: TabInfo[] }
-  | { type: 'createTab'; id: string; name: string; accentColor?: string }
+  | {
+      type: 'createTab';
+      id: string;
+      name: string;
+      accentColor?: string;
+      awaitingStart: boolean;
+    }
   | { type: 'switchTab'; id: string }
   | { type: 'removeTab'; id: string }
   | { type: 'setNotification'; id: string; show: boolean }
@@ -96,6 +102,10 @@ export interface TerminalEntry {
   lastScrollTop: number;
   /** Set once `terminalReady` has been sent for this tab; the host starts the process on it. */
   readySent?: boolean;
+  /** The "starting…" indicator and its two timers, all cleared on the first byte of output. */
+  startupIndicator?: HTMLElement;
+  startupShowTimer?: number;
+  startupTickTimer?: number;
   /** Pending report, restarted by every fit until the size stops moving. */
   readyTimer?: number;
 }
