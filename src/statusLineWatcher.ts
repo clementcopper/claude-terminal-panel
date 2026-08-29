@@ -191,18 +191,40 @@ export class StatusLineWatcher {
     }
   }
 
+  /**
+   * Session and week are remembered as two groups, and a group is only replaced when the
+   * snapshot actually carries it.
+   *
+   * Claude Code sends the two buckets independently — a payload with `seven_day` but no
+   * `five_hour` is normal. Writing the file field by field therefore dropped the remembered
+   * session values every time such a snapshot arrived, and the row lost its left half until the
+   * next full payload. The percentage is what decides: without it the other fields of that group
+   * describe nothing.
+   */
   private rememberLimits(snapshot: StatusLineSnapshot): void {
     if (snapshot.sessionPercent === undefined && snapshot.weekPercent === undefined) {
       return;
     }
-    this.writeAtomically(LIMITS_FILE, {
-      sessionPercent: snapshot.sessionPercent,
-      sessionResetsAt: snapshot.sessionResetsAt,
-      sessionResetsInMin: snapshot.sessionResetsInMin,
-      weekPercent: snapshot.weekPercent,
-      weekResetsAt: snapshot.weekResetsAt,
-      updatedAt: snapshot.updatedAt
-    });
+
+    const remembered = this.readLimits();
+    const session =
+      snapshot.sessionPercent !== undefined
+        ? {
+            sessionPercent: snapshot.sessionPercent,
+            sessionResetsAt: snapshot.sessionResetsAt,
+            sessionResetsInMin: snapshot.sessionResetsInMin
+          }
+        : {
+            sessionPercent: remembered?.sessionPercent,
+            sessionResetsAt: remembered?.sessionResetsAt,
+            sessionResetsInMin: remembered?.sessionResetsInMin
+          };
+    const week =
+      snapshot.weekPercent !== undefined
+        ? { weekPercent: snapshot.weekPercent, weekResetsAt: snapshot.weekResetsAt }
+        : { weekPercent: remembered?.weekPercent, weekResetsAt: remembered?.weekResetsAt };
+
+    this.writeAtomically(LIMITS_FILE, { ...session, ...week, updatedAt: snapshot.updatedAt });
   }
 
   private readLastForCwd(cwd: string): StatusLineSnapshot | undefined {
@@ -344,6 +366,9 @@ export class StatusLineWatcher {
     if (!limits || limitsAt === undefined || limitsAt === this.lastBroadcastLimitsAt) {
       return;
     }
+    if (limits.sessionPercent === undefined && limits.weekPercent === undefined) {
+      return;
+    }
     this.lastBroadcastLimitsAt = limitsAt;
 
     for (const [terminalId, snapshot] of this.latest) {
@@ -352,14 +377,19 @@ export class StatusLineWatcher {
         continue;
       }
 
-      const merged: StatusLineSnapshot = {
-        ...snapshot,
-        sessionPercent: limits.sessionPercent,
-        sessionResetsAt: limits.sessionResetsAt,
-        sessionResetsInMin: limits.sessionResetsInMin,
-        weekPercent: limits.weekPercent,
-        weekResetsAt: limits.weekResetsAt
-      };
+      // Only what the file actually holds. Assigning the fields unconditionally handed a tab
+      // `undefined` for a limit the file happens not to carry, so a live value was wiped by a
+      // broadcast that knew less than the tab did.
+      const merged: StatusLineSnapshot = { ...snapshot };
+      if (limits.sessionPercent !== undefined) {
+        merged.sessionPercent = limits.sessionPercent;
+        merged.sessionResetsAt = limits.sessionResetsAt;
+        merged.sessionResetsInMin = limits.sessionResetsInMin;
+      }
+      if (limits.weekPercent !== undefined) {
+        merged.weekPercent = limits.weekPercent;
+        merged.weekResetsAt = limits.weekResetsAt;
+      }
 
       this.latest.set(terminalId, merged);
       this.onSnapshot(terminalId, merged);

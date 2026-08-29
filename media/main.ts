@@ -457,6 +457,9 @@ class StatusLineView {
   /** From here on the session limit is close enough to matter as much as a full context window. */
   private static readonly LIMIT_DANGER_PCT = 90;
 
+  /** At this point the bucket is gone, not merely close — see `onCredits`. */
+  private static readonly LIMIT_SPENT_PCT = 100;
+
   private readonly snapshots = new Map<string, StatusLineSnapshot>();
   private activeId: string | null = null;
   /** Belongs to the window, not to a tab: one editor, however many terminals. */
@@ -843,6 +846,12 @@ class StatusLineView {
     const parts: { text: string; danger?: boolean; trailing?: boolean }[] = [];
     let sessionExpired = false;
 
+    // With the weekly limit spent, turns are billed to usage credits and the five-hour bucket
+    // stops counting — Claude Code then reports it as 0. A bare "Session 0%" would read as
+    // plenty of room left, which is the opposite of the situation.
+    const onCredits =
+      snapshot.weekPercent !== undefined && snapshot.weekPercent >= StatusLineView.LIMIT_SPENT_PCT;
+
     if (snapshot.sessionPercent !== undefined) {
       // Prefer the absolute point: a remembered "84 min" is wrong an hour later
       const resetsAt = snapshot.sessionResetsAt;
@@ -872,8 +881,8 @@ class StatusLineView {
           .join('');
         const percent = Math.round(snapshot.sessionPercent);
         parts.push({
-          text: `Session ${String(percent)}%${resets}`,
-          danger: percent >= StatusLineView.LIMIT_DANGER_PCT
+          text: `Session ${String(percent)}%${onCredits ? ' (Credits)' : ''}${resets}`,
+          danger: onCredits || percent >= StatusLineView.LIMIT_DANGER_PCT
         });
       }
     }
@@ -932,6 +941,9 @@ class StatusLineView {
     }
     if (snapshot.weekResetsAt) {
       tooltip.push(`Weekly limit resets on ${snapshot.weekResetsAt}`);
+    }
+    if (onCredits) {
+      tooltip.push('Weekly limit spent — turns run on usage credits');
     }
     if (tooltip.length > 0) {
       row.dataset.tooltip = tooltip.join('\n');

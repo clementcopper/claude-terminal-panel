@@ -196,3 +196,10 @@ Non-obvious findings and dead ends. Only add what saves future work.
   beobachten dasselbe tmp-Verzeichnis.
 - **Ein append-only-JSONL-Watcher muss beim Start auf die Dateigröße springen.** Sonst ist beim
   Fensterstart der gesamte Verlauf „neu" und wird in frische Tabs gepastet.
+- **`Session 0%` bei `Week 100%` ist keine kaputte Übertragung, sondern der Credit-Betrieb.**
+  Ist das Wochenlimit erschöpft und laufen die Turns über Usage Credits, meldet Claude Code
+  `rate_limits.five_hour.used_percentage` als 0 — das Fünf-Stunden-Bucket zählt dann nicht mehr
+  mit. `panel-statusline.js` reicht die Zahl unverändert weiter, `parseSnapshot` macht aus `null`
+  sauber `undefined`, und `Math.round(undefined)` wäre `NaN%`. Eine 0 kann im Panel also gar nicht
+  entstehen: sie kam so an. Vor der Fehlersuche `status/<tab>.json` ansehen — Alter der Datei und
+  `usedTokens` beantworten die Streaming-Frage in einem Blick.
