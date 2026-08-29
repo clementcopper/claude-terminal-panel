@@ -277,14 +277,20 @@
           },
           "default": [],
           "description": "Additional regex patterns to detect when terminal is waiting for input (e.g., '^mybot> $'). Built-in patterns detect most CLI AI tools automatically."
+        },
+        "claudeTerminal.useSidecar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run each terminal via a sidecar process that enables inter-agent messaging. Disable to use direct PTY spawning (legacy)."
         }
       }
     }
   },
   "scripts": {
     "vscode:prepublish": "npm run lint && npm run compile",
-    "compile": "npm run compile:extension && npm run copy:xterm-css && npm run compile:media",
+    "compile": "npm run compile:extension && npm run compile:sidecar && npm run copy:xterm-css && npm run compile:media",
     "compile:extension": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:node-pty --format=cjs --platform=node",
+    "compile:sidecar": "node esbuild.sidecar.js",
     "compile:media": "esbuild media/main.ts --bundle --outfile=media/main.js --format=iife --platform=browser",
     "copy:xterm-css": "node -e \"require('fs').copyFileSync('node_modules/@xterm/xterm/css/xterm.css', 'media/xterm.css')\"",
     "watch": "npm run compile:extension -- --watch",

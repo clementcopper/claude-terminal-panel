@@ -31,6 +31,18 @@ and delivers it as a bracketed paste (mid-turn safe).
 delivered as one bracketed-paste input; a **control** message (e.g. the `\x1b[?997;1n` theme kick)
 is written raw and must never be pasted into a prompt. Do not collapse these two delivery paths.
 
+### Protocol Extensions (Future-Proofing)
+
+- **Schema version**: add `"v": 1` to the protocol object. Routers/adapters must reject unknown major
+  versions and tolerate unknown fields (forward-compatible).
+- **Message ID for idempotency**: optional `"msgId": "uuid"` — recipients track seen IDs (bounded
+  LRU, e.g. 1000 entries) to deduplicate retries after crashes.
+- **Broadcast `to: "all"`**: router expands to all live tabs from `presence.json` and writes one
+  `<from>.to.<each>.jsonl` per recipient. O(n) files, acceptable for n ≤ 10 tabs.
+- **Chunking for large payloads**: if `payload` (stringified) > 64 KB, split into chunks with
+  `"chunk": { "id": "msgId", "index": 0, "total": 3, "data": "..." }` and reassemble on receipt.
+  Keeps JSONL lines bounded for `fs.watch` reliability.
+
 ## Implementation Steps
 
 ### 1. New Shared Directory
@@ -104,6 +116,29 @@ engine tabs that have no status line.
   `closeTerminal` path (`src/ClaudeTerminalViewProvider.ts:565`) must also prune the entry, or
   closed tabs look reachable forever — optionally add a `ts` TTL as a second line of defence
 
+### 6. Router Lifecycle & Cleanup
+
+- `InterAgentRouter` implements `dispose()`: closes both watchers, clears polling interval,
+  removes `inbox/*.jsonl` and `outbox/*.jsonl` for tabs that no longer exist (scans
+  `presence.json` on shutdown).
+- File rotation: each `.jsonl` capped at 1 MB / 10 000 lines; on overflow, rename to
+  `<name>.1.jsonl`, keep max 3 generations. Adapters handle missing history gracefully.
+
+### 7. Cross-Window & Multi-Instance
+
+The tmp dir is per-user (`os.tmpdir()`), so **multiple VS Code windows share one channel**.
+This is intentional: a tab in Window A can message a tab in Window B. If isolation is needed,
+append the window's `vscode.env.sessionId` (or a random instance-id at startup) to the
+directory name: `<tmp>/claude-terminal-panel/interagent-<instanceId>/`.
+
+### 8. Security Hardening
+
+- On each `fs.watch` event, `lstat` the file first — ignore symlinks, non-regular files, files
+  not owned by the current uid.
+- The router never writes outside `inbox/`/`outbox/`/`presence.json`; path traversal in
+  `<from>.to.<to>` is impossible because filenames are derived from validated tab IDs
+  (alphanumeric + `-` only, enforced at spawn).
+
 ## Why Not WebSocket / IPC?
 
 - No ports, no firewall, no extra permissions
@@ -129,3 +164,99 @@ engine tabs that have no status line.
 3. Wire the router callback + `presence.json` pruning into `ClaudeTerminalViewProvider` (like
    `handleThemeApplied` and `closeTerminal`)
 4. Build the two thin adapters: an OpenCode skill and a Claude Code producer/trigger
+
+## Testing Strategy
+
+- **Unit** (`InterAgentRouter.test.ts`): in-memory mock `fs` (memfs), inject lines, assert
+  `ptyManager.write` called with correct bracketed paste / raw control, `from` overwritten,
+  invalid lines rejected, `presence.json` pruned on tab close.
+- **Integration**: spin two PTYs in the same test process (using `node-pty` directly), feed
+  messages through the real `inbox/` dir, verify delivery order and deduplication (`msgId`).
+- **Chaos**: kill the router mid-delivery, restart, verify no duplicate delivery and no
+  message loss (idempotency + `presence.json` recovery).
+- **Cross-window**: simulate two router instances on the same `interagent-<id>` dir, verify
+  no file collision and correct routing.
+
+## Open Questions
+
+- **Backpressure**: `ptyManager.write` is fire-and-forget; if the PTY's OS buffer fills, writes
+  block or drop silently. No flow control in this design — acceptable for low-volume control
+  messages, but a high-volume text stream could stall. A future `pause/resume` signal from the
+  adapter (when its input buffer is full) would close the loop.
+- **Encryption**: not needed (user-private tmp, 0700), but if the channel ever crosses machine
+  boundaries (e.g. remote dev), add Noise protocol or libsodium box.
+
+---
+
+## Decision Log & Alternatives (Recorded 2026-08-28)
+
+### Confirmed Decisions
+
+| ID  | Decision                  | Choice                                         | Rationale                                                                          |
+| --- | ------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------- |
+| E1  | IPC Transport Ext↔Sidecar | **stdio JSONL**                                | No port, native `spawn`, line-delimited JSON, trivial debugging                    |
+| E2  | Sidecar Scope             | **Per Tab** (isolated)                         | Clean state, crash isolation, no cross-tab leaks                                   |
+| E3  | PTY Owner                 | **Sidecar owns PTY**                           | Extension becomes thin IPC layer; cleaner separation                               |
+| E4  | Feature Flag              | **`claudeTerminal.useSidecar` (default true)** | Instant rollback without rebuild, A/B testing                                      |
+| E5  | File Rotation             | **1 MB / 10k lines / 3 generations**           | Matches statusline pattern; tmpfs-friendly                                         |
+| E6  | Cross-Window Isolation    | **Default shared** (`interagent/`)             | Tabs across windows can talk; opt-out via `interagent-<sessionId>/`                |
+| E7  | Backpressure Signal       | **None for MVP** (fire-and-forget)             | Control messages low-volume; text streams rare; add `pause/resume` later if needed |
+| E8  | Chunking Threshold        | **64 KB**                                      | `fs.watch` reliable on small lines; 64 KB safe default                             |
+
+### Rejected Alternatives (Documented for Context)
+
+| Alternative                          | Why Not Chosen                                                                                                                |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| **Per-Engine Adapters (no Sidecar)** | Claude Code has no listener hook → cannot receive programmatically; asymmetry (OpenCode↔OpenCode works, Claude→ only visible) |
+| **WebSocket / HTTP**                 | Port management, firewall, permissions, cross-window complexity; over-engineering for ≤10 tabs                                |
+| **Router in Sidecar**                | N-to-1 race: multiple Sidecars watching same files; `presence.json` sync needed; Sidecar bloats                               |
+| **Raw Write + `\n` Delivery**        | Breaks prompt if recipient is typing (each line = submit)                                                                     |
+| **OSC 52 Clipboard**                 | Not universally supported; clipboard pollution                                                                                |
+| **`ls inbox/` for Discovery**        | No metadata (engine, cwd, capabilities); `presence.json` atomic rewrite chosen (like `limits.json`)                           |
+
+### Chosen Architecture Summary
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    EXTENSION HOST                           │
+│  ┌──────────────┐  ┌────────────────────────────────────┐  │
+│  │ InterAgent   │  │ Sidecar Manager                    │  │
+│  │ Router       │  │  - spawnSidecar() per Tab          │  │
+│  │ - fs.watch   │  │  - IPC stdin/stdout JSONL          │  │
+│  │ - delivery   │  │  - handles resize/kill/output      │  │
+│  │ - presence   │  └────────────────────────────────────┘  │
+│  └──────┬───────┘           ▲                ▲            │
+└─────────│───────────────────│────────────────│────────────┘
+          │ IPC JSONL         │ IPC JSONL      │
+    ┌─────┴─────┐       ┌─────┴─────┐    ┌─────┴─────┐
+    │ Sidecar A │       │ Sidecar B │    │ Sidecar N │
+    │ (Claude)  │       │ (OpenCode)│    │  (any)    │
+    │ - PTY     │       │ - PTY     │    │ - PTY     │
+    │ - inbox   │       │ - inbox   │    │ - inbox   │
+    │   watch   │       │   watch   │    │   watch   │
+    └───────────┘       └───────────┘    └───────────┘
+          │                   │                │
+          └───────────────────┴────────────────┘
+                          │
+                 ┌────────┴────────┐
+                 │ Shared tmp dir  │
+                 │ interagent/     │
+                 │  inbox/         │
+                 │  outbox/        │
+                 │  presence.json  │
+                 └─────────────────┘
+```
+
+### Implementation Phases
+
+| Phase | Scope                         | Key Files                                                                                           |
+| ----- | ----------------------------- | --------------------------------------------------------------------------------------------------- |
+| 1     | **Sidecar Core**              | `src/sidecar/ipc.ts`, `src/sidecar/SidecarProcess.ts`, `src/sidecar/index.ts`, `esbuild.sidecar.js` |
+| 2     | **Extension Integration**     | `src/ptyManager.ts`, `src/ClaudeTerminalViewProvider.ts`                                            |
+| 3     | **InterAgentRouter (Broker)** | `src/interagent/InterAgentRouter.ts`                                                                |
+| 4     | **Bootstrap / Adapters**      | Env vars in `ptyManager.ts`, OpenCode skill, Claude producer (sidecar covers receive)               |
+| 5     | **Tests & Hardening**         | Unit (memfs), Integration (2 PTYs), Chaos (kill/restart), Security (lstat/UID)                      |
+
+---
+
+_Decisions recorded by OpenCode session `big-pickle`. All confirmed by user._

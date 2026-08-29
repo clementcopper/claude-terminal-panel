@@ -43,7 +43,8 @@ export class ConfigManager {
       statusLineProvider: config.get<'bundled' | 'own'>('statusLineProvider', 'bundled'),
       statusLineCompactBudget: config.get<number>('statusLineCompactBudget', 0),
       editorContext: config.get<boolean>('editorContext', true),
-      contextThreshold: config.get<number>('contextThreshold', 60)
+      contextThreshold: config.get<number>('contextThreshold', 60),
+      useSidecar: config.get<boolean>('useSidecar', true)
     };
 
     return this.cachedConfig;

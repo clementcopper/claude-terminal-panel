@@ -6,6 +6,14 @@ import type { IPty, INodePty, TerminalConfig } from './types';
 import { getStatusLineDir } from './statusLineWatcher';
 
 /**
+ * Directory the inter-agent channel writes its per-tab snapshots into.
+ * Mirrors the statusline pattern: per-user tmp, 0700.
+ */
+export function getInterAgentDir(): string {
+  return path.join(os.tmpdir(), 'claude-terminal-panel', 'interagent');
+}
+
+/**
  * Single-quotes a path for a POSIX shell. Both paths involved contain spaces on macOS
  * ("Visual Studio Code.app"), and Claude Code runs the statusLine command through a shell.
  */
@@ -142,7 +150,7 @@ export class PtyManager {
     const cwd = this.resolveConfiguredCwd(config.cwd) ?? this.getWorkingDirectory();
     const env = this.buildEnvironment(
       config.env,
-      config.statusLine ? { terminalId, config } : undefined
+      { terminalId, config }
     );
     return { shell, env, cwd };
   }
@@ -243,7 +251,7 @@ export class PtyManager {
 
   private buildEnvironment(
     configEnv: Record<string, string>,
-    statusLine?: { terminalId: string; config: TerminalConfig }
+    statusLine?: { terminalId: string; config?: TerminalConfig }
   ): Record<string, string> {
     const env: Record<string, string> = {};
 
@@ -261,6 +269,17 @@ export class PtyManager {
       FORCE_COLOR: '1'
     });
 
+    // Inter-agent channel: unconditional for every PTY (statusline is gated,
+    // so OpenCode would miss it otherwise)
+    env.INTERAGENT_DIR = getInterAgentDir();
+    // MY_TAB_ID will be set by the caller via the statusLine object when present,
+    // but we also set it here unconditionally so the sidecar can always read it.
+    // Note: the actual terminalId is passed in when statusLine is provided;
+    // for callers without statusLine, they must ensure terminalId is in env.
+    if (statusLine !== undefined) {
+      env.MY_TAB_ID = statusLine.terminalId;
+    }
+
     // The statusLine script has no other way to say which tab it belongs to: Claude Code
     // hands it the session data on stdin, and the extension only ever sees PTY bytes.
     // These two variables are the whole contract — the script writes <tab id>.json into
@@ -269,6 +288,7 @@ export class PtyManager {
       env.CLAUDE_PANEL_TAB_ID = statusLine.terminalId;
       env.CLAUDE_PANEL_STATUS_DIR = getStatusLineDir();
 
+      if (statusLine.config) {
       if (statusLine.config.statusLineProvider === 'bundled') {
         env.CLAUDE_PANEL_COMPACT_BUDGET = String(statusLine.config.statusLineCompactBudget);
         // Hand the user's own command to the producer instead of losing its side effects
@@ -282,6 +302,10 @@ export class PtyManager {
         delete env.CLAUDE_PANEL_COMPACT_BUDGET;
         delete env.CLAUDE_PANEL_DELEGATE;
       }
+    } else {
+      delete env.CLAUDE_PANEL_COMPACT_BUDGET;
+      delete env.CLAUDE_PANEL_DELEGATE;
+    }
     } else {
       delete env.CLAUDE_PANEL_TAB_ID;
       delete env.CLAUDE_PANEL_STATUS_DIR;
