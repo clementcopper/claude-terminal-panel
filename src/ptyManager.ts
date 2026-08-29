@@ -356,7 +356,7 @@ export class PtyManager {
    * Given a path already, it is passed through unchanged. Unresolvable names fall back to the
    * original, preserving the not-found behaviour the user can see and fix in their settings.
    */
-  private resolveCommand(command: string): string {
+  resolveCommand(command: string): string {
     if (!command || command.includes('/') || path.isAbsolute(command)) {
       return command;
     }

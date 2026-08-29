@@ -475,7 +475,9 @@ export class ClaudeTerminalViewProvider
    * Spawns a sidecar process for the given terminal.
    * The sidecar manages the PTY and inter-agent messaging.
    */
-  private spawnSidecar(terminalId: string, config: TerminalConfig, cwd: string): void {
+  private spawnSidecar(terminalId: string, config: TerminalConfig, cwd?: string): void {
+    const workingDir =
+      cwd ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.env.HOME ?? '/';
     const interagentDir = getInterAgentDir();
     const env = {
       ...process.env,
@@ -490,9 +492,9 @@ export class ClaudeTerminalViewProvider
     const sidecar = spawnSidecar({
       tabId: terminalId,
       engine: config.command === 'claude' ? 'claude' : 'opencode',
-      command: config.command,
+      command: this.ptyManager.resolveCommand(config.command),
       args: config.args,
-      cwd,
+      cwd: workingDir,
       cols: this.lastCols,
       rows: this.lastRows,
       env,
@@ -512,7 +514,7 @@ export class ClaudeTerminalViewProvider
         if (instance) {
           this.interAgentRouter?.registerPresence(tabId, {
             engine: instance.engine,
-            cwd: instance.cwd ?? cwd,
+            cwd: instance.cwd ?? workingDir,
             cols: this.lastCols,
             rows: this.lastRows,
             ts: Date.now()
@@ -763,7 +765,11 @@ export class ClaudeTerminalViewProvider
       engine === 'claude' && extraArgs.length > 0
         ? { ...config, args: [...config.args, ...extraArgs] }
         : config;
-    this.ptyManager.spawn(activeId, spawnConfig, this.lastCols, this.lastRows, cwd);
+    if (config.useSidecar) {
+      this.spawnSidecar(activeId, spawnConfig, cwd);
+    } else {
+      this.ptyManager.spawn(activeId, spawnConfig, this.lastCols, this.lastRows, cwd);
+    }
   }
 
   /**
