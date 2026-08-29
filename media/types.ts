@@ -76,6 +76,7 @@ export type WebviewOutgoingMessage =
   | { type: 'ready'; cols: number; rows: number }
   | { type: 'input'; id: string; data: string }
   | { type: 'resize'; id: string; cols: number; rows: number }
+  | { type: 'terminalReady'; id: string; cols: number; rows: number }
   | { type: 'newTab' }
   | { type: 'newTabWithCommand' }
   | { type: 'closeTab'; id: string }
@@ -93,6 +94,10 @@ export interface TerminalEntry {
   element: HTMLDivElement;
   isAtBottom: boolean;
   lastScrollTop: number;
+  /** Set once `terminalReady` has been sent for this tab; the host starts the process on it. */
+  readySent?: boolean;
+  /** Pending report, restarted by every fit until the size stops moving. */
+  readyTimer?: number;
 }
 
 // xterm.js theme type (re-export for convenience)

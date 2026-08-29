@@ -1,9 +1,16 @@
 import * as vscode from 'vscode';
 import { ClaudeTerminalViewProvider } from './ClaudeTerminalViewProvider';
+import { initLog, log } from './log';
 
 let terminalProvider: ClaudeTerminalViewProvider | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
+  // Before anything else: the provider's constructor already has something to say.
+  const output = vscode.window.createOutputChannel('Claude Terminal');
+  context.subscriptions.push(output);
+  initLog(output);
+  log('ext', 'activate');
+
   terminalProvider = new ClaudeTerminalViewProvider(context.extensionUri);
 
   context.subscriptions.push(

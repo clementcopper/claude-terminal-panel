@@ -203,3 +203,23 @@ Non-obvious findings and dead ends. Only add what saves future work.
   sauber `undefined`, und `Math.round(undefined)` wäre `NaN%`. Eine 0 kann im Panel also gar nicht
   entstehen: sie kam so an. Vor der Fehlersuche `status/<tab>.json` ansehen — Alter der Datei und
   `usedTokens` beantworten die Streaming-Frage in einem Blick.
+
+## Terminal-Start im Panel
+
+- **xterm in einem `display:none`-Element zu öffnen liefert eine 0 × 0-Messung.** Der Wrapper hat
+  dann keine Box, xterm bleibt auf seinem Default 80 × 24, und alles, was vor dem ersten `fit()`
+  hereinkommt, landet im falsch dimensionierten Puffer und wird danach reflowt — sichtbar als
+  umgebrochene Rahmen und Fragmente. `visibility: hidden` auf einem absolut positionierten Wrapper
+  hat Layout und malt trotzdem nichts; genau das macht `measureInitialDimensions` seit jeher.
+- **Eine PTY darf erst starten, wenn ihr Fenster gemessen ist.** Die geschätzte Startgröße aus
+  `measureInitialDimensions` lag messbar daneben, weil Statuszeile und Editor-Zeile darin fehlen:
+  bei 520 × 400 px meldete sie 65 × 25, das Terminal hielt am Ende 62 × 18 — sieben Zeilen zu viel.
+  Der Host wartet jetzt auf `terminalReady` aus dem Webview.
+- **Die Größe muss sich erst beruhigen, bevor man sie meldet.** Zwei RAFs reichen nicht: die
+  Statuszeile kommt in den Nachrichten direkt hinter `createTab` und ändert die Höhe danach. Ein
+  Timer, den jeder Fit neu startet (80 ms), meldet den Wert, den das Terminal behält — im Harness
+  über drei Panelgrößen identisch mit dem letzten Fit.
+- **`killAll()` an `onDidDispose` des Webviews nimmt die Sitzungen mit.** Das Webview wird auch
+  neu gebaut, wenn man das Panel in die andere Seitenleiste zieht. Die Prozesse laufen jetzt
+  weiter, `handleReady` stellt die Tabs wieder her, und die Referenz auf das alte Webview wird
+  fallen gelassen, damit kein `postMessage` mehr dorthin geht.

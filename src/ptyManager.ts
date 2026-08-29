@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { IPty, INodePty, TerminalConfig } from './types';
 import { getStatusLineDir } from './statusLineWatcher';
+import { log } from './log';
 
 /**
  * Directory the inter-agent channel writes its per-tab snapshots into.
@@ -45,6 +46,8 @@ export interface WorkingDirectorySelection {
 export class PtyManager {
   private nodePty: INodePty | undefined;
   private readonly ptys = new Map<string, IPty>();
+  /** When each PTY was spawned, so an exit can be reported with the life it had. */
+  private readonly startedAt = new Map<string, number>();
 
   constructor(
     private readonly callbacks: PtyEventCallbacks,
@@ -75,10 +78,20 @@ export class PtyManager {
       const pty = this.createPty(effectiveConfig, shell, cols, rows, workingDir, env);
 
       this.ptys.set(terminalId, pty);
+      this.startedAt.set(terminalId, Date.now());
+      log(
+        'pty',
+        `${terminalId} spawn pid ${String(pty.pid)} ${String(cols)}x${String(rows)} in ${workingDir} — ${
+          effectiveConfig.directMode
+            ? [effectiveConfig.command, ...effectiveConfig.args].join(' ')
+            : shell
+        }`
+      );
       this.setupPtyEventHandlers(terminalId, pty);
       this.handleAutoRun(pty, effectiveConfig);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      log('pty', `${terminalId} spawn failed: ${errorMessage}`);
       this.callbacks.onError(terminalId, errorMessage);
     }
   }
@@ -398,7 +411,14 @@ export class PtyManager {
       this.callbacks.onData(terminalId, data);
     });
 
-    pty.onExit(({ exitCode }) => {
+    pty.onExit(({ exitCode, signal }) => {
+      const started = this.startedAt.get(terminalId);
+      const lived = started !== undefined ? `${String(Date.now() - started)} ms` : 'unknown age';
+      this.startedAt.delete(terminalId);
+      log(
+        'pty',
+        `${terminalId} exit code ${String(exitCode)}${signal !== undefined ? ` signal ${String(signal)}` : ''} after ${lived}`
+      );
       this.callbacks.onExit(terminalId, exitCode);
     });
   }

@@ -1024,6 +1024,9 @@ function formatK(tokens: number): string {
 
 // Main webview context class
 class WebviewContext {
+  /** How long a fresh tab's size has to hold still before it is reported to the host. */
+  private static readonly READY_SETTLE_MS = 80;
+
   readonly state = new TerminalState();
   private readonly themeBuilder = new ThemeBuilder();
   private readonly vscode: VSCodeAPI;
@@ -1181,6 +1184,7 @@ class WebviewContext {
           const savedScrollTop = viewport?.scrollTop ?? 0;
 
           active.fitAddon.fit();
+          this.scheduleReadyReport(activeId, active);
 
           requestAnimationFrame(() => {
             if (wasAtBottom) {
@@ -1354,7 +1358,11 @@ class WebviewContext {
     const container = document.createElement('div');
     container.className = 'terminal-wrapper';
     container.id = `terminal-${id}`;
-    container.style.display = 'none';
+    // `visibility`, not `display`: the wrapper is absolutely positioned over the whole container,
+    // so it has a box to measure while painting nothing. Opened under `display: none` the box is
+    // 0x0 — measured — and xterm keeps its 80x24 default until some later fit, which is what put
+    // the CLI's first frame into a window of the wrong size.
+    container.style.visibility = 'hidden';
     this.terminalsContainer.appendChild(container);
 
     const terminal = new Terminal({
@@ -1394,12 +1402,57 @@ class WebviewContext {
     ScrollManager.setupScrollTracking(entry);
     this.state.set(id, entry);
 
+    // Fit right away, so nothing can land in an 80x24 default buffer, then let the report
+    // settle: the status line and the editor row arrive in the messages right behind `createTab`
+    // and take up to seven rows off the terminal's height.
+    fitAddon.fit();
+    this.scheduleReadyReport(id, entry);
+
+    requestAnimationFrame(() => {
+      // Showing the tab is `switchToTerminal`'s job; everything else goes back to hidden.
+      if (this.state.getActiveId() !== id) {
+        container.style.display = 'none';
+      }
+      container.style.visibility = '';
+    });
+
     return entry;
+  }
+
+  /**
+   * Reports the tab's measured size to the host, once, after it has stopped moving.
+   *
+   * The host holds the process until this arrives, so the number has to be the height the
+   * terminal keeps — not the one it has for the two frames before the status line appears. Every
+   * fit restarts the timer; the first quiet moment wins. The host starts the process anyway after
+   * two seconds, so a dropped report costs a resize, not a dead tab.
+   */
+  private scheduleReadyReport(id: string, entry: TerminalEntry): void {
+    if (entry.readySent) {
+      return;
+    }
+    if (entry.readyTimer !== undefined) {
+      window.clearTimeout(entry.readyTimer);
+    }
+    entry.readyTimer = window.setTimeout(() => {
+      entry.readyTimer = undefined;
+      entry.readySent = true;
+      this.postMessage({
+        type: 'terminalReady',
+        id,
+        cols: entry.terminal.cols,
+        rows: entry.terminal.rows
+      });
+    }, WebviewContext.READY_SETTLE_MS);
   }
 
   switchToTerminal(id: string): void {
     this.state.forEach((t, tid) => {
       t.element.style.display = tid === id ? 'block' : 'none';
+      // A tab can still be in its measuring pass, where the wrapper is hidden but laid out.
+      // Without this the freshly activated terminal would have `display: block` and stay
+      // invisible until the next thing happened to clear it.
+      t.element.style.visibility = '';
     });
 
     this.state.setActiveId(id);
@@ -1414,6 +1467,7 @@ class WebviewContext {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           active.fitAddon.fit();
+          this.scheduleReadyReport(id, active);
           active.terminal.focus();
 
           requestAnimationFrame(() => {

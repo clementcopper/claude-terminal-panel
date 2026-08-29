@@ -8,6 +8,7 @@ export interface MessageHandlerContext {
   handleReady(cols: number, rows: number): void;
   handleInput(id: string, data: string): void;
   handleResize(id: string, cols: number, rows: number): void;
+  handleTerminalReady(id: string, cols: number, rows: number): void;
   handleNewTab(): void;
   handleNewTabWithCommand(): void;
   handleCloseTab(id: string): void;
@@ -38,6 +39,9 @@ const messageHandlers: MessageHandlerMap = {
   },
   resize: (message, ctx) => {
     ctx.handleResize(message.id, message.cols, message.rows);
+  },
+  terminalReady: (message, ctx) => {
+    ctx.handleTerminalReady(message.id, message.cols, message.rows);
   },
   newTab: (_message, ctx) => {
     ctx.handleNewTab();

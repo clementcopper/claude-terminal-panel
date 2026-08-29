@@ -20,6 +20,7 @@ import { PromptDetector, type PromptDetectorConfig } from './promptDetector';
 import { StatusLineWatcher } from './statusLineWatcher';
 import { EditorContextTracker } from './editorContextTracker';
 import { InterAgentRouter } from './interagent/InterAgentRouter';
+import { log } from './log';
 
 /**
  * Wraps text in the bracketed paste markers so a multi-line insert stays one input.
@@ -54,6 +55,22 @@ export class ClaudeTerminalViewProvider
 
   /** Inter-agent router for message delivery between tabs. */
   private interAgentRouter: InterAgentRouter | null = null;
+
+  /**
+   * Tabs whose process is waiting for the webview to report the terminal's real size.
+   *
+   * A PTY spawned before that knows only an estimate — `measureInitialDimensions` leaves out the
+   * status line and the editor row, and a fresh xterm sits at 80x24 until its first fit. The CLI
+   * then paints its opening frame for a window that is up to seven rows taller than the one it
+   * lands in, which is where the wrapped boxes and leftover fragments come from.
+   */
+  /** How long a tab waits for the webview to report its size before starting anyway. */
+  private static readonly READY_TIMEOUT_MS = 2000;
+
+  private readonly pendingSpawns = new Map<
+    string,
+    { config: TerminalConfig; cwd?: string; timer: ReturnType<typeof setTimeout> }
+  >();
 
   /**
    * Tabs that have already been told they are over the context threshold. Cleared again only once
@@ -172,7 +189,85 @@ export class ClaudeTerminalViewProvider
     // A reloaded webview starts empty; the editor is whatever it was before the reload
     this.sendEditorContext(this.editorTracker.current);
     this.sendContextThreshold();
-    void this.createTerminal();
+
+    // The webview can be rebuilt while the extension host keeps running — moving the view to the
+    // other sidebar does it, so does "Developer: Reload Webviews". The processes are still there;
+    // only the DOM is gone. Creating a fresh tab instead of restoring them left the old ones in
+    // the tab bar with no element behind them: clicking one did nothing.
+    const existing = this.stateManager.getAll();
+    log(
+      'webview',
+      `ready ${String(cols)}x${String(rows)}, ${String(existing.length)} tab(s) to restore`
+    );
+
+    if (existing.length === 0) {
+      void this.createTerminal();
+      return;
+    }
+
+    for (const tab of existing) {
+      this.postMessage({
+        type: 'createTab',
+        id: tab.id,
+        name: tab.name,
+        accentColor: this.getAccentColor(tab.engine)
+      });
+      const snapshot = this.statusLineWatcher.get(tab.id);
+      if (snapshot) {
+        this.postMessage({ type: 'statusLine', id: tab.id, data: snapshot });
+      } else {
+        this.sendInitialStatusLine(tab.id, tab.cwd);
+      }
+    }
+    this.sendTabsUpdate();
+
+    const activeId = this.stateManager.getActiveId() ?? existing[existing.length - 1].id;
+    this.stateManager.setActive(activeId);
+    this.postMessage({ type: 'switchTab', id: activeId });
+  }
+
+  /**
+   * The webview has measured the tab's terminal. Either the process is still waiting to be
+   * started with those dimensions, or it is already running and only needs to be told.
+   */
+  handleTerminalReady(id: string, cols: number, rows: number): void {
+    this.lastCols = cols;
+    this.lastRows = rows;
+
+    const pending = this.pendingSpawns.get(id);
+    if (!pending) {
+      // A restored tab, or one whose safety net already fired: the process exists, so this is a
+      // resize and nothing more.
+      log('tab', `${id} ready ${String(cols)}x${String(rows)} (already running)`);
+      this.ptyManager.resize(id, cols, rows);
+      return;
+    }
+
+    clearTimeout(pending.timer);
+    this.pendingSpawns.delete(id);
+    log('tab', `${id} ready ${String(cols)}x${String(rows)}, starting process`);
+    this.ptyManager.spawn(id, pending.config, cols, rows, pending.cwd);
+    this.registerPresence(id);
+  }
+
+  /**
+   * Holds the tab's process until `terminalReady` arrives, and starts it anyway if it does not.
+   *
+   * The safety net is the point: a lost message must cost a badly sized first frame, never a tab
+   * that never starts at all.
+   */
+  private spawnWhenMeasured(id: string, config: TerminalConfig, cwd?: string): void {
+    const timer = setTimeout(() => {
+      if (!this.pendingSpawns.delete(id)) return;
+      log(
+        'tab',
+        `${id} no terminalReady within ${String(ClaudeTerminalViewProvider.READY_TIMEOUT_MS)} ms, starting at ${String(this.lastCols)}x${String(this.lastRows)}`
+      );
+      this.ptyManager.spawn(id, config, this.lastCols, this.lastRows, cwd);
+      this.registerPresence(id);
+    }, ClaudeTerminalViewProvider.READY_TIMEOUT_MS);
+
+    this.pendingSpawns.set(id, { config, cwd, timer });
   }
 
   handleInput(id: string, data: string): void {
@@ -215,6 +310,10 @@ export class ClaudeTerminalViewProvider
   }
 
   handleResize(id: string, cols: number, rows: number): void {
+    // Only a real change is worth a line — the observer fires on every panel drag frame.
+    if (cols !== this.lastCols || rows !== this.lastRows) {
+      log('tab', `${id} resize ${String(cols)}x${String(rows)}`);
+    }
     this.lastCols = cols;
     this.lastRows = rows;
     this.ptyManager.resize(id, cols, rows);
@@ -415,14 +514,25 @@ export class ClaudeTerminalViewProvider
       localResourceRoots: [this.extensionUri]
     };
 
+    log('webview', 'resolve');
     webviewView.webview.html = this.getHtmlForWebview(webviewView.webview);
 
     webviewView.webview.onDidReceiveMessage((message: WebviewMessage) => {
       dispatchMessage(message, this);
     });
 
+    // Deliberately no `killAll()` here. The webview is rebuilt for reasons that have nothing to
+    // do with the sessions — the view is moved to the other sidebar, the webviews are reloaded —
+    // and killing every PTY on that took the running agents with it. `dispose()` still cleans up
+    // when the extension itself goes away.
     webviewView.onDidDispose(() => {
-      this.ptyManager.killAll();
+      // Only if it is still the current one: VS Code may already have resolved the replacement
+      // by the time the old view reports its disposal, and clearing that would silence the
+      // panel for good. Dropping the reference stops every `postMessage` into a dead webview.
+      if (this.view === webviewView) {
+        this.view = undefined;
+      }
+      log('webview', 'disposed, processes kept');
     });
   }
 
@@ -463,8 +573,8 @@ export class ClaudeTerminalViewProvider
     this.sendInitialStatusLine(id, cwd);
 
     const config = this.engineConfig(engine);
-    this.ptyManager.spawn(id, config, this.lastCols, this.lastRows, cwd);
-    this.registerPresence(id);
+    log('tab', `${id} created (${engine}) in ${cwd}`);
+    this.spawnWhenMeasured(id, config, cwd);
 
     // Switch to the new tab
     this.postMessage({ type: 'switchTab', id });
@@ -575,8 +685,8 @@ export class ClaudeTerminalViewProvider
 
     // Use provided command/args instead of config
     const customConfig = { ...this.engineConfig(engine), command, args };
-    this.ptyManager.spawn(id, customConfig, this.lastCols, this.lastRows, cwd);
-    this.registerPresence(id);
+    log('tab', `${id} created (${engine}) in ${cwd} — ${[command, ...args].join(' ')}`);
+    this.spawnWhenMeasured(id, customConfig, cwd);
 
     this.postMessage({ type: 'switchTab', id });
 
@@ -601,6 +711,13 @@ export class ClaudeTerminalViewProvider
     const instance = this.stateManager.get(terminalId);
     if (!instance) return;
 
+    const pending = this.pendingSpawns.get(terminalId);
+    if (pending) {
+      clearTimeout(pending.timer);
+      this.pendingSpawns.delete(terminalId);
+    }
+
+    log('tab', `${terminalId} closed`);
     this.ptyManager.kill(terminalId);
     this.promptDetector.removeTerminal(terminalId);
     this.statusLineWatcher.removeTerminal(terminalId);
@@ -746,6 +863,10 @@ export class ClaudeTerminalViewProvider
 
   public dispose(): void {
     this.disposed = true;
+    for (const pending of this.pendingSpawns.values()) {
+      clearTimeout(pending.timer);
+    }
+    this.pendingSpawns.clear();
     this.themeSubscription.dispose();
     this.ptyManager.killAll();
     this.interAgentRouter?.dispose();

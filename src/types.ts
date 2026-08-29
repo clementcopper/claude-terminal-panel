@@ -1,5 +1,7 @@
 // node-pty types
 export interface IPty {
+  /** The child's process id — only ever used for the diagnostic log. */
+  readonly pid: number;
   onData: (callback: (data: string) => void) => void;
   onExit: (callback: (exitCode: { exitCode: number; signal?: number }) => void) => void;
   write: (data: string) => void;
@@ -139,6 +141,12 @@ export type WebviewMessage =
   | { type: 'ready'; cols?: number; rows?: number }
   | { type: 'input'; id: string; data: string }
   | { type: 'resize'; id: string; cols: number; rows: number }
+  /**
+   * The webview has opened, measured and fitted the tab's terminal. The PTY is started from
+   * this, not from an estimate: before the element has a box, xterm sits at its default 80x24
+   * and the process would paint its first frame for a window that does not exist.
+   */
+  | { type: 'terminalReady'; id: string; cols: number; rows: number }
   | { type: 'newTab' }
   | { type: 'newTabWithCommand' }
   | { type: 'closeTab'; id: string }
