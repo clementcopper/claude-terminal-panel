@@ -104,9 +104,7 @@ export class ClaudeTerminalViewProvider
     });
 
     // Initialize inter-agent router for cross-tab messaging
-    this.interAgentRouter = new InterAgentRouter({
-      write: (terminalId: string, data: string) => { this.ptyManager.write(terminalId, data); }
-    });
+    this.interAgentRouter = new InterAgentRouter();
 
     // Pre-load help for the configured command. Probing the other CLI agents spawns a
     // process per candidate on every window start, so it is opt-in.
@@ -477,19 +475,18 @@ export class ClaudeTerminalViewProvider
    * Spawns a sidecar process for the given terminal.
    * The sidecar manages the PTY and inter-agent messaging.
    */
-  private spawnSidecar(
-    terminalId: string,
-    config: TerminalConfig,
-    cwd: string
-  ): void {
+  private spawnSidecar(terminalId: string, config: TerminalConfig, cwd: string): void {
     const interagentDir = getInterAgentDir();
     const env = {
       ...process.env,
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+      FORCE_COLOR: '1',
       INTERAGENT_DIR: interagentDir,
       MY_TAB_ID: terminalId
     };
 
-    // Spawn sidecar as a child process
+    // Spawn the sidecar (in-process module; the extension host loads and runs it)
     const sidecar = spawnSidecar({
       tabId: terminalId,
       engine: config.command === 'claude' ? 'claude' : 'opencode',
@@ -500,9 +497,15 @@ export class ClaudeTerminalViewProvider
       rows: this.lastRows,
       env,
       interagentDir,
-      onOutput: (tabId: string, data: string) => { this.handlePtyData(tabId, data); },
-      onExit: (tabId: string, code: number | null, _signal: number | null) => { this.handlePtyExit(tabId, code); },
-      onError: (tabId: string, message: string) => { this.handlePtyError(tabId, message); },
+      onOutput: (tabId: string, data: string) => {
+        this.handlePtyData(tabId, data);
+      },
+      onExit: (tabId: string, code: number | null, _signal: number | null) => {
+        this.handlePtyExit(tabId, code);
+      },
+      onError: (tabId: string, message: string) => {
+        this.handlePtyError(tabId, message);
+      },
       onReady: (tabId: string) => {
         // Register with inter-agent router
         const instance = this.stateManager.get(tabId);

@@ -9,10 +9,6 @@ const MAX_JSONL_SIZE = 1_048_576;
 const MAX_JSONL_LINES = 10_000;
 const MAX_ROTATIONS = 3;
 
-interface InterAgentRouterCallbacks {
-  write: (terminalId: string, data: string) => void;
-}
-
 interface PresenceEntry {
   engine: string;
   cwd: string;
@@ -44,13 +40,11 @@ export class InterAgentRouter {
   private readonly filePositions = new Map<string, number>();
   private readonly seenMsgIds = new Map<string, number>(); // msgId -> timestamp
   private disposed = false;
-  private readonly callbacks: InterAgentRouterCallbacks;
   private readonly inboxDir: string;
   private readonly outboxDir: string;
   private readonly presenceFile: string;
 
-  constructor(callbacks: InterAgentRouterCallbacks) {
-    this.callbacks = callbacks;
+  constructor() {
     const dir = getInterAgentDir();
     this.inboxDir = path.join(dir, 'inbox');
     this.outboxDir = path.join(dir, 'outbox');
@@ -175,14 +169,9 @@ export class InterAgentRouter {
       return;
     }
 
-    // Deliver to target
-    if (msg.kind === 'text') {
-      const payload = typeof msg.payload === 'string' ? msg.payload : JSON.stringify(msg.payload);
-      this.callbacks.write(to, this.bracketedPaste(payload));
-    } else {
-      const payload = typeof msg.payload === 'string' ? msg.payload : JSON.stringify(msg.payload);
-      this.callbacks.write(to, payload);
-    }
+    // Direct (non-broadcast) messages need no router action: each sidecar
+    // watches the inbox itself and delivers to its own PTY. The router's job
+    // here is dedup (above) and presence/discovery only.
   }
 
   private writeToInbox(from: string, to: string, msg: InterAgentMessage): void {
@@ -194,10 +183,6 @@ export class InterAgentRouter {
     } catch {
       // ignore
     }
-  }
-
-  private bracketedPaste(text: string): string {
-    return `\x1b[200~${text}\x1b[201~`;
   }
 
   private readPresence(): Record<string, PresenceEntry> {

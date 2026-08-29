@@ -2,7 +2,18 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { IPty } from 'node-pty';
-import { serialize, deserialize, type SidecarMessage } from './ipc';
+import type { SidecarMessage } from './ipc';
+
+interface InterAgentMessage {
+  from?: string;
+  to: string;
+  kind: 'text' | 'control';
+  payload: string | object;
+  msgId?: string;
+  seq?: number;
+  ts?: number;
+  v?: number;
+}
 
 const POLLING_INTERVAL_MS = 300;
 
@@ -62,12 +73,14 @@ export class SidecarProcess {
   }
 
   private setupPty(): void {
-    const nodePty = require('node-pty') as { spawn: (cmd: string, args: string[], opts: object) => IPty };
+    const nodePty = require('node-pty') as {
+      spawn: (cmd: string, args: string[], opts: object) => IPty;
+    };
     this.pty = nodePty.spawn(this.options.command, this.options.args, {
       cwd: this.options.cwd,
       env: this.options.env,
       cols: this.options.cols,
-      rows: this.options.rows,
+      rows: this.options.rows
     });
 
     this.pty.onData((data: string) => {
@@ -84,7 +97,7 @@ export class SidecarProcess {
   }
 
   private setupInboxWatch(): void {
-    const pattern = new RegExp(`^${this.escapeRegExp(this.tabId)}\\.to\\..+\\.jsonl$`);
+    const pattern = new RegExp(`^.+\\.to\\.${this.escapeRegExp(this.tabId)}\\.jsonl$`);
 
     try {
       this.inboxWatcher = fs.watch(this.inboxDir, (event, filename) => {
@@ -141,21 +154,29 @@ export class SidecarProcess {
     const lines = newContent.split('\n');
     for (const line of lines) {
       if (!line.trim()) continue;
-      const parsed = deserialize(line);
-      if (!parsed || parsed.tabId !== this.tabId) continue;
-      this.deliverToPty(parsed);
+      const msg = this.parseInterAgentMessage(line);
+      if (!msg || msg.to !== this.tabId) continue;
+      this.deliverToPty(msg.kind, msg.payload);
     }
   }
 
-  private deliverToPty(msg: SidecarMessage): void {
+  private parseInterAgentMessage(line: string): InterAgentMessage | null {
+    try {
+      return JSON.parse(line) as InterAgentMessage;
+    } catch {
+      return null;
+    }
+  }
+
+  private deliverToPty(kind: string, payload: string | object): void {
     if (!this.pty || this.disposed) return;
 
-    if (msg.type === 'deliver') {
-      if (msg.kind === 'text') {
-        this.pty.write(this.bracketedPaste(msg.payload));
-      } else {
-        this.pty.write(msg.payload);
-      }
+    if (kind === 'text') {
+      const text = typeof payload === 'string' ? payload : JSON.stringify(payload);
+      this.pty.write(this.bracketedPaste(text));
+    } else if (kind === 'control') {
+      const text = typeof payload === 'string' ? payload : JSON.stringify(payload);
+      this.pty.write(text);
     }
   }
 
@@ -170,7 +191,7 @@ export class SidecarProcess {
       cwd: this.options.cwd,
       cols: this.options.cols,
       rows: this.options.rows,
-      ts: Date.now(),
+      ts: Date.now()
     };
     this.writePresence(presence);
   }
@@ -198,7 +219,9 @@ export class SidecarProcess {
   }
 
   private reportReady(): void {
-    process.stdout.write(serialize({ type: 'ready', tabId: this.tabId }) + '\n');
+    // In-process: the extension host requires this module, so there is no IPC
+    // child to notify. Fire the callback directly so presence is registered.
+    this.options.onReady();
   }
 
   private escapeRegExp(str: string): string {
@@ -210,7 +233,7 @@ export class SidecarProcess {
 
     switch (msg.type) {
       case 'deliver':
-        this.deliverToPty(msg);
+        this.deliverToPty(msg.kind, msg.payload);
         break;
       case 'resize':
         this.pty?.resize(msg.cols, msg.rows);
@@ -247,7 +270,7 @@ export class SidecarProcess {
   }
 
   private cleanupFiles(): void {
-    const pattern = new RegExp(`^${this.escapeRegExp(this.tabId)}\\.to\\..+\\.jsonl$`);
+    const pattern = new RegExp(`^.+\\.to\\.${this.escapeRegExp(this.tabId)}\\.jsonl$`);
     try {
       const files = fs.readdirSync(this.inboxDir);
       for (const file of files) {
