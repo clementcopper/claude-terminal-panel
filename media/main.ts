@@ -934,12 +934,20 @@ class StatusLineView {
       row.appendChild(span);
     });
 
+    // The tooltip explains the row, so it may only name a limit the row actually shows.
+    // Claude Code sends the two buckets independently and a reset time can arrive without its
+    // percentage — the segment is then dropped while the tooltip still promised a "weekly limit"
+    // nothing on screen mentioned.
     const tooltip: string[] = [];
     // A reset time in the past is not worth naming — the row already says the limit is back.
-    if (snapshot.sessionResetsAt !== undefined && !sessionExpired) {
+    if (
+      snapshot.sessionPercent !== undefined &&
+      snapshot.sessionResetsAt !== undefined &&
+      !sessionExpired
+    ) {
       tooltip.push(`Session limit resets at ${formatClock(snapshot.sessionResetsAt)}`);
     }
-    if (snapshot.weekResetsAt) {
+    if (snapshot.weekPercent !== undefined && snapshot.weekResetsAt) {
       tooltip.push(`Weekly limit resets on ${snapshot.weekResetsAt}`);
     }
     if (onCredits) {
