@@ -34,6 +34,15 @@ interface InterAgentMessage {
   };
 }
 
+/**
+ * What the router needs from the panel: which tabs live in this window, and how to put a
+ * message into one of them. The PTYs stay with `PtyManager` — the router never owns a process.
+ */
+export interface RouterHost {
+  isLocalTab: (tabId: string) => boolean;
+  deliver: (tabId: string, kind: 'text' | 'control', text: string) => void;
+}
+
 export class InterAgentRouter {
   private inboxWatcher: fs.FSWatcher | null = null;
   private pollingInterval: NodeJS.Timeout | null = null;
@@ -44,7 +53,7 @@ export class InterAgentRouter {
   private readonly outboxDir: string;
   private readonly presenceFile: string;
 
-  constructor() {
+  constructor(private readonly host: RouterHost) {
     const dir = getInterAgentDir();
     this.inboxDir = path.join(dir, 'inbox');
     this.outboxDir = path.join(dir, 'outbox');
@@ -61,6 +70,22 @@ export class InterAgentRouter {
 
   private start(): void {
     const pattern = /^(.+)\.to\.(.+)\.jsonl$/;
+
+    // Everything already on disk is history: another window wrote it, or this one did before
+    // the reload. Start each file at its current end, or every tab would be handed the whole
+    // backlog as a paste the moment the window opens.
+    try {
+      for (const filename of fs.readdirSync(this.inboxDir)) {
+        if (!pattern.test(filename)) continue;
+        try {
+          this.filePositions.set(filename, fs.statSync(path.join(this.inboxDir, filename)).size);
+        } catch {
+          // gone between readdir and stat — nothing to skip then
+        }
+      }
+    } catch {
+      // no inbox yet
+    }
 
     try {
       this.inboxWatcher = fs.watch(this.inboxDir, (event, filename) => {
@@ -135,11 +160,9 @@ export class InterAgentRouter {
   }
 
   private deliverMessage(from: string, to: string, msg: InterAgentMessage): void {
-    // Validate/overwrite from from filename (spoofing protection)
-    // We don't actually mutate msg since it's const, but the check is done
-    if (msg.from !== from) {
-      // from overwritten by filename
-    }
+    // `from` always comes from the filename, never from the body: each `<from>.to.<to>.jsonl`
+    // has exactly one writer, so the name is the only sender claim that cannot be forged.
+    // A body that says otherwise is ignored rather than rejected — forward compatibility.
 
     // Message ID deduplication
     if (msg.msgId) {
@@ -160,18 +183,31 @@ export class InterAgentRouter {
 
     // Handle broadcast
     if (msg.to === 'all') {
+      // The sender's own window fans out, exactly once. Every window watches this directory,
+      // so without that check each of them would append its own copy per recipient.
+      if (!this.host.isLocalTab(from)) return;
       const presence = this.readPresence();
       for (const recipient of Object.keys(presence)) {
-        if (recipient !== from) {
-          this.writeToInbox(from, recipient, msg);
-        }
+        if (recipient === from) continue;
+        // A fresh `to` and a per-recipient `msgId`: the fan-out copies come back through this
+        // same reader, and with the sender's id they would all be swallowed as duplicates of
+        // the broadcast line that produced them.
+        this.writeToInbox(from, recipient, {
+          ...msg,
+          from,
+          to: recipient,
+          msgId: msg.msgId ? `${msg.msgId}#${recipient}` : undefined
+        });
       }
       return;
     }
 
-    // Direct (non-broadcast) messages need no router action: each sidecar
-    // watches the inbox itself and delivers to its own PTY. The router's job
-    // here is dedup (above) and presence/discovery only.
+    // Only this window's tabs. The tmp directory is shared across windows on purpose, so a
+    // message for a tab elsewhere is that window's router's job, not ours.
+    if (!this.host.isLocalTab(to)) return;
+
+    const text = typeof msg.payload === 'string' ? msg.payload : JSON.stringify(msg.payload);
+    this.host.deliver(to, msg.kind === 'control' ? 'control' : 'text', text);
   }
 
   private writeToInbox(from: string, to: string, msg: InterAgentMessage): void {
@@ -200,7 +236,7 @@ export class InterAgentRouter {
     fs.renameSync(tmp, this.presenceFile);
   }
 
-  /** Called when a tab registers (sidecar ready). */
+  /** Called right after a tab's PTY is spawned. */
   registerPresence(tabId: string, entry: PresenceEntry): void {
     const presence = this.readPresence();
     presence[tabId] = { ...entry, ts: Date.now() };

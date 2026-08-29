@@ -78,7 +78,7 @@ export default tseslint.config(
 
   // Build tooling, plain CommonJS on the Node globals. Not packaged.
   {
-    files: ['scripts/**/*.js', 'esbuild.sidecar.js'],
+    files: ['scripts/**/*.js'],
     languageOptions: {
       sourceType: 'commonjs',
       globals: {

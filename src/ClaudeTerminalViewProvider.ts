@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as nodePath from 'path';
 import { randomBytes } from 'crypto';
-import { PtyManager, type PtyEventCallbacks, getInterAgentDir } from './ptyManager';
+import { PtyManager, type PtyEventCallbacks } from './ptyManager';
 import { ConfigManager } from './configManager';
 import { TerminalStateManager } from './terminalStateManager';
 import { dispatchMessage, type MessageHandlerContext } from './messageHandlers';
@@ -19,7 +19,6 @@ import { CommandInputPicker } from './commandInputPicker';
 import { PromptDetector, type PromptDetectorConfig } from './promptDetector';
 import { StatusLineWatcher } from './statusLineWatcher';
 import { EditorContextTracker } from './editorContextTracker';
-import { spawnSidecar, SidecarProcess } from './sidecar/index';
 import { InterAgentRouter } from './interagent/InterAgentRouter';
 
 /**
@@ -52,9 +51,6 @@ export class ClaudeTerminalViewProvider
   private readonly promptDetector: PromptDetector;
   private readonly statusLineWatcher: StatusLineWatcher;
   private readonly editorTracker: EditorContextTracker;
-
-  /** Sidecar processes, keyed by terminalId. Used when useSidecar is enabled. */
-  private readonly sidecars = new Map<string, SidecarProcess>();
 
   /** Inter-agent router for message delivery between tabs. */
   private interAgentRouter: InterAgentRouter | null = null;
@@ -103,8 +99,17 @@ export class ClaudeTerminalViewProvider
       this.sendEditorContext(context);
     });
 
-    // Initialize inter-agent router for cross-tab messaging
-    this.interAgentRouter = new InterAgentRouter();
+    // Inter-agent router for cross-tab messaging. It owns discovery and the inbox files;
+    // delivery goes back through the single PTY owner, so a message arrives on exactly the
+    // path a keystroke takes.
+    this.interAgentRouter = new InterAgentRouter({
+      isLocalTab: (tabId) => this.stateManager.get(tabId) !== undefined,
+      deliver: (tabId, kind, text) => {
+        // `text` is one block and gets bracketed paste; a control string is a signal and
+        // must reach the CLI raw, or it would land in the prompt as literal escape bytes.
+        this.ptyManager.write(tabId, kind === 'text' ? bracketedPaste(text) : text);
+      }
+    });
 
     // Pre-load help for the configured command. Probing the other CLI agents spawns a
     // process per candidate on every window start, so it is opt-in.
@@ -457,13 +462,9 @@ export class ClaudeTerminalViewProvider
     this.sendTabsUpdate();
     this.sendInitialStatusLine(id, cwd);
 
-    // Start the terminal process (sidecar or direct PTY)
     const config = this.engineConfig(engine);
-    if (config.useSidecar) {
-      this.spawnSidecar(id, config, cwd);
-    } else {
-      this.ptyManager.spawn(id, config, this.lastCols, this.lastRows, cwd);
-    }
+    this.ptyManager.spawn(id, config, this.lastCols, this.lastRows, cwd);
+    this.registerPresence(id);
 
     // Switch to the new tab
     this.postMessage({ type: 'switchTab', id });
@@ -472,58 +473,21 @@ export class ClaudeTerminalViewProvider
   }
 
   /**
-   * Spawns a sidecar process for the given terminal.
-   * The sidecar manages the PTY and inter-agent messaging.
+   * Announces the tab in `presence.json` so other agents can discover and address it.
+   *
+   * Called right after every spawn — the router only fans a broadcast out to the tabs it finds
+   * there, and a tab missing from the file is unreachable.
    */
-  private spawnSidecar(terminalId: string, config: TerminalConfig, cwd?: string): void {
-    const workingDir =
-      cwd ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.env.HOME ?? '/';
-    const interagentDir = getInterAgentDir();
-    const env = {
-      ...process.env,
-      TERM: 'xterm-256color',
-      COLORTERM: 'truecolor',
-      FORCE_COLOR: '1',
-      INTERAGENT_DIR: interagentDir,
-      MY_TAB_ID: terminalId
-    };
-
-    // Spawn the sidecar (in-process module; the extension host loads and runs it)
-    const sidecar = spawnSidecar({
-      tabId: terminalId,
-      engine: config.command === 'claude' ? 'claude' : 'opencode',
-      command: this.ptyManager.resolveCommand(config.command),
-      args: config.args,
-      cwd: workingDir,
+  private registerPresence(terminalId: string): void {
+    const instance = this.stateManager.get(terminalId);
+    if (!instance) return;
+    this.interAgentRouter?.registerPresence(terminalId, {
+      engine: instance.engine,
+      cwd: instance.cwd ?? '',
       cols: this.lastCols,
       rows: this.lastRows,
-      env,
-      interagentDir,
-      onOutput: (tabId: string, data: string) => {
-        this.handlePtyData(tabId, data);
-      },
-      onExit: (tabId: string, code: number | null, _signal: number | null) => {
-        this.handlePtyExit(tabId, code);
-      },
-      onError: (tabId: string, message: string) => {
-        this.handlePtyError(tabId, message);
-      },
-      onReady: (tabId: string) => {
-        // Register with inter-agent router
-        const instance = this.stateManager.get(tabId);
-        if (instance) {
-          this.interAgentRouter?.registerPresence(tabId, {
-            engine: instance.engine,
-            cwd: instance.cwd ?? workingDir,
-            cols: this.lastCols,
-            rows: this.lastRows,
-            ts: Date.now()
-          });
-        }
-      }
+      ts: Date.now()
     });
-
-    this.sidecars.set(terminalId, sidecar);
   }
 
   /**
@@ -611,11 +575,8 @@ export class ClaudeTerminalViewProvider
 
     // Use provided command/args instead of config
     const customConfig = { ...this.engineConfig(engine), command, args };
-    if (customConfig.useSidecar) {
-      this.spawnSidecar(id, customConfig, cwd);
-    } else {
-      this.ptyManager.spawn(id, customConfig, this.lastCols, this.lastRows, cwd);
-    }
+    this.ptyManager.spawn(id, customConfig, this.lastCols, this.lastRows, cwd);
+    this.registerPresence(id);
 
     this.postMessage({ type: 'switchTab', id });
 
@@ -639,13 +600,6 @@ export class ClaudeTerminalViewProvider
   public closeTerminal(terminalId: string): void {
     const instance = this.stateManager.get(terminalId);
     if (!instance) return;
-
-    // Kill sidecar if present
-    const sidecar: SidecarProcess | undefined = this.sidecars.get(terminalId);
-    if (sidecar) {
-      sidecar.kill();
-      this.sidecars.delete(terminalId);
-    }
 
     this.ptyManager.kill(terminalId);
     this.promptDetector.removeTerminal(terminalId);
@@ -740,13 +694,6 @@ export class ClaudeTerminalViewProvider
     this.isRestarting = true;
     this.thresholdNotified.delete(activeId);
 
-    // Kill sidecar if present
-    const sidecar: SidecarProcess | undefined = this.sidecars.get(activeId);
-    if (sidecar) {
-      sidecar.kill();
-      this.sidecars.delete(activeId);
-    }
-
     this.ptyManager.kill(activeId);
 
     // Delay to let old PTY exit event fire before resetting flag
@@ -765,11 +712,8 @@ export class ClaudeTerminalViewProvider
       engine === 'claude' && extraArgs.length > 0
         ? { ...config, args: [...config.args, ...extraArgs] }
         : config;
-    if (config.useSidecar) {
-      this.spawnSidecar(activeId, spawnConfig, cwd);
-    } else {
-      this.ptyManager.spawn(activeId, spawnConfig, this.lastCols, this.lastRows, cwd);
-    }
+    this.ptyManager.spawn(activeId, spawnConfig, this.lastCols, this.lastRows, cwd);
+    this.registerPresence(activeId);
   }
 
   /**
@@ -804,10 +748,6 @@ export class ClaudeTerminalViewProvider
     this.disposed = true;
     this.themeSubscription.dispose();
     this.ptyManager.killAll();
-    for (const sidecar of this.sidecars.values()) {
-      sidecar.kill();
-    }
-    this.sidecars.clear();
     this.interAgentRouter?.dispose();
     this.promptDetector.dispose();
     this.statusLineWatcher.dispose();

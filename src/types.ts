@@ -65,8 +65,6 @@ export interface TerminalConfig {
   editorContext: boolean;
   /** Percentage of the context window at which the status line warns that a `/clear` is due. */
   contextThreshold: number;
-  /** Run each terminal via a sidecar process for inter-agent messaging. */
-  useSidecar: boolean;
 }
 
 /**

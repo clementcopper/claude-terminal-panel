@@ -148,10 +148,7 @@ export class PtyManager {
   } {
     const shell = config.shell || this.getDefaultShell();
     const cwd = this.resolveConfiguredCwd(config.cwd) ?? this.getWorkingDirectory();
-    const env = this.buildEnvironment(
-      config.env,
-      { terminalId, config }
-    );
+    const env = this.buildEnvironment(config.env, terminalId, config);
     return { shell, env, cwd };
   }
 
@@ -251,7 +248,8 @@ export class PtyManager {
 
   private buildEnvironment(
     configEnv: Record<string, string>,
-    statusLine?: { terminalId: string; config?: TerminalConfig }
+    terminalId: string,
+    config: TerminalConfig
   ): Record<string, string> {
     const env: Record<string, string> = {};
 
@@ -269,46 +267,30 @@ export class PtyManager {
       FORCE_COLOR: '1'
     });
 
-    // Inter-agent channel: unconditional for every PTY (statusline is gated,
-    // so OpenCode would miss it otherwise)
+    // Inter-agent channel: every PTY gets these, status line or not. OpenCode has no status
+    // line, and gating them behind it would leave that tab unable to name itself.
     env.INTERAGENT_DIR = getInterAgentDir();
-    // MY_TAB_ID will be set by the caller via the statusLine object when present,
-    // but we also set it here unconditionally so the sidecar can always read it.
-    // Note: the actual terminalId is passed in when statusLine is provided;
-    // for callers without statusLine, they must ensure terminalId is in env.
-    if (statusLine !== undefined) {
-      env.MY_TAB_ID = statusLine.terminalId;
-    }
+    env.MY_TAB_ID = terminalId;
 
     // The statusLine script has no other way to say which tab it belongs to: Claude Code
     // hands it the session data on stdin, and the extension only ever sees PTY bytes.
     // These two variables are the whole contract — the script writes <tab id>.json into
     // the directory, the watcher reads it back.
-    if (statusLine !== undefined) {
-      env.CLAUDE_PANEL_TAB_ID = statusLine.terminalId;
-      env.CLAUDE_PANEL_STATUS_DIR = getStatusLineDir();
+    env.CLAUDE_PANEL_TAB_ID = terminalId;
+    env.CLAUDE_PANEL_STATUS_DIR = getStatusLineDir();
 
-      if (statusLine.config) {
-      if (statusLine.config.statusLineProvider === 'bundled') {
-        env.CLAUDE_PANEL_COMPACT_BUDGET = String(statusLine.config.statusLineCompactBudget);
-        // Hand the user's own command to the producer instead of losing its side effects
-        const delegate = this.getUserStatusLineCommand();
-        if (delegate !== undefined) {
-          env.CLAUDE_PANEL_DELEGATE = delegate;
-        } else {
-          delete env.CLAUDE_PANEL_DELEGATE;
-        }
+    if (config.statusLineProvider === 'bundled') {
+      env.CLAUDE_PANEL_COMPACT_BUDGET = String(config.statusLineCompactBudget);
+      // Hand the user's own command to the producer instead of losing its side effects
+      const delegate = this.getUserStatusLineCommand();
+      if (delegate !== undefined) {
+        env.CLAUDE_PANEL_DELEGATE = delegate;
       } else {
-        delete env.CLAUDE_PANEL_COMPACT_BUDGET;
         delete env.CLAUDE_PANEL_DELEGATE;
       }
     } else {
-      delete env.CLAUDE_PANEL_COMPACT_BUDGET;
-      delete env.CLAUDE_PANEL_DELEGATE;
-    }
-    } else {
-      delete env.CLAUDE_PANEL_TAB_ID;
-      delete env.CLAUDE_PANEL_STATUS_DIR;
+      // VS Code itself may have been started from a panel terminal, in which case these are
+      // inherited from `process.env` and would point the producer at the wrong tab.
       delete env.CLAUDE_PANEL_COMPACT_BUDGET;
       delete env.CLAUDE_PANEL_DELEGATE;
     }
@@ -356,7 +338,7 @@ export class PtyManager {
    * Given a path already, it is passed through unchanged. Unresolvable names fall back to the
    * original, preserving the not-found behaviour the user can see and fix in their settings.
    */
-  resolveCommand(command: string): string {
+  private resolveCommand(command: string): string {
     if (!command || command.includes('/') || path.isAbsolute(command)) {
       return command;
     }
@@ -431,16 +413,32 @@ export class PtyManager {
 
   /**
    * Writes data to the PTY.
+   *
+   * Loud about an unknown id on purpose: this class is the only PTY owner, so a write for an
+   * id it does not know is a routing mistake. Silent optional chaining hid exactly that for three
+   * commits, while a second owner held the PTYs — every keystroke dropped, nothing in the log.
    */
   write(terminalId: string, data: string): void {
-    this.ptys.get(terminalId)?.write(data);
+    const pty = this.ptys.get(terminalId);
+    if (!pty) {
+      console.warn(
+        `[pty] write to unknown terminal ${terminalId} — dropped ${String(data.length)} bytes`
+      );
+      return;
+    }
+    pty.write(data);
   }
 
   /**
-   * Resizes the PTY.
+   * Resizes the PTY. Same reasoning as `write` for the unknown id.
    */
   resize(terminalId: string, cols: number, rows: number): void {
-    this.ptys.get(terminalId)?.resize(cols, rows);
+    const pty = this.ptys.get(terminalId);
+    if (!pty) {
+      console.warn(`[pty] resize of unknown terminal ${terminalId}`);
+      return;
+    }
+    pty.resize(cols, rows);
   }
 
   /**
