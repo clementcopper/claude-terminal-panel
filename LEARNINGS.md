@@ -177,3 +177,22 @@ Non-obvious findings and dead ends. Only add what saves future work.
   the wrong way (observed: stuck dark while the system was light). Serialising — webview sends
   `themeApplied` after `applyTheme()`, host then writes `\x1b[?997;1n` into each OpenCode tab, only
   when the appearance bucket actually changed — made the flip reliable in both directions.
+
+## Inter-agent channel
+
+- **Ein zweiter PTY-Besitzer umgeht still die ganze env-Aufbereitung.** Die Sidecar-Schicht
+  (`a476aeb`…`4091f67`) spawnte PTYs selbst statt über `PtyManager`. Damit fehlten in jedem Tab
+  `--settings` mit dem gebündelten Statusline-Producer (Claude Code zeichnete daraufhin die
+  Statuszeile _im Terminal_, doppelt zur Panel-Leiste), `CLAUDE_PANEL_TAB_ID`/`_STATUS_DIR` (die
+  Panel-Statusbar blieb leer), `config.env`, `delete env.CI` und `directMode`. Nichts davon hat
+  einen Fehler geworfen. Wer einen zweiten Spawn-Pfad einzieht, erbt die Pflicht, jede Zeile von
+  `prepareSpawnOptions` nachzubauen — billiger ist, den Besitz nicht zu teilen.
+- **`?.` auf einer Map-Lookup verschluckt Routing-Fehler.** `this.ptys.get(id)?.write(data)` ließ
+  drei Commits lang jeden Tastendruck ins Leere laufen, ohne eine Zeile im Log. Bei einem Lookup,
+  der nie fehlschlagen _darf_, gehört ein lautes `console.warn` in den Miss-Zweig.
+- **Ein Broadcast-Fan-out braucht eine eigene msgId pro Empfänger.** Die Kopien kommen durch
+  denselben Leser zurück; mit der msgId des Originals frisst sie die Dedup-Map als Duplikat der
+  Zeile, die sie erzeugt hat. Und nur das Fenster des Senders darf auffächern — alle Fenster
+  beobachten dasselbe tmp-Verzeichnis.
+- **Ein append-only-JSONL-Watcher muss beim Start auf die Dateigröße springen.** Sonst ist beim
+  Fensterstart der gesamte Verlauf „neu" und wird in frische Tabs gepastet.
