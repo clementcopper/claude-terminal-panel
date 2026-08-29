@@ -406,19 +406,33 @@ export class PtyManager {
     }
   }
 
+  /**
+   * Both handlers check that the process they belong to is still the tab's current one.
+   *
+   * A restart kills the old PTY and starts a new one under the same tab id, and the old one's
+   * exit arrives whenever the operating system gets around to it. Reported blindly it became
+   * `[Process exited with code 129]` — 128 + SIGHUP, the kill itself — printed into the session
+   * that had just replaced it. The identity check is exact where a timer was not: `ptys` holds
+   * the current instance, so anything else is a process this class has already retired.
+   */
   private setupPtyEventHandlers(terminalId: string, pty: IPty): void {
     pty.onData((data: string) => {
+      if (this.ptys.get(terminalId) !== pty) return;
       this.callbacks.onData(terminalId, data);
     });
 
     pty.onExit(({ exitCode, signal }) => {
       const started = this.startedAt.get(terminalId);
       const lived = started !== undefined ? `${String(Date.now() - started)} ms` : 'unknown age';
-      this.startedAt.delete(terminalId);
+      const retired = this.ptys.get(terminalId) !== pty;
+      if (!retired) {
+        this.startedAt.delete(terminalId);
+      }
       log(
         'pty',
-        `${terminalId} exit code ${String(exitCode)}${signal !== undefined ? ` signal ${String(signal)}` : ''} after ${lived}`
+        `${terminalId} exit code ${String(exitCode)}${signal !== undefined ? ` signal ${String(signal)}` : ''} after ${lived}${retired ? ' (retired instance, not reported)' : ''}`
       );
+      if (retired) return;
       this.callbacks.onExit(terminalId, exitCode);
     });
   }

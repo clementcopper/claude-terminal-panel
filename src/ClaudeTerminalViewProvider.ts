@@ -41,7 +41,6 @@ export class ClaudeTerminalViewProvider
 {
   private view?: vscode.WebviewView;
   private disposed = false;
-  private isRestarting = false;
   private lastCols = 80;
   private lastRows = 24;
 
@@ -483,7 +482,7 @@ export class ClaudeTerminalViewProvider
   }
 
   private handlePtyExit(terminalId: string, exitCode: number | null): void {
-    if (!this.disposed && this.view && !this.isRestarting) {
+    if (!this.disposed && this.view) {
       this.postMessage({
         type: 'output',
         id: terminalId,
@@ -808,15 +807,11 @@ export class ClaudeTerminalViewProvider
     const activeId = this.stateManager.getActiveId();
     if (!activeId) return;
 
-    this.isRestarting = true;
     this.thresholdNotified.delete(activeId);
 
+    // No guard flag needed for the old process: `PtyManager` drops it from its map here, and
+    // both its handlers check that identity before reporting anything.
     this.ptyManager.kill(activeId);
-
-    // Delay to let old PTY exit event fire before resetting flag
-    setTimeout(() => {
-      this.isRestarting = false;
-    }, 100);
 
     // The tab keeps its own engine: a restart on an OpenCode tab must come back as
     // OpenCode, not silently fall back to the configured Claude command. Resume/continue

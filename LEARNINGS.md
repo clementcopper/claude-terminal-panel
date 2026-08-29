@@ -223,3 +223,8 @@ Non-obvious findings and dead ends. Only add what saves future work.
   neu gebaut, wenn man das Panel in die andere Seitenleiste zieht. Die Prozesse laufen jetzt
   weiter, `handleReady` stellt die Tabs wieder her, und die Referenz auf das alte Webview wird
   fallen gelassen, damit kein `postMessage` mehr dorthin geht.
+- **Ein Zeitfenster ist kein Ersatz für Identität.** Der Respawn unterdrückte die Exit-Meldung der
+  alten PTY über ein Flag mit 100-ms-Timer. Kam das Ereignis später, stand `[Process exited with
+code 129]` (128 + SIGHUP, der Kill selbst) in der frisch gestarteten Sitzung — und Restbytes der
+  alten PTY gleich hinterher. `PtyManager` vergleicht jetzt in beiden Handlern die PTY-Instanz mit
+  der, die für die Tab-ID eingetragen ist; alles andere ist ein bereits abgeräumter Prozess.
