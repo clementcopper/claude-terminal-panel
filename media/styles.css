@@ -70,10 +70,14 @@ body {
      the nearest opaque token for a hairline that has to stay a hairline. */
   --status-ring-track: var(--vscode-editorWidget-border, #d4d4d4);
 
-  /* The dark set. Measured against Dark Modern's `tab.inactiveBackground` (#181818), which is
-     what this row sits on: fill 5.01:1, warn 10.53:1, danger 4.97:1. The light theme overrides
-     all three below — a tone that carries on #181818 is not the same tone that carries on
-     #F8F8F8, and two of these failed there by a wide margin. */
+  /* Fill and danger are set per theme kind below; warn is the same tone in both.
+     Measured on Dark Modern's `tab.inactiveBackground` (#181818): fill 5.01:1, warn 10.53:1,
+     danger 4.97:1.
+
+     Warn is the one place this row goes under 4.5:1 on purpose. At this hue (45°) every tone
+     that reaches 4.5:1 against a near-white ground has stopped being yellow — #8A6200 measures
+     5.17:1 and reads brown. Warning yellow that is not recognisably yellow warns about nothing,
+     so the hue wins here and the contrast loses. Measured 1.59:1 on #F8F8F8. */
   --status-ring-fill: #7878ff;
   --status-warn: #fdbd00;
   --status-danger: var(--vscode-editorError-foreground, #f14c4c);
@@ -100,13 +104,12 @@ body {
 
 /* VS Code stamps the theme kind on the body: `vscode-light`, `vscode-dark`,
    `vscode-high-contrast` and `vscode-high-contrast-light`. Measured against Light Modern's
-   `tab.inactiveBackground` (#F8F8F8): the fill lands at 4.69:1, warn at 5.17:1 where #fdbd00 was
-   1.59:1, and danger at 5.33:1 where `editorError.foreground` (#E51400) was 4.46:1 — just under
-   the 4.5:1 this row is held to. */
+   `tab.inactiveBackground` (#F8F8F8): the fill lands at 4.69:1, and danger at 5.33:1 where
+   `editorError.foreground` (#E51400) was 4.46:1 — just under the 4.5:1 this row is held to.
+   Warn is deliberately not overridden; see the note above. */
 body.vscode-light #status-line,
 body.vscode-high-contrast-light #status-line {
   --status-ring-fill: #5757ff;
-  --status-warn: #8a6200;
   --status-danger: #c42b1c;
 }
 
@@ -258,19 +261,23 @@ body.vscode-high-contrast-light #status-line {
   min-width: 0;
 }
 
+/* Label and value share one colour in both theme kinds, and the weight alone separates them —
+   a hierarchy built on two greys reads differently in light than in dark, because the distance
+   between two greys is not the same on #F8F8F8 as on #181818.
+
+   `foreground`, not `descriptionForeground` or `disabledForeground`: the last of those is
+   `#CCCCCC` at 50% alpha in Dark Modern and composites to 3.69:1 on that theme's ground, under
+   the 4.5:1 this row is held to. This token measures 10.55:1 light and 11.06:1 dark. */
 .status-ring-name {
-  color: var(--vscode-descriptionForeground, #616161);
+  color: var(--vscode-foreground, #1f1f1f);
   font-size: 9px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
-/* `foreground`, not `disabledForeground`: the latter is `#CCCCCC` at 50% alpha in Dark Modern,
-   which composites to 3.69:1 on that theme's ground — under the 4.5:1 this row is held to. This
-   token measures 11.06:1 dark and 10.55:1 light. In Light Modern it happens to be the same value
-   as the label above it, so the weight carries the hierarchy there. */
 .status-ring-sub {
   color: var(--vscode-foreground, #1f1f1f);
   font-size: 9px;
+  font-weight: 400;
   overflow: hidden;
   text-overflow: ellipsis;
 }
