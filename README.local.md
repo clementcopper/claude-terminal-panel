@@ -216,11 +216,14 @@ silently, because the watch follows the inode rather than the path.
 
   | Panel width | Status line | Layout                                 |
   | ----------- | ----------- | -------------------------------------- |
-  | ≥ 460px     | 103px       | head and all four rings on one line    |
-  | 330–455px   | 147px       | rings on their own line, four in a row |
-  | 255–325px   | 191px       | Ctx, Sess, Week — Comp below           |
-  | 183–250px   | 191px       | Ctx, Sess — Week, Comp below           |
-  | < 183px     | 235px       | three ring rows                        |
+  | ≥ 439px     | 103px       | head and all four rings on one line    |
+  | 321–438px   | 147px       | rings on their own line, four in a row |
+  | 246–320px   | 191px       | Ctx, Sess, Week — Comp below           |
+  | 177–245px   | 191px       | Ctx, Sess — Week, Comp below           |
+  | < 177px     | 235px       | three ring rows                        |
+
+  The steps move with the UI font — they were 20–40px wider before SF Compact Display, which is
+  about 10% narrower than a default sans at the same size. Re-measure after any font change.
 
 - The context ring fills against the **threshold**, not against a full window — a full ring and
   the red are the same event — and so does the number in its hole: 32% of the window against a
@@ -250,6 +253,19 @@ silently, because the watch follows the inode rather than the path.
   once per tab, naming the tab because the warning can come from one that is off screen; the
   warning offers to run `/clear` in that same tab. It re-arms only once the tab falls ten points
   back below the threshold, so a session sitting on the line does not warn every few seconds.
+- Two font stacks, both declared at the top of `media/styles.css`. The terminal gets
+  `--panel-mono-font` (SF Mono first), everything else `--panel-ui-font` (SF Compact Display
+  first); each falls through to VS Code's own token, so a machine without the SF fonts still gets
+  the editor's. `ThemeBuilder.getFontFamily()` reads the mono variable off `documentElement`
+  rather than keeping its own copy. Apple's family is **SF Compact**, not "SF Pro Compact" — SF
+  Pro and SF Compact are siblings.
+- The terminal's scrollbar is xterm 6's port of VS Code's scrollbar widget, not a native one.
+  xterm hard-codes it to "auto" visibility, so it fades out about a second after the last scroll;
+  `.terminal-wrapper.has-scrollback` pins it back on, and `ScrollManager.markScrollback` sets
+  that class from `buffer.active.baseY`. The class is what keeps an idle terminal from showing a
+  full-height grey strip: with nothing to scroll the widget still draws a slider, and it fills
+  the whole track. The slider's three colours come from `--vscode-scrollbarSlider-*` through the
+  xterm theme; without them xterm derives them from the foreground at 20% opacity.
 - Claude's own colours — diff blocks, highlights — are absolute truecolor sequences chosen for
   its `theme` setting. They do not follow the VS Code theme; the extension only supplies
   background, foreground and the 16 ANSI slots. On a light VS Code theme with Claude's dark

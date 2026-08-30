@@ -366,3 +366,31 @@ min-width: 0` wurde die Ringreihe auf den Rest der Zeile zusammengedrückt und j
   `foreground` und `descriptionForeground` sogar auf denselben Wert (`#3B3B3B`) zusammen, die
   Hierarchie verschwindet also ganz. Eine Farbe für beide Zeilen, Unterschied über das
   Schriftgewicht: das trägt in beiden Modi gleich.
+
+## Schriften und Scrollbar im Panel
+
+- **„SF Pro Compact" gibt es nicht.** Apples Familien heißen `SF Pro` und `SF Compact` — Geschwister,
+  keine Verschachtelung —, je mit `Display`, `Text` und `Rounded` als optische Größen. Installiert
+  sind sie hier über `~/Library/Fonts` und `/Library/Fonts`; `SF Mono` liegt im Bundle von
+  Terminal.app (`/System/Applications/Utilities/Terminal.app/Contents/Resources/Fonts/`) und ist
+  von dort systemweit registriert. Prüfen mit
+  `system_profiler SPFontsDataType | grep -E "^ +Family: "`.
+- **Dass ein Font im Stack steht, heißt nicht, dass er auflöst.** Im Renderer beweist es
+  `document.fonts.check('12px "SF Compact Display"')` plus eine Breitenmessung über
+  `canvas.measureText` gegen den Fallback: gleiche Breite = stillschweigend zurückgefallen.
+  Gemessen für „Session 100% · Sun 1:00 AM" bei 12px: SF Compact Display 140,16px · SF Compact
+  Text 151,3px · sans-serif 156,76px · SF Mono 192,87px · Menlo 187,84px.
+- **Ein `var()` ohne eigenen Fallback reißt die ganze Deklaration mit.** `font-family: 'SF Mono',
+  var(--vscode-editor-font-family), Menlo` ist ungültig, sobald das Token fehlt — nicht etwa „dann
+  eben Menlo", sondern gar keine Schriftfamilie. In jedem Stack gehört der Fallback in das `var()`
+  selbst.
+- **xterm 6 hat die nativ scrollende Viewport aufgegeben.** Statt `overflow-y: scroll` auf
+  `.xterm-viewport` läuft jetzt VS Codes Scrollbar-Widget (`.xterm-scrollable-element > .scrollbar`).
+  Alle `::-webkit-scrollbar`-Regeln auf der Viewport treffen damit ins Leere, ohne dass irgendetwas
+  meldet. Die Sichtbarkeit steht im Bundle fest auf `ScrollbarVisibility.Auto` und ist über die
+  öffentliche API nicht einstellbar; gemessen kippt die Klasse rund eine Sekunde nach dem letzten
+  Scrollen von `visible scrollbar vertical` auf `invisible scrollbar vertical fade`.
+- **Eine dauerhaft eingeblendete Scrollbar braucht eine Bedingung.** Ohne Scrollback zeichnet das
+  Widget den Slider über die volle Trackhöhe — dauerhaft sichtbar gemacht wäre das ein grauer
+  Streifen an jedem ruhenden Terminal. `buffer.active.baseY > 0` ist die Bedingung; sie als Klasse
+  auf den Wrapper legen und die CSS-Regel daran hängen.

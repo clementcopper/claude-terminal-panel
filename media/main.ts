@@ -150,9 +150,11 @@ class ThemeBuilder {
       return this.cachedFontFamily;
     }
 
-    // Read VSCode's editor font family from CSS variable
-    const editorFont = this.getCssVar('--vscode-editor-font-family', '');
-    this.cachedFontFamily = editorFont || ThemeBuilder.DEFAULT_FONT_FAMILY;
+    // One stack for the terminal, declared in `styles.css` next to the UI one. It already starts
+    // with SF Mono and ends in VS Code's own editor font, so reading the variable keeps the two
+    // halves of the panel from drifting apart.
+    const monoFont = this.getCssVar('--panel-mono-font', '');
+    this.cachedFontFamily = monoFont || ThemeBuilder.DEFAULT_FONT_FAMILY;
 
     return this.cachedFontFamily;
   }
@@ -174,6 +176,20 @@ class ThemeBuilder {
       cursor: this.getCssVar('--vscode-terminalCursor-foreground', '#d4d4d4'),
       cursorAccent: this.getCssVar('--vscode-terminalCursor-background', '#1e1e1e'),
       selectionBackground: this.getCssVar('--vscode-terminal-selectionBackground', '#264f78'),
+      // Without these three xterm draws its slider from the foreground at 20% opacity, which is
+      // its own grey rather than the one every other scrollbar in the window uses.
+      scrollbarSliderBackground: this.getCssVar(
+        '--vscode-scrollbarSlider-background',
+        'rgba(121, 121, 121, 0.4)'
+      ),
+      scrollbarSliderHoverBackground: this.getCssVar(
+        '--vscode-scrollbarSlider-hoverBackground',
+        'rgba(100, 100, 100, 0.7)'
+      ),
+      scrollbarSliderActiveBackground: this.getCssVar(
+        '--vscode-scrollbarSlider-activeBackground',
+        'rgba(191, 191, 191, 0.4)'
+      ),
       black: this.getCssVar('--vscode-terminal-ansiBlack', '#000000'),
       red: this.getCssVar('--vscode-terminal-ansiRed', '#cd3131'),
       green: this.getCssVar('--vscode-terminal-ansiGreen', '#0dbc79'),
@@ -211,7 +227,18 @@ class ScrollManager {
   static setupScrollTracking(entry: TerminalEntry): void {
     entry.terminal.onScroll(() => {
       entry.isAtBottom = this.isAtBottom(entry.terminal);
+      this.markScrollback(entry);
     });
+
+    // xterm hard-codes its vertical scrollbar to VS Code's "auto" visibility, which fades the bar
+    // out about a second after the last scroll — so a terminal at rest never shows one. CSS pins
+    // it back on, but only under this class: with nothing to scroll the widget still draws a
+    // slider, and it fills the whole track, which would leave a permanent grey strip down the
+    // edge of every idle terminal.
+    entry.terminal.onRender(() => {
+      this.markScrollback(entry);
+    });
+    this.markScrollback(entry);
 
     const viewport = entry.element.querySelector('.xterm-viewport') as HTMLElement;
     if (viewport) {
@@ -224,6 +251,11 @@ class ScrollManager {
         { passive: true }
       );
     }
+  }
+
+  /** `baseY` is how many rows have scrolled off the top — zero means there is nothing above. */
+  private static markScrollback(entry: TerminalEntry): void {
+    entry.element.classList.toggle('has-scrollback', entry.terminal.buffer.active.baseY > 0);
   }
 }
 

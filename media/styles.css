@@ -4,13 +4,35 @@
   box-sizing: border-box;
 }
 
+/* Two font stacks, declared once.
+
+   Apple's compact family is called "SF Compact"; there is no family named "SF Pro Compact" —
+   SF Pro and SF Compact are siblings. Display is the chosen optical size, tighter in its spacing
+   than Text, which is what Apple would pick at these sizes; the plain family follows as the
+   variable fallback. Both stacks end in VS Code's own tokens, so a machine without the SF fonts
+   still gets whatever the editor is set to rather than a browser default.
+
+   On `:root` rather than `body`: `ThemeBuilder.getCssVar` reads from `documentElement` to hand
+   xterm the terminal font, so the mono stack has to be resolvable there. */
+:root {
+  /* Every `var()` here carries its own fallback on purpose: a `var()` that resolves to nothing
+     is invalid at computed-value time and takes the whole declaration with it, so the panel
+     would lose its font entirely rather than fall through to the next name in the list. */
+  --panel-mono-font:
+    'SF Mono', var(--vscode-editor-font-family, Menlo), Monaco, 'Courier New', monospace;
+  --panel-ui-font:
+    'SF Compact Display', 'SF Compact', var(--vscode-font-family, -apple-system), sans-serif;
+}
+
 html,
 body {
   height: 100%;
   width: 100%;
   overflow: visible;
   background-color: var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e));
-  font-family: var(--vscode-editor-font-family, 'SF Mono', Monaco, Menlo, 'Courier New', monospace);
+  /* The shell is UI, not terminal: xterm sets the mono stack on its own elements from
+     `ThemeBuilder.getFontFamily()`, so the only thing inheriting from here is the tab bar. */
+  font-family: var(--panel-ui-font);
   display: flex;
   flex-direction: row;
 }
@@ -49,7 +71,7 @@ body {
   background-color: var(--vscode-editorHoverWidget-background, #252526);
   color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground, #ccc));
   box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
-  font-family: var(--vscode-font-family, sans-serif);
+  font-family: var(--panel-ui-font);
   font-size: var(--vscode-font-size, 12px);
   line-height: 1.4;
   white-space: pre-wrap;
@@ -90,7 +112,7 @@ body {
   background-color: var(--vscode-tab-inactiveBackground, #f3f3f3);
   border-top: 1px solid var(--vscode-tab-border, #dcdcdc);
   color: var(--vscode-descriptionForeground, #616161);
-  font-family: var(--vscode-font-family, sans-serif);
+  font-family: var(--panel-ui-font);
   font-size: 10px;
   line-height: 1.45;
   display: flex;
@@ -555,32 +577,33 @@ body.vscode-high-contrast-light #status-line {
   background-color: var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e));
 }
 
-/* xterm 6.0.0 handles viewport scrolling internally */
+/* xterm 6 dropped the natively scrolling viewport for VS Code's scrollbar widget, so the
+   `::-webkit-scrollbar` rules that used to sit here stopped matching anything — `.xterm-viewport`
+   no longer scrolls. Everything below targets the widget instead.
 
-/* Scrollbar styling - override xterm's overlay scrollbar */
+   Slimmer than the widget's own 14px, on both the track and the slider it positions inline. */
 .terminal-wrapper .xterm .scrollbar.vertical {
   width: 6px !important;
 }
 
 .terminal-wrapper .xterm .scrollbar.vertical .slider {
   width: 6px !important;
-}
-
-.terminal-wrapper .xterm-viewport::-webkit-scrollbar {
-  width: 6px;
-}
-
-.terminal-wrapper .xterm-viewport::-webkit-scrollbar-track {
-  background: var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e));
-}
-
-.terminal-wrapper .xterm-viewport::-webkit-scrollbar-thumb {
-  background: var(--vscode-scrollbarSlider-background, #424242);
   border-radius: 3px;
 }
 
-.terminal-wrapper .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: var(--vscode-scrollbarSlider-hoverBackground, #4f4f4f);
+/* The widget fades itself out about a second after the last scroll: measured, its class flips
+   from `visible scrollbar vertical` to `invisible scrollbar vertical fade`, and xterm's own
+   `> .invisible` rule then takes it to `opacity: 0` and `pointer-events: none`. A terminal with
+   scrollback that shows nothing at rest reads as a terminal without scrollback, so the vertical
+   bar is pinned on. Five classes against xterm's three, so no `!important` is needed.
+
+   Only while there is something to scroll: the widget draws a slider either way, and with an
+   empty scrollback it fills the entire track — a permanent grey strip down the edge of every
+   idle terminal. `ScrollManager.markScrollback` sets the class off `buffer.active.baseY`. */
+.terminal-wrapper.has-scrollback .xterm .xterm-scrollable-element > .scrollbar.vertical {
+  opacity: 1;
+  pointer-events: auto;
+  transition: none;
 }
 
 /* Selection styling */
@@ -636,7 +659,7 @@ body.vscode-high-contrast-light #status-line {
   border-radius: 6px;
   background-color: var(--vscode-editorWidget-background, rgba(255, 255, 255, 0.06));
   color: var(--vscode-descriptionForeground, #999);
-  font-family: var(--vscode-font-family);
+  font-family: var(--panel-ui-font);
   font-size: 12px;
   /* The terminal beneath is still empty, so nothing here needs to compete for attention. */
   opacity: 0.9;
