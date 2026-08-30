@@ -22,6 +22,18 @@
     'SF Mono', var(--vscode-editor-font-family, Menlo), Monaco, 'Courier New', monospace;
   --panel-ui-font:
     'SF Compact Display', 'SF Compact', var(--vscode-font-family, -apple-system), sans-serif;
+
+  /* The terminal's scrollbar slider. VS Code's own `scrollbarSlider.*` tokens are tuned for a bar
+     that only appears on hover — as a permanently visible one they are too quiet: measured 1.67:1
+     against Dark Modern's terminal ground and 1.80:1 against Light Modern's. Mixed from the
+     theme's foreground instead, at the ratio that clears the 3:1 WCAG asks of a graphic element:
+     45% reaches 3.19:1 on #1F1F1F, and the light block below needs 60% for 3.50:1 on white. */
+  --panel-scrollbar-slider: color-mix(in srgb, var(--vscode-foreground, #cccccc) 45%, transparent);
+  --panel-scrollbar-slider-hover: color-mix(
+    in srgb,
+    var(--vscode-foreground, #cccccc) 70%,
+    transparent
+  );
 }
 
 html,
@@ -104,7 +116,10 @@ body {
      that ratio even though the small number in the same tone is faint on a light ground. */
   --status-ring-fill: #7878ff;
   --status-warn: #fda400;
-  --status-danger: var(--vscode-editorError-foreground, #f14c4c);
+  /* One red for both theme kinds, like the warning. 4.23:1 on Light Modern's ground and 3.95:1
+     on Dark Modern's — over the 3:1 for the arcs and the stop disc, under the 4.5:1 the text in
+     this row otherwise holds to, which is the same trade the warning colour makes. */
+  --status-danger: #ec1500;
 
   flex-shrink: 0;
   padding: 8px;
@@ -134,7 +149,18 @@ body {
 body.vscode-light #status-line,
 body.vscode-high-contrast-light #status-line {
   --status-ring-fill: #5757ff;
-  --status-danger: #c42b1c;
+}
+
+/* A dark foreground on a white ground needs more of itself to reach the same weight than a light
+   one on black does — 45% lands at 2.41:1 here, 60% at 3.50:1. */
+body.vscode-light,
+body.vscode-high-contrast-light {
+  --panel-scrollbar-slider: color-mix(in srgb, var(--vscode-foreground, #3b3b3b) 60%, transparent);
+  --panel-scrollbar-slider-hover: color-mix(
+    in srgb,
+    var(--vscode-foreground, #3b3b3b) 85%,
+    transparent
+  );
 }
 
 /* A snapshot older than a minute means Claude has not re-rendered since — say so quietly.
@@ -160,12 +186,23 @@ body.vscode-high-contrast-light #status-line {
   overflow: hidden;
 }
 
-/* Stop plus model. Hugs its content so the rings get everything that is left. */
+/* The main row is one flat sequence: stop, model, then a ring group per item. 12px is the gap
+   the frame puts between rings; the head carries the rest of its own separation as a margin. */
+.status-row.main {
+  column-gap: 12px;
+}
+
+/* Stop plus model, the one pair that stays together — the disc and the label beside it read as
+   a single mark. Everything after it is a ring group and wraps on its own.
+
+   The margin plus the row's 12px column gap gives the frame's 24px between the head and the
+   first ring, without a second container to hold them apart. */
 .status-head {
   display: flex;
   align-items: center;
   gap: 5px;
   flex-shrink: 0;
+  margin-right: 12px;
 }
 
 .status-head-text {
@@ -191,28 +228,6 @@ body.vscode-high-contrast-light #status-line {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.3px;
-}
-
-/* The four rings. They wrap as a group before any of them is dropped: at 250px of panel there is
-   no arrangement that fits all four on one line, and a ring that quietly disappeared would be
-   read as a missing limit rather than as a narrow panel. */
-.status-rings {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  column-gap: 12px;
-  row-gap: var(--status-row-gap);
-  /* The floor is what forces the useful break. Without one the container is squeezed into
-     whatever the head leaves over and every ring lands on a line of its own — measured at 260px,
-     four ring rows and a 235px status line. With it the block drops under the head first and
-     keeps three rings on a line. 220px puts the changeover at 76 + 24 + 220 + 16 = 336px, which
-     is where the design frame puts it.
-
-     Capped at 100%: a bare `min-width: 220px` beats `max-width` in CSS, so below 236px of panel
-     the block stood 16-56px past the right edge and `overflow: hidden` on the row swallowed the
-     last ring without a trace. `min()` gives the floor only while there is room for it. */
-  flex: 1 1 auto;
-  min-width: min(220px, 100%);
 }
 
 .status-ring-group {
@@ -348,6 +363,8 @@ body.vscode-high-contrast-light #status-line {
   text-overflow: ellipsis;
   white-space: nowrap;
   font: inherit;
+  /* A path, so it is set like one — after `font`, which would otherwise reset the family */
+  font-family: var(--panel-mono-font);
   color: var(--vscode-foreground, #1f1f1f);
   cursor: pointer;
 }
@@ -387,8 +404,10 @@ body.vscode-high-contrast-light #status-line {
   display: block;
 }
 
+/* The same red the ring turns at the threshold — one danger colour in the row, not two.
+   White on it measures 4.49:1. */
 .status-stop:hover {
-  background-color: var(--vscode-inputValidation-errorBorder, #be1100);
+  background-color: var(--status-danger);
   color: #fff;
 }
 
@@ -583,12 +602,20 @@ body.vscode-high-contrast-light #status-line {
 
    Slimmer than the widget's own 14px, on both the track and the slider it positions inline. */
 .terminal-wrapper .xterm .scrollbar.vertical {
-  width: 6px !important;
+  width: 10px !important;
 }
 
+/* The widget writes its width and its colour inline, so both need `!important` to move. 10px
+   against the widget's own 14px and the 6px this used to be: at 6px and the token colour the bar
+   was rendering and still went unnoticed twice. */
 .terminal-wrapper .xterm .scrollbar.vertical .slider {
-  width: 6px !important;
-  border-radius: 3px;
+  width: 10px !important;
+  border-radius: 5px;
+  background: var(--panel-scrollbar-slider) !important;
+}
+
+.terminal-wrapper .xterm .scrollbar.vertical:hover .slider {
+  background: var(--panel-scrollbar-slider-hover) !important;
 }
 
 /* The widget fades itself out about a second after the last scroll: measured, its class flips

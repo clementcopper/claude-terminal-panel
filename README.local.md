@@ -214,15 +214,18 @@ silently, because the watch follows the inode rather than the path.
   group before any of them is dropped — a ring that quietly disappeared would read as a missing
   limit rather than as a narrow panel. Measured in a headless render of the real view:
 
-  | Panel width | Status line | Layout                                 |
-  | ----------- | ----------- | -------------------------------------- |
-  | ≥ 439px     | 103px       | head and all four rings on one line    |
-  | 321–438px   | 147px       | rings on their own line, four in a row |
-  | 246–320px   | 191px       | Ctx, Sess, Week — Comp below           |
-  | 177–245px   | 191px       | Ctx, Sess — Week, Comp below           |
-  | < 177px     | 235px       | three ring rows                        |
+  | Panel width | Status line | Main row                                          |
+  | ----------- | ----------- | ------------------------------------------------- |
+  | ≥ 439px     | 103px       | one line: stop, model, all four rings             |
+  | 253–438px   | 147px       | two lines, the split moving right as it narrows   |
+  | 191–252px   | 191px       | three lines, stop and model still sharing the top |
+  | < 191px     | 191–235px   | stop and model alone on the first line            |
 
-  The steps move with the UI font — they were 20–40px wider before SF Compact Display, which is
+  The main row is one flat sequence — stop button, model, then a ring group per item — so the
+  rings wrap one at a time instead of dropping as a block. The stop button is first in the DOM
+  and a flex item cannot wrap backwards, so it holds the head of the first line at every width.
+
+  The steps move with the UI font: they were 20–40px wider before SF Compact Display, which is
   about 10% narrower than a default sans at the same size. Re-measure after any font change.
 
 - The context ring fills against the **threshold**, not against a full window — a full ring and
@@ -235,17 +238,18 @@ silently, because the watch follows the inode rather than the path.
 - The Session ring's label reads `Credits` rather than `Sess` once the five-hour bucket is spent
   (100%): the turns still going through are billed to usage credits, and the remaining time stays
   in the line below it.
-- The ring's arc turns orange ten points below the threshold and red at it. The ring fill and the
-  red are set per theme kind off `body.vscode-light` — a colour that carries on Dark Modern's
-  `#181818` is not the one that carries on Light Modern's `#F8F8F8`.
-- Contrast is measured, not assumed. Every text colour in the row clears 4.5:1 against its own
-  ground in both theme kinds, and the coloured arcs clear 3:1 — with two deliberate exceptions.
-  The ring track sits below it the way a progress trough does, since the number inside each ring
-  carries the value. And the warning orange `#FDA400` measures 1.89:1 on a light ground: at that
-  hue every tone reaching 4.5:1 has stopped being orange (the yellow it replaced had to go to
-  `#8A6200` to get there, which reads brown), and a warning colour that is not recognisably a
-  warning colour warns about nothing. The saturated 3.24px arc carries at that ratio; the small
-  number in the same tone is faint on a light ground.
+- The ring's arc turns orange ten points below the threshold and red at it. Only the ring fill is
+  set per theme kind off `body.vscode-light` — a blue that carries on Dark Modern's `#181818` is
+  not the one that carries on Light Modern's `#F8F8F8`; the orange and the red are single values.
+- Contrast is measured, not assumed. Every neutral text colour in the row clears 4.5:1 against
+  its own ground in both theme kinds, and every coloured arc clears 3:1 — with three deliberate
+  exceptions. The ring track sits below it the way a progress trough does, since the number
+  inside each ring carries the value. The warning orange `#FDA400` measures 1.89:1 on a light
+  ground: at that hue every tone reaching 4.5:1 has stopped being orange (the yellow it replaced
+  had to go to `#8A6200` to get there, which reads brown), and a warning colour that is not
+  recognisably a warning colour warns about nothing. And the danger red `#EC1500` measures 4.23:1
+  light and 3.95:1 dark — one red for both theme kinds, chosen for the hue over the ratio, and
+  also the stop button's hover fill so the row carries a single danger colour rather than two.
 - The two lines beside each ring share one colour and separate by weight — 600 for the name, 400
   for the value. A hierarchy built on two greys does not survive the move between light and dark,
   because the distance between two greys is not the same on `#F8F8F8` as on `#181818`.
@@ -257,15 +261,19 @@ silently, because the watch follows the inode rather than the path.
   `--panel-mono-font` (SF Mono first), everything else `--panel-ui-font` (SF Compact Display
   first); each falls through to VS Code's own token, so a machine without the SF fonts still gets
   the editor's. `ThemeBuilder.getFontFamily()` reads the mono variable off `documentElement`
-  rather than keeping its own copy. Apple's family is **SF Compact**, not "SF Pro Compact" — SF
-  Pro and SF Compact are siblings.
+  rather than keeping its own copy, and the open-file row is a path, so it takes the mono stack
+  too. Apple's family is **SF Compact**, not "SF Pro Compact" — SF Pro and SF Compact are
+  siblings.
 - The terminal's scrollbar is xterm 6's port of VS Code's scrollbar widget, not a native one.
   xterm hard-codes it to "auto" visibility, so it fades out about a second after the last scroll;
   `.terminal-wrapper.has-scrollback` pins it back on, and `ScrollManager.markScrollback` sets
   that class from `buffer.active.baseY`. The class is what keeps an idle terminal from showing a
   full-height grey strip: with nothing to scroll the widget still draws a slider, and it fills
-  the whole track. The slider's three colours come from `--vscode-scrollbarSlider-*` through the
-  xterm theme; without them xterm derives them from the foreground at 20% opacity.
+  the whole track. The slider is 10px wide and mixed from the theme's own foreground — 45% of it
+  in dark, 60% in light, which is what clears the 3:1 WCAG asks of a graphic element (3.19:1 and
+  3.50:1). VS Code's `scrollbarSlider.*` tokens go into the xterm theme as the baseline, but they
+  are tuned for a bar that only appears on hover and measure 1.67:1 and 1.80:1 against the
+  terminal ground — at 6px and that colour the bar was rendering and still went unnoticed twice.
 - Claude's own colours — diff blocks, highlights — are absolute truecolor sequences chosen for
   its `theme` setting. They do not follow the VS Code theme; the extension only supplies
   background, foreground and the 16 ANSI slots. On a light VS Code theme with Claude's dark

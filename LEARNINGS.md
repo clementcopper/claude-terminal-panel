@@ -332,18 +332,19 @@ min-width: 0` wurde die Ringreihe auf den Rest der Zeile zusammengedrückt und j
   Theme, obwohl die Beschwerde aus dem hellen kam. Gemessene Werte, beide Modern-Themes, Grund
   `#F8F8F8` / `#181818`:
 
-  | Token | hell | dunkel |
-  | ----- | ---- | ------ |
-  | `foreground` | `#3B3B3B` 10,55:1 | `#CCCCCC` 11,06:1 |
-  | `descriptionForeground` | `#3B3B3B` 10,55:1 | `#9D9D9D` 6,55:1 |
-  | `disabledForeground` | `#616161` 5,83:1 | `#CCCCCC80` **3,69:1** |
-  | `editorError.foreground` | `#E51400` **4,46:1** | `#F14C4C` 4,97:1 |
-  | `#fdbd00` (literal) | **1,59:1** | 10,53:1 |
+  | Token                    | hell                 | dunkel                 |
+  | ------------------------ | -------------------- | ---------------------- |
+  | `foreground`             | `#3B3B3B` 10,55:1    | `#CCCCCC` 11,06:1      |
+  | `descriptionForeground`  | `#3B3B3B` 10,55:1    | `#9D9D9D` 6,55:1       |
+  | `disabledForeground`     | `#616161` 5,83:1     | `#CCCCCC80` **3,69:1** |
+  | `editorError.foreground` | `#E51400` **4,46:1** | `#F14C4C` 4,97:1       |
+  | `#fdbd00` (literal)      | **1,59:1**           | 10,53:1                |
 
   Die Werte kommen aus `<VS Code.app>/Contents/Resources/app/extensions/theme-defaults/themes/`
   (`light_modern.json`, `dark_modern.json`, jeweils der `include`-Kette folgen) plus den Vorgaben
   aus der Workbench-Farbregistry für Tokens, die kein Theme setzt. Achtstellige Hex-Werte tragen
   Alpha und müssen **vor** der Messung über den Grund komponiert werden.
+
 - **Modusabhängige Farben gehören an `body.vscode-light`.** VS Code stempelt den Modus auf den
   Body des Webviews; die Klassen heißen `vscode-light`, `vscode-dark`, `vscode-high-contrast` und
   `vscode-high-contrast-light` (nachgesehen in `out/vs/workbench/contrib/webview` im App-Bundle).
@@ -381,7 +382,7 @@ min-width: 0` wurde die Ringreihe auf den Rest der Zeile zusammengedrückt und j
   Gemessen für „Session 100% · Sun 1:00 AM" bei 12px: SF Compact Display 140,16px · SF Compact
   Text 151,3px · sans-serif 156,76px · SF Mono 192,87px · Menlo 187,84px.
 - **Ein `var()` ohne eigenen Fallback reißt die ganze Deklaration mit.** `font-family: 'SF Mono',
-  var(--vscode-editor-font-family), Menlo` ist ungültig, sobald das Token fehlt — nicht etwa „dann
+var(--vscode-editor-font-family), Menlo` ist ungültig, sobald das Token fehlt — nicht etwa „dann
   eben Menlo", sondern gar keine Schriftfamilie. In jedem Stack gehört der Fallback in das `var()`
   selbst.
 - **xterm 6 hat die nativ scrollende Viewport aufgegeben.** Statt `overflow-y: scroll` auf
@@ -394,3 +395,28 @@ min-width: 0` wurde die Ringreihe auf den Rest der Zeile zusammengedrückt und j
   Widget den Slider über die volle Trackhöhe — dauerhaft sichtbar gemacht wäre das ein grauer
   Streifen an jedem ruhenden Terminal. `buffer.active.baseY > 0` ist die Bedingung; sie als Klasse
   auf den Wrapper legen und die CSS-Regel daran hängen.
+- **Ein Wrapper ist ein Flex-Element — und bricht als Ganzes um.** Die vier Ringe lagen in einem
+  eigenen Container; unter ~440px rutschte der komplett in die zweite Zeile und ließ den
+  Stop-Button allein in der ersten stehen. Als direkte Geschwister der Zeile brechen sie einzeln
+  um, und weil ein Flex-Element nicht rückwärts umbrechen kann, hält das erste Kind in jeder
+  Breite den Anfang der ersten Zeile. Wer „X bleibt vorn, der Rest fließt" will, darf zwischen X
+  und den Rest keinen Container setzen.
+- **„Sehe ich nicht" heißt nicht immer „ist nicht da".** Die Terminal-Scrollbar wurde die ganze
+  Zeit gerendert — 6px breit, 20px hoch, Slider bei 1,67:1 gegen den Terminalgrund. Erst der
+  Screenshot mit den echten Theme-Werten zeigte, dass sie existiert und trotzdem übersehen wird.
+  Vor der nächsten Runde Ursachensuche also erst rendern und hinsehen, sonst repariert man etwas,
+  das funktioniert.
+- **Vor jeder Diagnose prüfen, ob der Nutzer überhaupt den neuen Build sieht.** Startzeit des
+  Extension-Hosts gegen die mtime von `~/.vscode/extensions/<id>/media/main.js` halten; die PID
+  steckt im Fenster-Token des Statusordners (`parseInt(token.split('-')[0], 36)`). Hier lief der
+  Host seit 13:07:56, das Bundle war 13:05:03 installiert — der Fix war also live, und die Suche
+  musste woanders weitergehen.
+- **`node-pty` beantwortet Terminalfragen ohne VS Code.** Ob eine CLI den Alternate Screen nutzt —
+  und damit ob `buffer.active.baseY` je über 0 geht — beweist ein Sechs-Sekunden-Spawn mit
+  `grep` auf `\e[?1049h` / `?1047h` / `?47h` in den Rohbytes. Claude Code nutzt ihn nicht.
+- **Ein Ersetzungsskript, das mitten in einer Kette scheitert, schreibt gar nichts.** Drei
+  `assert`/`replace`-Paare in einem Python-Heredoc, das erst am Ende `write()` aufruft: schlägt
+  das dritte fehl, sind auch die ersten beiden verloren, und die Ausgabe zeigt nur den einen
+  Traceback. Zweimal in dieser Sitzung passiert, jedes Mal weil `prettier` die Zielzeilen vorher
+  umgebrochen hatte. Vor dem Muster den Zieltext frisch auslesen (`repr()` auf die Zeilen), nicht
+  aus dem Gedächtnis zitieren.

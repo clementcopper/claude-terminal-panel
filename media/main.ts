@@ -810,12 +810,13 @@ class StatusLineView {
     }
     row.appendChild(head);
 
-    const rings = document.createElement('div');
-    rings.className = 'status-rings';
+    // Straight into the row, not into a container of their own: a container is one flex item, so
+    // the whole set of rings dropped to the next line together and left the stop button sitting
+    // alone on the first one. As siblings they wrap one at a time, and the stop button keeps the
+    // head of the first line whatever the width.
     for (const group of this.buildRingGroups(snapshot)) {
-      rings.appendChild(group);
+      row.appendChild(group);
     }
-    row.appendChild(rings);
 
     return row;
   }
