@@ -247,3 +247,27 @@ code 129]` (128 + SIGHUP, der Kill selbst) in der frisch gestarteten Sitzung —
 - **Fünf Sekunden einfarbige Fläche sind kein Ladezustand.** Der Startanzeiger ist reines DOM im
   Terminal-Wrapper — kein Byte in die PTY, damit er den Alternate-Screen-Aufbau eines TUI nicht
   stören kann — und erscheint erst nach 250 ms, damit ein schneller Start nicht aufblitzt.
+
+## Prüfwerkzeuge für dieses Repo
+
+- **Das Webview lässt sich headless fahren, ohne VS Code.** Eine HTML-Seite mit den drei IDs
+  (`terminals-container`, `status-line`, `tab-bar`), `media/main.js`, `styles.css`, `xterm.css`
+  daneben, und ein Stub davor:
+  `window.acquireVsCodeApi = () => ({ postMessage(m){ window.__posted.push(m); }, getState(){}, setState(){} })`.
+  Der Stub muss **vor** `main.js` im Dokument stehen — ein `add_init_script` aus Playwright wird
+  vom Inline-Skript der Seite überschrieben. Nachrichten kommen per
+  `window.dispatchEvent(new MessageEvent('message', {data: …}))` hinein, alles Ausgehende steht in
+  `window.__posted`. Damit sind Fit-Größen, Statuszeile, Startanzeiger und Tooltips messbar statt
+  behauptbar. Playwright liegt hier **nur als Python-Paket** unter
+  `/usr/local/opt/python@3.9/bin/python3.9` (`which playwright` zeigt ein Python-Skript, `npx playwright`
+  findet kein Node-Modul), Browser in `~/Library/Caches/ms-playwright`.
+- **Extension-Module lassen sich außerhalb des Hosts testen, wenn man `vscode` wegbündelt.**
+  `npx esbuild src/x.ts --bundle --platform=node --format=cjs --alias:vscode=<stub.js> --external:node-pty`
+  — der Stub braucht nur `Uri.joinPath`, `workspace.workspaceFolders/getConfiguration`,
+  `window.showWarningMessage/createOutputChannel`. So wurden `rememberLimits`, `broadcastLimits`
+  und die PTY-Identitätsprüfung mit gefälschten PTYs geprüft, jeweils **auch gegen `git show HEAD:`**
+  gebündelt — eine Probe, die auf dem alten Stand nicht rot wird, prüft nichts.
+- **`node-pty` läuft in normalem Node** (N-API), man braucht für Startzeitmessungen keinen
+  Extension-Host: `require('<repo>/node_modules/node-pty')`, `spawn`, Zeitstempel auf erstes Byte
+  und auf kumulierte Bytes. Zeit bis zum ersten Byte ist bei TUIs irreführend — die ersten
+  Hunderte Bytes sind Escape-Sequenzen; die Schwelle „erste 1 kB" trifft den sichtbaren Aufbau.
