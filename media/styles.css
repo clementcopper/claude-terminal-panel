@@ -205,12 +205,13 @@ body.vscode-high-contrast-light {
   margin-right: 12px;
 }
 
-/* The model name and the effort badge share one centre axis, so the pair reads as a single mark
-   beside the stop disc rather than as two left-aligned lines. */
+/* Both lines start on the same left edge. Centred, the model name and the effort badge are
+   different lengths, so each line began somewhere else and the pair wandered against the stop
+   disc beside it. */
 .status-head-text {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 3px;
 }
 
