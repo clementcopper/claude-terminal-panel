@@ -420,3 +420,9 @@ var(--vscode-editor-font-family), Menlo` ist ungültig, sobald das Token fehlt �
   Traceback. Zweimal in dieser Sitzung passiert, jedes Mal weil `prettier` die Zielzeilen vorher
   umgebrochen hatte. Vor dem Muster den Zieltext frisch auslesen (`repr()` auf die Zeilen), nicht
   aus dem Gedächtnis zitieren.
+- **Einen Fokusring zu entfernen heißt `outline: none` zu schreiben, nicht die Regel zu löschen.**
+  Chromium malt auf einem fokussierten `<button>` seinen eigenen Ring; nimmt man nur die eigene
+  `:focus-visible`-Regel weg, kommt er lauter zurück als der entfernte. Gegenprobe: Element per
+  `focus()` fokussieren und `getComputedStyle(el).outlineStyle` zurücklesen — `none` erst dann
+  glauben. `focus()` allein löst in Chromium kein `:focus-visible` aus, deshalb zusätzlich `:focus`
+  mitnehmen und die Regeln im Stylesheet zählen.
