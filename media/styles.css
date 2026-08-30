@@ -633,6 +633,20 @@ body.vscode-high-contrast-light {
   transition: none;
 }
 
+/* FitAddon holds a gutter free on the right for the scrollbar before it divides the width into
+   columns — `overviewRuler?.width || 14` in `addon-fit.js`, and `overviewRuler` is not set, so 14px
+   — then `Math.floor` drops the remainder of a cell on top. All of that collected on the right:
+   measured at a 500px wrapper, 10px on the left against 28px on the right.
+
+   The scrollable element as a flex container splits the overhang across both sides, which is the
+   horizontal counterpart to the wrapper's `justify-content: center`. Both scrollbars are absolutely
+   positioned and therefore not flex items, so only `.xterm-screen` moves — the bar stays on the
+   right edge where the gutter is. Measured after: 19px against 19px. */
+.terminal-wrapper .xterm .xterm-scrollable-element {
+  display: flex;
+  justify-content: center;
+}
+
 /* Selection styling */
 .xterm .xterm-selection div {
   background-color: var(--vscode-terminal-selectionBackground, rgba(38, 79, 120, 0.5)) !important;
