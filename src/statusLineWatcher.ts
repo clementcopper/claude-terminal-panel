@@ -5,18 +5,42 @@ import { createHash } from 'crypto';
 import type { StatusLineSnapshot } from './types';
 
 /**
- * Directory the statusLine script writes its per-tab snapshots into.
- * `os.tmpdir()` is per-user on macOS (`/var/folders/…`); the script additionally
- * writes with `umask 077`.
+ * Root of the status area. `os.tmpdir()` is per-user on macOS (`/var/folders/…`), so every VS
+ * Code window of the same user lands here — which is why the per-tab snapshots live one level
+ * further down, in a directory of their own window.
+ */
+export function getStatusLineRoot(): string {
+  return path.join(os.tmpdir(), 'claude-terminal-panel', 'status');
+}
+
+/**
+ * One token per extension host, so two windows never share a directory.
+ *
+ * They used to. The startup cleanup and the shutdown cleanup both walked a flat directory and
+ * deleted files belonging to live tabs in *other* windows; the owning window then saw its own
+ * file vanish and dropped the row down to the editor line. Reproduced in both directions before
+ * this changed — see LEARNINGS.md.
+ */
+const WINDOW_TOKEN = `${process.pid.toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
+
+/**
+ * Directory the statusLine script writes this window's per-tab snapshots into. The script
+ * additionally writes with `umask 077`.
  */
 export function getStatusLineDir(): string {
-  return path.join(os.tmpdir(), 'claude-terminal-panel', 'status');
+  return path.join(getStatusLineRoot(), WINDOW_TOKEN);
 }
 
 /** Shared file holding the account's rate limits, written by whichever tab last saw them. */
 const LIMITS_FILE = 'limits.json';
 /** Upper bound on how long a tab shows a limit another tab has already superseded. */
 const LIMITS_POLL_MS = 30_000;
+/**
+ * A window directory nothing has touched for this long belonged to a host that is gone. The same
+ * interval that polls the limits also stamps this window's own directory, so an idle window —
+ * which can go a whole day without a single snapshot — is never mistaken for a dead one.
+ */
+const ORPHAN_AFTER_MS = 24 * 60 * 60 * 1000;
 
 export type StatusLineCallback = (terminalId: string, snapshot: StatusLineSnapshot | null) => void;
 
@@ -47,12 +71,15 @@ function hashCwd(cwd: string): string {
 export class StatusLineWatcher {
   private readonly dir = getStatusLineDir();
   /**
+   * Deliberately one level above `dir`, at the root: this is the one part of the status area
+   * that is shared on purpose, so a tab in one window can learn a limit another window saw.
+   *
    * Last snapshot per working directory, kept across windows. Claude Code only runs the
    * statusLine command when it renders, which is after its first output — so a fresh tab would
    * show nothing for a while. This is what fills the row in the meantime, greyed out because its
    * `updatedAt` is old.
    */
-  private readonly lastDir = path.join(getStatusLineDir(), 'last');
+  private readonly lastDir = path.join(getStatusLineRoot(), 'last');
   private watcher: fs.FSWatcher | undefined;
   /**
    * Second watcher, on `last/`. The rate limits belong to the account, so a tab that renders
@@ -276,8 +303,14 @@ export class StatusLineWatcher {
       clearInterval(this.limitsPoll);
       this.limitsPoll = undefined;
     }
-    for (const terminalId of [...this.latest.keys()]) {
-      this.removeTerminal(terminalId);
+    // The whole directory, not a walk over `latest`: that map is what this window has *seen*,
+    // and iterating it used to unlink other windows' files. Removing our own directory can only
+    // ever touch our own tabs.
+    this.latest.clear();
+    try {
+      fs.rmSync(this.dir, { recursive: true, force: true });
+    } catch {
+      // Already gone, or not ours to remove
     }
     for (const timer of this.debounceTimers.values()) {
       clearTimeout(timer);
@@ -330,6 +363,7 @@ export class StatusLineWatcher {
     }
 
     this.limitsPoll = setInterval(() => {
+      this.stampOwnDir();
       this.broadcastLimits();
     }, LIMITS_POLL_MS);
     // Never hold the host process open for a status row
@@ -397,8 +431,13 @@ export class StatusLineWatcher {
   }
 
   /**
-   * Snapshots from a previous window describe tabs that no longer exist. The `last` directory is
-   * deliberately kept — that is the memory a fresh tab starts from.
+   * Two cleanups, and the distinction between them is the whole point.
+   *
+   * Inside this window's own directory anything left over is from a host that has exited, so it
+   * goes. Sibling directories belong to *other* windows and are none of this one's business —
+   * only one that has not been stamped for a day is treated as abandoned, and `stampOwnDir` keeps
+   * a live but idle window out of that group. The `last` directory is shared on purpose and is
+   * never a candidate; it is the memory a fresh tab starts from.
    */
   private removeStaleFiles(): void {
     try {
@@ -409,6 +448,40 @@ export class StatusLineWatcher {
       }
     } catch {
       // Empty or unreadable — nothing to clean up
+    }
+
+    const root = getStatusLineRoot();
+    try {
+      for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name === 'last' || entry.name === WINDOW_TOKEN) {
+          continue;
+        }
+        const candidate = path.join(root, entry.name);
+        try {
+          if (Date.now() - fs.statSync(candidate).mtimeMs < ORPHAN_AFTER_MS) {
+            continue;
+          }
+          fs.rmSync(candidate, { recursive: true, force: true });
+        } catch {
+          // Vanished under us, or another window is mid-write — leave it alone
+        }
+      }
+    } catch {
+      // Root not readable yet — nothing to prune
+    }
+  }
+
+  /**
+   * Marks this window's directory as alive. Without it a window whose tabs sit idle for a day
+   * would be pruned by the next window to start — and removing the directory would take the
+   * `fs.watch` on it with it, silently, because the watch follows the inode rather than the path.
+   */
+  private stampOwnDir(): void {
+    try {
+      const now = new Date();
+      fs.utimesSync(this.dir, now, now);
+    } catch {
+      // Not created yet; the next stamp catches it
     }
   }
 
@@ -439,8 +512,14 @@ export class StatusLineWatcher {
     try {
       raw = fs.readFileSync(path.join(this.dir, `${terminalId}.json`), 'utf8');
     } catch {
-      // File removed between event and read
-      this.latest.delete(terminalId);
+      // A missing file is not proof the tab is gone — only `removeTerminal` knows that, and it
+      // has already dropped the tab by the time its own unlink fires an event. Anything else
+      // that removes the file (a tmp cleaner, a stray `rm`) would otherwise empty the row of a
+      // live tab until Claude next renders, which for an idle tab is never.
+      const known = this.latest.get(terminalId);
+      if (known) {
+        return;
+      }
       this.onSnapshot(terminalId, null);
       return;
     }
