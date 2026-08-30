@@ -334,13 +334,21 @@ body.vscode-high-contrast-light {
   color: inherit;
 }
 
-.status-ring-button:hover {
-  background-color: var(--vscode-toolbar-hoverBackground, #e4e4e4);
+/* No focus indicator on the row's three controls — Daniel's call, matching the design frame.
+   The rules have to say so: removing them would only hand the job back to Chromium, which draws
+   its own ring on a focused button. The elements stay real buttons with their `aria-label`s, so
+   focus order and screen readers are unchanged; only the visible ring is gone. */
+.status-ring-button:focus,
+.status-ring-button:focus-visible,
+.status-editor:focus,
+.status-editor:focus-visible,
+.status-stop:focus,
+.status-stop:focus-visible {
+  outline: none;
 }
 
-.status-ring-button:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #0078d4);
-  outline-offset: 1px;
+.status-ring-button:hover {
+  background-color: var(--vscode-toolbar-hoverBackground, #e4e4e4);
 }
 
 /* The open file, at the top edge — closest to the editor it describes. It is the one row that
@@ -374,11 +382,6 @@ body.vscode-high-contrast-light {
   text-decoration: underline;
 }
 
-.status-editor:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #0078d4);
-  outline-offset: 1px;
-}
-
 /* The stop button leads the main row. Fixed 36px disc, the same box as a ring, so the row's
    height is a constant however the rings wrap. */
 .status-stop {
@@ -409,11 +412,6 @@ body.vscode-high-contrast-light {
 .status-stop:hover {
   background-color: var(--status-danger);
   color: #fff;
-}
-
-.status-stop:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder, #0078d4);
-  outline-offset: 1px;
 }
 
 /* Working directory last: least urgent, and the only part that can get long.

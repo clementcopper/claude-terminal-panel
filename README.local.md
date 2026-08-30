@@ -236,6 +236,11 @@ silently, because the watch follows the inode rather than the path.
   the token counts are in the tooltip. Clicking the ring asks for a new threshold (5–95) and
   writes `claudeTerminal.contextThreshold` for the workspace (globally when no folder is open).
   Default 60.
+- The row's three controls — the context ring, the stop button and the open-file row — draw no
+  focus indicator. That is a deliberate call, and the stylesheet has to say it: deleting the rules
+  would only hand the ring back to Chromium, which draws its own on a focused button. They stay
+  real buttons with their `aria-label`s, so focus order and screen readers are unchanged; only
+  the visible ring is gone. Keyboard focus is therefore invisible in this row.
 - The Session ring's label reads `Credits` rather than `Sess` once the five-hour bucket is spent
   (100%): the turns still going through are billed to usage credits, and the remaining time stays
   in the line below it.
