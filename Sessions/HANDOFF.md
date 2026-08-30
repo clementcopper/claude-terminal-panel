@@ -1,54 +1,58 @@
-# Handoff — 2026-08-30 09:22
+# Handoff — 2026-08-30 19:25
 
 Arbeitsverzeichnis: /Users/danielmartin/claude-terminal-panel
 
 ## Stand
 
-Branch `feat/context-threshold`, Arbeitsbaum sauber, HEAD `cf31062`. Sechs Commits dieser Sitzung:
-Sidecar-Schicht entfernt (`d4bfe1f`), Limits-Speicher und Statusleiste repariert (`a97d421`,
-`95efd7c`), Tab-Start auf Messung umgestellt (`0317d57`), Exit-Meldungen abgeräumter PTYs
-unterdrückt (`9bcb13c`), Startanzeiger plus Erst-Byte-Messung (`cf31062`). Die `.vsix` ist gebaut
-und installiert; Repo- und Installations-Hashes stimmten zuletzt überein. **Der Window-Reload
-steht noch aus** — bis dahin läuft im Panel das alte Bundle, und keine der letzten drei
-Änderungen ist im echten Betrieb gesehen worden.
+Branch `feat/context-threshold`, HEAD `84b0696`, Arbeitsbaum sauber. Die Statusleiste ist neu: vier 36px-Ringe statt Balken und Textzeile, Threshold
+über eine InputBox, SF Mono im Terminal und in beiden Pfadzeilen, SF Compact Display sonst,
+Terminal-Scrollbar wieder sichtbar. Dazu der Fensterwechsel-Bug — der Statusordner liegt jetzt
+unter `status/<window token>/`, vorher löschten sich die Fenster gegenseitig die Snapshots. Zwölf Commits, `.vsix` gebaut und installiert, Hashes stimmen. Das Figma-Design ist nachgezogen (Memory
+`statusbar-design-in-figma`).
 
 ## Mitten drin
 
-- Nach dem Reload manuell prüfen: dreimal ein Tab öffnen (keine `[Process exited …]`, kein
-  umgebrochener erster Frame), „Resume/Continue in current tab" (kein 129er), Panel in die andere
-  Seitenleiste ziehen (Tabs kommen wieder, Sitzungen leben), OpenCode-Tab (Anzeiger läuft ~5 s),
-  Claude-Tab (Anzeiger darf nicht aufblitzen).
-- Danach in Ansicht → Ausgabe → **Claude Terminal** die Zeilen `first output after N ms` je Engine
-  ablesen; die Zahlen gehören in `LEARNINGS.md`, falls sie von 5,1–5,4 s / <1 s abweichen.
-- Nicht committet, aber offen: nichts. Prüfskripte liegen im Scratchpad
-  (`harness2.html`, `verify2.py`, `spinner.py`, `boot2.js`, `retired.js`) — beim nächsten Bedarf
-  aus `LEARNINGS.md` → „Prüfwerkzeuge für dieses Repo" neu aufbauen.
+- **Der Window-Reload steht aus** — für `afd2128`, `a2ce419` und `daca24f`. Im Panel läuft noch
+  der Stand von `0a6c010`. Sichtbar fehlen: cwd-Zeile in SF Mono, Modell/Effort mit 3px auf einer
+  Mittelachse, keine Fokusringe mehr.
+- Danach von Hand, weil ein Standbild keinen Zeiger hat: Stop im Hover (`#EC1500`, weißes
+  Quadrat), Ctx-Ring im Hover (Scheibe, Track unverändert), Klick öffnet die Threshold-Eingabe
+  (0 und 120 ablehnen), Terminal mit Scrollback → 10px-Balken, ohne → keiner. Und einmal das
+  OS-Theme umschalten.
 
 ## Nächster Schritt
 
-Fenster neu laden (Cmd+Shift+P → „Developer: Reload Window"), dann die fünf Punkte aus
-„Mitten drin" durchgehen. Reload killt die Panel-Session — vorher nichts Ungesichertes offen haben.
+```
+Cmd+Shift+P → "Developer: Reload Window"
+```
+
+Killt diese Panel-Sitzung. Danach die Punkte aus „Mitten drin".
 
 ## Schon probiert, geht nicht
 
-- **Warmer `opencode serve` + `attach`:** gemessen 4,0–4,2 s gegen 5,3 s, also nur 1,3 s Gewinn;
-  dafür Dauerprozess plus unauthentifizierter lokaler Endpunkt. Verworfen, nicht erneut aufrollen.
-- **Ein laufender Server beschleunigt `opencode` pur nicht** — ohne `attach` startet das TUI seinen
-  eigenen (gemessen: 5,1–5,4 s mit und ohne laufenden Server).
-- **Zwei RAFs reichen nicht**, um die Terminalgröße vor dem Melden zu stabilisieren; die
-  Statuszeile ändert die Höhe danach. Es braucht den 80-ms-Timer, den jeder Fit neu startet.
-- **Zeitfenster statt Instanzvergleich** für Exit-Meldungen: das war die Ursache des 129ers,
-  nicht die Lösung.
+- **Fokusringe durch Löschen der Regeln entfernen** — Chromium malt dann seinen eigenen, lauter
+  als der entfernte. Es braucht `outline: none` auf `:focus` **und** `:focus-visible`.
+- **`min-width: 220px` glatt auf den Ringcontainer** — schlägt `max-width`, schnitt unter 236px
+  den Comp-Ring ab, und `overflow: hidden` verbarg es. Jetzt `min(220px, 100%)`.
+- **Die Ringe in einen eigenen Container** — der ist ein Flex-Element und bricht als Ganzes um,
+  der Stop-Button blieb allein in Zeile 1. Sie müssen Geschwister der Zeile sein.
+- **`butt`-Kappen am Comp-Ring**, um die Lücken sichtbar zu machen — bricht die Formsprache. Die
+  Lücke stattdessen auf 21° ziehen, dann tragen runde Enden.
+- **Warngelb auf 4,5:1 abdunkeln** (`#8A6200`) — wird braun. Siehe Memory
+  `farbton-schlaegt-kontrastregel`.
 
 ## Was Daniel entschieden hat
 
-- Sitzungen überleben einen Webview-Neuaufbau (kein `killAll` mehr an `onDidDispose`); der
-  verlorene Scrollback wird in Kauf genommen.
-- Der Diagnose-Output-Channel bleibt dauerhaft drin, nicht nur zur Fehlersuche.
-- `Session 0% (Credits)` statt nackter Null bei erschöpftem Wochenlimit — kostet 48 px, die Zeile
-  wrappt dadurch ab 424 px statt 376 px.
+- Kontrast ≥ 4,5:1 für neutralen Text, **nicht** für Warn und Danger — dort gewinnt der Farbton.
+- Ring-Label und -Wert in einer Farbe, Hierarchie nur über das Gewicht (600 gegen 400).
+- Keine Fokusringe in der Statusleiste, im Design wie im Build.
+- Ctx-Zahl zählt gegen den Threshold und wird nicht bei 100 gedeckelt.
+- Zustand „Credits" schaltet bei `sessionPercent >= 100`, nicht am Wochenlimit.
 
 ## Erledigt und vom Tisch
 
-- Sidecar-Architektur samt `ipc.ts`, `esbuild.sidecar.js` und `claudeTerminal.useSidecar` — gelöscht.
-- Die Vermutung, die Statusbar bekomme keine Daten: sie bekam sie, `Session 0%` war korrekt.
+- **Zustand 9 (Guthaben in €)** — es gibt keine Datenquelle. `stats-cache.json` führt `costUSD`,
+  im Abo überall 0; Transcripts und statusLine-Schema kennen kein Kosten- oder Guthabenfeld.
+- **Tooltip-Zustand und Fokus-Zeile im Figma-Frame** — von Daniel gestrichen, nicht als Lücke
+  führen.
+- **Eine 180px-Spalte im Breiten-Frame** — Figmas Umbruch trifft die Stufe nicht; nur als Text.
