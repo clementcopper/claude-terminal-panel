@@ -249,14 +249,16 @@ silently, because the watch follows the inode rather than the path.
 - The Session ring's label reads `Credits` rather than `Sess` once the five-hour bucket is spent
   (100%): the turns still going through are billed to usage credits, and the remaining time stays
   in the line below it.
-- **Every ring reads the same: first third of the fill blue, second orange, last red.** The level
-  comes off how full the ring is, not off the raw percentage. The context ring fills against the
-  threshold, so its thirds are thirds of that budget: at the default 60 it turns orange at 20% of
-  the window and red at 40%, and it is already red well before the threshold it warns about.
-  Session and Week fill against 100 and turn at 33% and 66%; Session is red from 100% whatever
-  the arithmetic says, because past the bucket the ring can only stand full. The compaction ring
-  counts against the segments actually drawn, which past the segment cap is not the budget. One
-  helper, `StatusLineView.ringLevel`, so the arc and the number in its hole can never disagree.
+- **Blue to 60% of the fill, orange from there, red from 80%.** The level comes off how full the
+  ring is, not off the raw percentage. Session and Week fill against 100, so those are the
+  numbers on their faces; Session is red from 100% whatever the arithmetic says, because past the
+  bucket the ring can only stand full. The context ring fills against the **threshold**, so its
+  fractions are fractions of that budget — at the default 60 it turns orange at 36% of the window
+  and red at 48%. The compaction ring is the exception: it counts rather than fills, one segment
+  normal, the second orange, the third red, whatever budget sits behind it — a fraction would
+  move that line with the budget, and the count is the number being judged. Two helpers,
+  `StatusLineView.ringLevel` and `segmentLevel`, so the arc and the number in its hole can never
+  disagree.
   Only the ring fill is
   set per theme kind off `body.vscode-light` — a blue that carries on Dark Modern's `#181818` is
   not the one that carries on Light Modern's `#F8F8F8`; the orange and the red are single values.

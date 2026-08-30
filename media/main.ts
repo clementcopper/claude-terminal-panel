@@ -453,9 +453,13 @@ class TooltipManager {
 class StatusLineView {
   /** Every ring reads the same: first third of the fill blue, second orange, last red. Measured
       on the fill, not on the raw percentage — the context ring fills against the threshold, so
-      its thirds are thirds of that budget rather than of a full window. */
-  private static readonly RING_WARN_FRACTION = 1 / 3;
-  private static readonly RING_DANGER_FRACTION = 2 / 3;
+      these are fractions of that budget rather than of a full window. */
+  private static readonly RING_WARN_FRACTION = 0.6;
+  private static readonly RING_DANGER_FRACTION = 0.8;
+  /** The compaction ring counts rather than fills: the second segment warns, the third is red,
+      whatever the budget behind it. A count of compactions is small enough to read as a count. */
+  private static readonly COMP_WARN_SEGMENTS = 2;
+  private static readonly COMP_DANGER_SEGMENTS = 3;
   /** The slider cannot be dragged to the very ends — a threshold of 0 or 100 says nothing. */
   private static readonly MIN_THRESHOLD_PCT = 5;
   private static readonly MAX_THRESHOLD_PCT = 95;
@@ -690,13 +694,24 @@ class StatusLineView {
   }
 
   /**
-   * One level for every ring, read off how full it is: below a third nothing, then warn, then
-   * danger from two thirds on. Ring and number take the same name, so the two halves of one
-   * control can never disagree.
+   * One level for the rings that fill, read off how full they are: nothing below 60%, warn from
+   * there, danger from 80%. Ring and number take the same name, so the two halves of one control
+   * can never disagree. The compaction ring counts instead — see `segmentLevel`.
    */
   private static ringLevel(fraction: number): string {
     if (fraction >= StatusLineView.RING_DANGER_FRACTION) return ' danger';
     if (fraction >= StatusLineView.RING_WARN_FRACTION) return ' warn';
+    return '';
+  }
+
+  /**
+   * The compaction ring's level, off the count rather than off a fraction: one compaction is
+   * normal, two are worth noticing, three are the point. A fraction would move that line with
+   * the budget, and the number being judged here is the count itself.
+   */
+  private static segmentLevel(filled: number): string {
+    if (filled >= StatusLineView.COMP_DANGER_SEGMENTS) return ' danger';
+    if (filled >= StatusLineView.COMP_WARN_SEGMENTS) return ' warn';
     return '';
   }
 
@@ -731,9 +746,7 @@ class StatusLineView {
     const gap = StatusLineView.COMP_GAP_DEG;
     const segment = (StatusLineView.RING_SPAN_DEG - (count - 1) * gap) / count;
 
-    // Against the segments actually drawn, not against `total`: past the segment cap the two
-    // part ways, and the level has to describe the ring in front of the reader.
-    const level = StatusLineView.ringLevel(filled / count);
+    const level = StatusLineView.segmentLevel(filled);
 
     const ring = document.createElement('span');
     ring.className = 'status-ring';
@@ -910,8 +923,8 @@ class StatusLineView {
       return null;
     }
 
-    // Thirds of the fill, and the fill runs against the threshold — so with a threshold of 60
-    // the ring turns orange at 20 points of the window and red at 40, not at 50 and 60.
+    // Fractions of the fill, and the fill runs against the threshold — so with a threshold of 60
+    // the ring turns orange at 36 points of the window and red at 48.
     const level = StatusLineView.ringLevel(snapshot.usedPercent / this.threshold);
     const percent = Math.round(snapshot.usedPercent);
     const budget = (snapshot.totalTokens * this.threshold) / 100;
