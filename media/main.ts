@@ -451,8 +451,11 @@ class TooltipManager {
  * extension host — the terminal stream itself carries no session state.
  */
 class StatusLineView {
-  /** How far below the threshold the bar already turns orange, in points of the window. */
-  private static readonly WARN_LEAD_PCT = 10;
+  /** Every ring reads the same: first third of the fill blue, second orange, last red. Measured
+      on the fill, not on the raw percentage — the context ring fills against the threshold, so
+      its thirds are thirds of that budget rather than of a full window. */
+  private static readonly RING_WARN_FRACTION = 1 / 3;
+  private static readonly RING_DANGER_FRACTION = 2 / 3;
   /** The slider cannot be dragged to the very ends — a threshold of 0 or 100 says nothing. */
   private static readonly MIN_THRESHOLD_PCT = 5;
   private static readonly MAX_THRESHOLD_PCT = 95;
@@ -460,9 +463,6 @@ class StatusLineView {
   private static readonly STALE_AFTER_MS = 60_000;
   /** Redraw cadence for the reset countdown while no snapshot arrives. */
   private static readonly TICK_MS = 30_000;
-  /** From here on the session limit is close enough to matter as much as a full context window. */
-  private static readonly LIMIT_DANGER_PCT = 90;
-
   /** At this point the bucket is gone, not merely close — see `onCredits`. */
   private static readonly LIMIT_SPENT_PCT = 100;
 
@@ -689,6 +689,17 @@ class StatusLineView {
     return circle;
   }
 
+  /**
+   * One level for every ring, read off how full it is: below a third nothing, then warn, then
+   * danger from two thirds on. Ring and number take the same name, so the two halves of one
+   * control can never disagree.
+   */
+  private static ringLevel(fraction: number): string {
+    if (fraction >= StatusLineView.RING_DANGER_FRACTION) return ' danger';
+    if (fraction >= StatusLineView.RING_WARN_FRACTION) return ' warn';
+    return '';
+  }
+
   /** The 36px disc: track, fill, and the number that sits in the hole. */
   private buildRing(fraction: number, value: string, level: string): HTMLSpanElement {
     const ring = document.createElement('span');
@@ -720,6 +731,10 @@ class StatusLineView {
     const gap = StatusLineView.COMP_GAP_DEG;
     const segment = (StatusLineView.RING_SPAN_DEG - (count - 1) * gap) / count;
 
+    // Against the segments actually drawn, not against `total`: past the segment cap the two
+    // part ways, and the level has to describe the ring in front of the reader.
+    const level = StatusLineView.ringLevel(filled / count);
+
     const ring = document.createElement('span');
     ring.className = 'status-ring';
 
@@ -730,13 +745,18 @@ class StatusLineView {
       const start = StatusLineView.RING_START_DEG + index * (segment + gap);
       const isFilled = index < filled;
       svg.appendChild(
-        this.buildArc(1, isFilled ? 'status-ring-fill' : 'status-ring-track', start, segment)
+        this.buildArc(
+          1,
+          isFilled ? `status-ring-fill${level}` : 'status-ring-track',
+          start,
+          segment
+        )
       );
     }
     ring.appendChild(svg);
 
     const label = document.createElement('span');
-    label.className = `status-ring-value${value.length > 3 ? ' small' : ''}`;
+    label.className = `status-ring-value${level}${value.length > 3 ? ' small' : ''}`;
     label.textContent = value;
     ring.appendChild(label);
 
@@ -842,7 +862,7 @@ class StatusLineView {
 
     if (snapshot.weekPercent !== undefined) {
       const percent = Math.round(snapshot.weekPercent);
-      const level = percent >= StatusLineView.LIMIT_DANGER_PCT ? ' danger' : '';
+      const level = StatusLineView.ringLevel(snapshot.weekPercent / 100);
       const tooltip = [
         snapshot.weekResetsAt ? `Weekly limit resets on ${snapshot.weekResetsAt}` : '',
         weekSpent ? 'Weekly limit spent — turns run on usage credits' : ''
@@ -890,14 +910,9 @@ class StatusLineView {
       return null;
     }
 
-    // One name for the level so ring and number can never disagree: '' below the lead-in,
-    // then warn, then danger at the threshold itself.
-    const level =
-      snapshot.usedPercent >= this.threshold
-        ? ' danger'
-        : snapshot.usedPercent >= this.threshold - StatusLineView.WARN_LEAD_PCT
-          ? ' warn'
-          : '';
+    // Thirds of the fill, and the fill runs against the threshold — so with a threshold of 60
+    // the ring turns orange at 20 points of the window and red at 40, not at 50 and 60.
+    const level = StatusLineView.ringLevel(snapshot.usedPercent / this.threshold);
     const percent = Math.round(snapshot.usedPercent);
     const budget = (snapshot.totalTokens * this.threshold) / 100;
     // The ring fills against the threshold, so the number counts against it too — otherwise the
@@ -955,7 +970,9 @@ class StatusLineView {
     // zero, which would blank the label in its last half minute.
     const expired = remainingMs !== undefined && remainingMs <= 0;
     const percent = Math.round(snapshot.sessionPercent);
-    const level = onCredits || percent >= StatusLineView.LIMIT_DANGER_PCT ? ' danger' : '';
+    // Credits beat the fill: past the bucket the ring can only stand full, and that is danger
+    // whatever the arithmetic says.
+    const level = onCredits ? ' danger' : StatusLineView.ringLevel(snapshot.sessionPercent / 100);
 
     const sub = expired
       ? 'Limit reset'

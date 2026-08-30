@@ -234,8 +234,8 @@ silently, because the watch follows the inode rather than the path.
   widths at which the layout is guaranteed to fit; with the short badge each step arrives a
   little later. Re-measuring with `HIGH` will produce smaller numbers — that is not a regression.
 
-- The context ring fills against the **threshold**, not against a full window — a full ring and
-  the red are the same event — and so does the number in its hole: 32% of the window against a
+- The context ring fills against the **threshold**, not against a full window, and so does the
+  number in its hole: 32% of the window against a
   threshold of 60 reads as `53%`. It is not capped at 100, because past the threshold the ring
   can only stand full and how far past is the part worth knowing. The absolute percentage and
   the token counts are in the tooltip. Clicking the ring asks for a new threshold (5–95) and
@@ -249,7 +249,15 @@ silently, because the watch follows the inode rather than the path.
 - The Session ring's label reads `Credits` rather than `Sess` once the five-hour bucket is spent
   (100%): the turns still going through are billed to usage credits, and the remaining time stays
   in the line below it.
-- The ring's arc turns orange ten points below the threshold and red at it. Only the ring fill is
+- **Every ring reads the same: first third of the fill blue, second orange, last red.** The level
+  comes off how full the ring is, not off the raw percentage. The context ring fills against the
+  threshold, so its thirds are thirds of that budget: at the default 60 it turns orange at 20% of
+  the window and red at 40%, and it is already red well before the threshold it warns about.
+  Session and Week fill against 100 and turn at 33% and 66%; Session is red from 100% whatever
+  the arithmetic says, because past the bucket the ring can only stand full. The compaction ring
+  counts against the segments actually drawn, which past the segment cap is not the budget. One
+  helper, `StatusLineView.ringLevel`, so the arc and the number in its hole can never disagree.
+  Only the ring fill is
   set per theme kind off `body.vscode-light` — a blue that carries on Dark Modern's `#181818` is
   not the one that carries on Light Modern's `#F8F8F8`; the orange and the red are single values.
 - Contrast is measured, not assumed. Every neutral text colour in the row clears 4.5:1 against
