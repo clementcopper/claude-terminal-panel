@@ -445,8 +445,15 @@ class StatusLineView {
   private static readonly RING_START_DEG = 120;
   private static readonly RING_SPAN_DEG = 300;
   private static readonly RING_C = 2 * Math.PI * StatusLineView.RING_R;
-  /** Gap between the compaction ring's segments; the segments share what is left of the span. */
-  private static readonly COMP_GAP_DEG = 14;
+  /**
+   * Gap between the compaction ring's segments; the segments share what is left of the span.
+   *
+   * 21°, not the 14° the geometry would suggest: the round caps every arc here uses grow the
+   * stroke by half its width at each end, which is 5.7° at this radius. Two of those swallow
+   * 11.3°, so a 14° gap rendered as 2.7° — 0.8px — and the three segments read as one unbroken
+   * track. 21° leaves 9.7°, and the caps stay round like the other three rings.
+   */
+  private static readonly COMP_GAP_DEG = 21;
   /** Past this the segments are thinner than their own round caps and read as noise. */
   private static readonly COMP_MAX_SEGMENTS = 5;
   private static readonly COMP_DEFAULT_BUDGET = 3;
@@ -631,8 +638,7 @@ class StatusLineView {
     fraction: number,
     className: string,
     startDeg = StatusLineView.RING_START_DEG,
-    spanDeg = StatusLineView.RING_SPAN_DEG,
-    linecap = 'round'
+    spanDeg = StatusLineView.RING_SPAN_DEG
   ): SVGCircleElement {
     const circle = document.createElementNS(StatusLineView.SVG_NS, 'circle');
     circle.setAttribute('class', className);
@@ -641,7 +647,7 @@ class StatusLineView {
     circle.setAttribute('r', String(StatusLineView.RING_R));
     circle.setAttribute('fill', 'none');
     circle.setAttribute('stroke-width', String(StatusLineView.RING_STROKE));
-    circle.setAttribute('stroke-linecap', linecap);
+    circle.setAttribute('stroke-linecap', 'round');
     circle.setAttribute('stroke-dasharray', String(StatusLineView.RING_C));
     circle.setAttribute('transform', `rotate(${String(startDeg)} 18 18)`);
 
@@ -691,17 +697,8 @@ class StatusLineView {
     for (let index = 0; index < count; index += 1) {
       const start = StatusLineView.RING_START_DEG + index * (segment + gap);
       const isFilled = index < filled;
-      // Butt ends, unlike every other arc here: a round cap grows the stroke by half its width at
-      // each end, which is 5.7° at this radius. Two of those eat 11.3° of the 14° gap and the
-      // three segments read as one unbroken track — measured on the rendered ring, not guessed.
       svg.appendChild(
-        this.buildArc(
-          1,
-          isFilled ? 'status-ring-fill' : 'status-ring-track',
-          start,
-          segment,
-          'butt'
-        )
+        this.buildArc(1, isFilled ? 'status-ring-fill' : 'status-ring-track', start, segment)
       );
     }
     ring.appendChild(svg);

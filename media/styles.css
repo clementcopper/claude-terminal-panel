@@ -159,12 +159,17 @@ body {
   align-items: center;
   column-gap: 12px;
   row-gap: var(--status-row-gap);
-  /* Wide enough for two groups, which is what forces the useful break: without a floor the
-     container is squeezed into the space the head leaves over and every ring lands on a line of
-     its own — measured at 260px, four ring rows and a 235px status line. With the floor it drops
-     to its own full-width line first and fits two rings per row. */
+  /* The floor is what forces the useful break. Without one the container is squeezed into
+     whatever the head leaves over and every ring lands on a line of its own — measured at 260px,
+     four ring rows and a 235px status line. With it the block drops under the head first and
+     keeps three rings on a line. 220px puts the changeover at 76 + 24 + 220 + 16 = 336px, which
+     is where the design frame puts it.
+
+     Capped at 100%: a bare `min-width: 220px` beats `max-width` in CSS, so below 236px of panel
+     the block stood 16-56px past the right edge and `overflow: hidden` on the row swallowed the
+     last ring without a trace. `min()` gives the floor only while there is room for it. */
   flex: 1 1 auto;
-  min-width: 170px;
+  min-width: min(220px, 100%);
 }
 
 .status-ring-group {

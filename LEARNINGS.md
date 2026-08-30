@@ -298,15 +298,30 @@ code 129]` (128 + SIGHUP, der Kill selbst) in der frisch gestarteten Sitzung —
   Tabs schreibt tagelang nichts; ohne regelmäßigen `utimes` auf den eigenen Ordner hält der
   nächste Start ihn für verwaist. Und ein gelöschter Ordner nimmt den `fs.watch` mit — der hängt
   am Inode, nicht am Pfad, und meldet dabei nichts.
-- **Runde Kappen fressen die Lücke.** Der Compaction-Ring hat 14°-Lücken zwischen den Segmenten;
-  `stroke-linecap: round` verlängert jedes Ende um `(Strichbreite/2)/r` = 5,7° bei r 16,38, zwei
-  Enden also 11,3°. Übrig blieben 2,7° und der Ring las sich als durchgehende Bahn. Segmentringe
-  brauchen `butt`, Vollringe dürfen `round` behalten.
+- **Runde Kappen fressen die Lücke — die Lücke muss sie einrechnen, nicht die Kappenform weichen.**
+  `stroke-linecap: round` verlängert jedes Ende um `(Strichbreite/2)/r`, bei r 16,38 und Strich
+  3,24 also 5,7°; zwei Enden fressen 11,3°. Die 14°-Lücken des Compaction-Rings blieben mit 2,7°
+  (0,8 px) übrig, der Ring las sich als durchgehende Bahn. Erst auf `butt` umgestellt — das bricht
+  aber die Formsprache genau da, wo vier Ringe nebeneinander verglichen werden. Richtig ist, die
+  Lücke auf 21° zu ziehen (Segment 86°, Starts 120/227/334): sichtbar bleiben 9,7°, und alle vier
+  Ringe behalten runde Enden. Faustregel: geplante Lücke plus `2 · (Strichbreite/2)/r` in Grad.
 - **Ein Ring-Füllstand braucht keine Trigonometrie.** Ein `<circle r=16.38>` mit
   `stroke-dasharray: 2πr`, `transform: rotate(120 18 18)` und
   `stroke-dashoffset = 2πr − f · (2πr · 300/360)` trägt jeden Stand des 300°-Bogens. Gerechnete
   Pfaddaten aus Figma sind dafür nicht nötig und driften an den Enden.
 - **`min-width: 0` auf dem Ring-Container war das Gegenteil von Umbruch.** Mit `flex: 1;
 min-width: 0` wurde die Ringreihe auf den Rest der Zeile zusammengedrückt und jeder Ring landete
-  auf einer eigenen Zeile — 260px Panelbreite ergaben 235px Statuszeile. Mit `min-width: 170px`
-  (zwei Gruppen) bricht der Block als Ganzes auf eine eigene Zeile um: 190px.
+  auf einer eigenen Zeile — 260px Panelbreite ergaben 235px Statuszeile. Mit einem Boden bricht der
+  Block als Ganzes auf eine eigene Zeile um: 190px.
+- **`min-width` schlägt `max-width`, und `overflow: hidden` verbirgt die Folge.** Ein glattes
+  `min-width: 220px` ließ den Ringblock unter 236px Panelbreite 16–56px über die rechte Kante
+  stehen; die Zeile hat `overflow: hidden`, also verschwand der Comp-Ring lautlos und
+  `scrollWidth - clientWidth` meldete weiter 0. `min-width: min(220px, 100%)` gibt den Boden nur,
+  solange Platz dafür ist. So etwas sieht man nur, wenn man die rechte Kante des Kindes gegen die
+  Innenkante des Elternteils rechnet — nicht über den Scroll-Overflow.
+- **Der Umbruchpunkt liegt nicht dort, wo `min-width` rechnet.** Flex bricht anhand der
+  _hypothetischen_ Größe (`flex-basis: auto` = Inhaltsbreite), erst danach wird geschrumpft. Der
+  Ringblock ist rund 310px breit im Inhalt, rutscht also schon bei ~440px unter den Kopf, obwohl
+  Kopf + 220px + Abstände erst bei 336px nicht mehr passen. Gemessene Stufen: ≥440px eine Zeile
+  (103px), 320–430px Ringe auf eigener Zeile (147px), 236–315px drei plus eins (191px), darunter
+  zwei plus zwei (191px).

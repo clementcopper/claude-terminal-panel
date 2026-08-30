@@ -211,9 +211,16 @@ silently, because the watch follows the inode rather than the path.
 - The stop button leads the main row and writes Escape into the PTY. Its 36px disc is the same
   box a ring uses, so it sets the row height to a constant — one refit, not one per draw.
 - Four 36px rings carry context, session limit, weekly limit and compactions. They wrap as a
-  group before any of them is dropped: measured at 500px the row is 103px tall on one line, at
-  260px it is 190px on three. A ring that quietly disappeared would read as a missing limit
-  rather than as a narrow panel.
+  group before any of them is dropped — a ring that quietly disappeared would read as a missing
+  limit rather than as a narrow panel. Measured in a headless render of the real view:
+
+  | Panel width | Status line | Layout                                 |
+  | ----------- | ----------- | -------------------------------------- |
+  | ≥ 440px     | 103px       | head and all four rings on one line    |
+  | 320–430px   | 147px       | rings on their own line, four in a row |
+  | 236–315px   | 191px       | rings split three and one              |
+  | < 236px     | 191px       | rings split two and two                |
+
 - The context ring fills against the **threshold**, not against a full window — a full ring and
   the red are the same event. The number in its hole stays the absolute percentage. Clicking it
   asks for a new threshold (5–95) and writes `claudeTerminal.contextThreshold` for the workspace
