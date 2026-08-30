@@ -74,12 +74,14 @@ body {
      Measured on Dark Modern's `tab.inactiveBackground` (#181818): fill 5.01:1, warn 10.53:1,
      danger 4.97:1.
 
-     Warn is the one place this row goes under 4.5:1 on purpose. At this hue (45°) every tone
-     that reaches 4.5:1 against a near-white ground has stopped being yellow — #8A6200 measures
-     5.17:1 and reads brown. Warning yellow that is not recognisably yellow warns about nothing,
-     so the hue wins here and the contrast loses. Measured 1.59:1 on #F8F8F8. */
+     Warn is the one place this row goes under 4.5:1 on purpose. At this hue (39°) every tone
+     that reaches 4.5:1 against a near-white ground has stopped being orange — the yellow this
+     replaced was pushed to #8A6200 to get there and read brown. A warning colour that is not
+     recognisably a warning colour warns about nothing, so the hue wins here and the contrast
+     loses. Measured 1.89:1 on #F8F8F8 and 8.87:1 on #181818; the saturated 3.24px arc carries at
+     that ratio even though the small number in the same tone is faint on a light ground. */
   --status-ring-fill: #7878ff;
-  --status-warn: #fdbd00;
+  --status-warn: #fda400;
   --status-danger: var(--vscode-editorError-foreground, #f14c4c);
 
   flex-shrink: 0;

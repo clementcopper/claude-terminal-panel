@@ -232,15 +232,17 @@ silently, because the watch follows the inode rather than the path.
 - The Session ring's label reads `Credits` rather than `Sess` once the five-hour bucket is spent
   (100%): the turns still going through are billed to usage credits, and the remaining time stays
   in the line below it.
-- The ring's arc turns yellow ten points below the threshold and red at it. The ring fill and the
+- The ring's arc turns orange ten points below the threshold and red at it. The ring fill and the
   red are set per theme kind off `body.vscode-light` — a colour that carries on Dark Modern's
   `#181818` is not the one that carries on Light Modern's `#F8F8F8`.
 - Contrast is measured, not assumed. Every text colour in the row clears 4.5:1 against its own
   ground in both theme kinds, and the coloured arcs clear 3:1 — with two deliberate exceptions.
   The ring track sits below it the way a progress trough does, since the number inside each ring
-  carries the value. And the warning yellow `#fdbd00` measures 1.59:1 on a light ground: at that
-  hue every tone reaching 4.5:1 has stopped being yellow (`#8A6200` measures 5.17:1 and reads
-  brown), and a warning colour that is not recognisably a warning colour warns about nothing.
+  carries the value. And the warning orange `#FDA400` measures 1.89:1 on a light ground: at that
+  hue every tone reaching 4.5:1 has stopped being orange (the yellow it replaced had to go to
+  `#8A6200` to get there, which reads brown), and a warning colour that is not recognisably a
+  warning colour warns about nothing. The saturated 3.24px arc carries at that ratio; the small
+  number in the same tone is faint on a light ground.
 - The two lines beside each ring share one colour and separate by weight — 600 for the name, 400
   for the value. A hierarchy built on two greys does not survive the move between light and dark,
   because the distance between two greys is not the same on `#F8F8F8` as on `#181818`.

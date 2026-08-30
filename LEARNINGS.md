@@ -355,10 +355,10 @@ min-width: 0` wurde die Ringreihe auf den Rest der Zeile zusammengedrückt und j
   Modusklasse auf `body` setzen — und den Kontrast aus `getComputedStyle` gegen den gerenderten
   Hintergrund rechnen statt aus dem Quelltext abzulesen.
 - **Bei manchen Farben schlägt der Farbton den Kontrast — und das ist kein Verstoß, sondern eine
-  Abwägung.** Warngelb liegt bei 45°; jeder Ton dieses Farbtons, der auf hellem Grund 4,5:1
-  erreicht, ist kein Gelb mehr: `#8A6200` misst 5,17:1 und liest sich als Braun. Gemessene Reihe
-  auf `#F8F8F8`: `#fdbd00` 1,59:1 · `#E8A600` 2,00:1 · `#C89000` 2,66:1 · `#B08000` 3,33:1 ·
-  `#8A6200` 5,17:1. Eine Warnfarbe, die nicht als Warnfarbe erkennbar ist, warnt vor nichts. Der
+  Abwägung.** Warngelb liegt bei 45°, Warnorange bei 39°; jeder Ton dieser Farbtöne, der auf
+  hellem Grund 4,5:1 erreicht, ist keins von beidem mehr: `#8A6200` misst 5,17:1 und liest sich
+  als Braun. Gemessene Reihe auf `#F8F8F8`: `#fdbd00` 1,59:1 · `#FDA400` 1,89:1 · `#E8A600`
+  2,00:1 · `#C89000` 2,66:1 · `#B08000` 3,33:1 · `#8A6200` 5,17:1. Eine Warnfarbe, die nicht als Warnfarbe erkennbar ist, warnt vor nichts. Der
   gesättigte 3,24px-Bogen bleibt sichtbar, die kleine Zahl im selben Ton nicht — falls beides
   gebraucht wird, färbt man den Bogen und lässt die Zahl auf der Textfarbe.
 - **Hierarchie aus zwei Grautönen überlebt den Moduswechsel nicht.** Der Abstand zwischen zwei
