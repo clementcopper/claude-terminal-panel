@@ -99,7 +99,7 @@ configured `statusLine` command, as JSON on stdin. The source is therefore alway
 the extension is the reader:
 
 1. `ptyManager` puts `CLAUDE_PANEL_TAB_ID` and `CLAUDE_PANEL_STATUS_DIR`
-   (`<os.tmpdir()>/claude-terminal-panel/status`) into every PTY's environment.
+   (`<os.tmpdir()>/claude-terminal-panel/status/<window token>`) into every PTY's environment.
 2. The producer writes `<tab id>.json` there — its own flat schema, mode 600, atomically through
    a temp file plus rename — and prints nothing.
 3. `statusLineWatcher.ts` watches that directory and turns each write into a `statusLine` message
@@ -184,18 +184,41 @@ recomputed from `sessionResetsAt`, and if that point has already passed the sess
 dropped rather than shown stale — the window reset, so the old percentage says nothing about the
 new one. `status/last/` deliberately survives a window reload; the per-tab files do not.
 
+### One directory per window
+
+The per-tab files live in `status/<window token>/`, one directory per extension host, while
+`status/last/` stays at the root because sharing it between windows is the point.
+
+They used to share a flat directory, and both cleanups walked it: the one at startup deleted every
+file it found, and the one at shutdown walked everything the watcher had _seen_ — which on a shared
+directory includes other windows' tabs. Either way a live tab in another window lost its file, the
+watcher there read `ENOENT` and reported `null`, and the row collapsed to just the editor line
+until Claude next rendered. For an idle tab that is never. Both directions were reproduced against
+the real module before this changed.
+
+Two things keep it honest now: a missing file no longer clears a tab the watcher still knows about
+(only `removeTerminal` does that), and a window directory is only pruned as abandoned after a day
+without a stamp — the same 30 s interval that polls the limits touches its own directory, so a live
+but idle window is never mistaken for a dead one. Removing it would take the `fs.watch` with it,
+silently, because the watch follows the inode rather than the path.
+
 ### Behaviour worth knowing
 
 - The row only updates when Claude re-renders its status line. Idle, the last value stands;
   `updatedAt` older than 60 s greys the row out.
 - Tabs running something other than Claude never write a file, so their row stays hidden.
 - Showing or hiding the row changes the terminal height, so the webview refits xterm afterwards.
-- The stop button leads the context row and writes Escape into the PTY. Its 16px box sets the
-  row's height, measured at 16px against 15px without it — one refit, not one per draw.
-- The context bar carries a threshold handle. Drag it, or click the track, and the value is
-  written to `claudeTerminal.contextThreshold` for the workspace (globally when no folder is
-  open). Default 60.
-- The bar's fill turns orange ten points below the threshold and red at it. Crossing it warns
+- The stop button leads the main row and writes Escape into the PTY. Its 36px disc is the same
+  box a ring uses, so it sets the row height to a constant — one refit, not one per draw.
+- Four 36px rings carry context, session limit, weekly limit and compactions. They wrap as a
+  group before any of them is dropped: measured at 500px the row is 103px tall on one line, at
+  260px it is 190px on three. A ring that quietly disappeared would read as a missing limit
+  rather than as a narrow panel.
+- The context ring fills against the **threshold**, not against a full window — a full ring and
+  the red are the same event. The number in its hole stays the absolute percentage. Clicking it
+  asks for a new threshold (5–95) and writes `claudeTerminal.contextThreshold` for the workspace
+  (globally when no folder is open). Default 60.
+- The ring's arc turns yellow ten points below the threshold and red at it. Crossing it warns
   once per tab, naming the tab because the warning can come from one that is off screen; the
   warning offers to run `/clear` in that same tab. It re-arms only once the tab falls ten points
   back below the threshold, so a session sitting on the line does not warn every few seconds.
@@ -207,7 +230,7 @@ new one. `status/last/` deliberately survives a window reload; the per-tab files
 ### Troubleshooting
 
 ```sh
-ls -l "$TMPDIR/claude-terminal-panel/status/"          # one file per Claude tab
+ls -l "$TMPDIR/claude-terminal-panel/status/"*/        # one file per Claude tab, per window
 ps -o command= -p <pid of the claude process>          # is --settings being passed?
 ```
 

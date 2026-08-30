@@ -271,3 +271,42 @@ code 129]` (128 + SIGHUP, der Kill selbst) in der frisch gestarteten Sitzung —
   Extension-Host: `require('<repo>/node_modules/node-pty')`, `spawn`, Zeitstempel auf erstes Byte
   und auf kumulierte Bytes. Zeit bis zum ersten Byte ist bei TUIs irreführend — die ersten
   Hunderte Bytes sind Escape-Sequenzen; die Schwelle „erste 1 kB" trifft den sichtbaren Aufbau.
+- **Die echte View im Headless-Chrome fahren statt DOM nachzubauen.** `media/main.js` läuft
+  außerhalb von VS Code, wenn man vor dem Bundle `window.acquireVsCodeApi` stubt und die drei
+  Elemente `#terminal-column` / `#terminals-container` / `#status-line` bereitstellt; getrieben
+  wird sie dann über `window.postMessage({type:'createTab'…})`, also über die echten
+  Handler. Gemessen mit `chrome-headless-shell --dump-dom` (in
+  `~/Library/Caches/ms-playwright/chromium_headless_shell-*/`), Ergebnisse als JSON in ein
+  `<pre>` geschrieben und herausgegrept.
+- **Die Sonde selbst zuerst nachmessen.** Ein `style.width` auf `#terminal-column` hatte keine
+  Wirkung: das Element ist Flex-Item mit `flex: 1`, also `flex-basis: 0`, und das schlägt die
+  Breite. Fünf Messreihen sahen dadurch identisch aus, ohne dass etwas gemeldet wurde. Erst
+  `style.flex = '0 0 auto'` machte die Breite wirksam — vor jeder Messreihe die gesetzte Größe
+  zurücklesen.
+
+## Statuszeile
+
+- **Der Statusordner in `$TMPDIR` ist maschinenweit, nicht fensterweit.** Alle VS-Code-Fenster
+  desselben Nutzers teilten `claude-terminal-panel/status`; der Startaufräumer löschte dort jede
+  Datei und der Aufräumer beim Schließen lief über alles, was der Watcher _gesehen_ hatte — beides
+  traf lebende Tabs anderer Fenster. Der betroffene Watcher las `ENOENT` und meldete `null`, die
+  Zeile fiel auf die Editor-Zeile zusammen. Reproduziert mit zwei `StatusLineWatcher` in zwei
+  Prozessen und `TMPDIR` auf ein Scratch-Verzeichnis; seitdem `status/<window token>/`.
+- **Eine fehlende Datei ist kein Beweis für einen toten Tab.** Nur `removeTerminal` weiß das.
+  Jede andere Löschursache darf den letzten Snapshot nicht wegwerfen.
+- **Ein Ordner, der aufgeräumt werden kann, braucht einen Herzschlag.** Ein Fenster mit ruhenden
+  Tabs schreibt tagelang nichts; ohne regelmäßigen `utimes` auf den eigenen Ordner hält der
+  nächste Start ihn für verwaist. Und ein gelöschter Ordner nimmt den `fs.watch` mit — der hängt
+  am Inode, nicht am Pfad, und meldet dabei nichts.
+- **Runde Kappen fressen die Lücke.** Der Compaction-Ring hat 14°-Lücken zwischen den Segmenten;
+  `stroke-linecap: round` verlängert jedes Ende um `(Strichbreite/2)/r` = 5,7° bei r 16,38, zwei
+  Enden also 11,3°. Übrig blieben 2,7° und der Ring las sich als durchgehende Bahn. Segmentringe
+  brauchen `butt`, Vollringe dürfen `round` behalten.
+- **Ein Ring-Füllstand braucht keine Trigonometrie.** Ein `<circle r=16.38>` mit
+  `stroke-dasharray: 2πr`, `transform: rotate(120 18 18)` und
+  `stroke-dashoffset = 2πr − f · (2πr · 300/360)` trägt jeden Stand des 300°-Bogens. Gerechnete
+  Pfaddaten aus Figma sind dafür nicht nötig und driften an den Enden.
+- **`min-width: 0` auf dem Ring-Container war das Gegenteil von Umbruch.** Mit `flex: 1;
+min-width: 0` wurde die Ringreihe auf den Rest der Zeile zusammengedrückt und jeder Ring landete
+  auf einer eigenen Zeile — 260px Panelbreite ergaben 235px Statuszeile. Mit `min-width: 170px`
+  (zwei Gruppen) bricht der Block als Ganzes auf eine eigene Zeile um: 190px.

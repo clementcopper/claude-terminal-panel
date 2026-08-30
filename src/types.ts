@@ -162,6 +162,7 @@ export type WebviewMessage =
   | { type: 'stopTurn'; id: string }
   // The slider on the context bar; the value is written back to the workspace settings
   | { type: 'setContextThreshold'; value: number }
+  | { type: 'promptContextThreshold' }
   /**
    * The webview just re-applied its xterm theme after a VS Code colour-theme change. This is the
    * point in time (after the new background is live in xterm) at which OpenCode tabs can safely be

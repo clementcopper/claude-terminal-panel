@@ -307,13 +307,6 @@ class TooltipManager {
   private readonly element: HTMLDivElement;
   private timer: number | null = null;
   private target: HTMLElement | null = null;
-  /**
-   * While something is pinned the tooltip belongs to it and to nothing else: hover, mousedown and
-   * scroll stop dismissing it. Dragging the threshold handle is the case — the pointer is
-   * captured, the value changes under it, and the number is the whole point of the gesture.
-   */
-  private pinned: HTMLElement | null = null;
-
   constructor() {
     this.element = document.createElement('div');
     this.element.className = 'panel-tooltip';
@@ -323,7 +316,6 @@ class TooltipManager {
     // Delegated, because tabs are rebuilt on every update — per-element listeners would have to
     // be reattached each time.
     document.addEventListener('mouseover', (event) => {
-      if (this.pinned) return;
       const found = this.findTarget(event.target);
       if (found !== this.target) {
         this.schedule(found);
@@ -408,28 +400,7 @@ class TooltipManager {
     this.element.style.top = `${String(Math.max(gap, Math.min(top, window.innerHeight - tip.height - gap)))}px`;
   }
 
-  /** Shows the element's tooltip at once — no delay — and holds it until `unpin`. */
-  pin(target: HTMLElement): void {
-    this.clearTimer();
-    this.pinned = target;
-    this.target = target;
-    this.show(target);
-  }
-
-  /** Re-reads `data-tooltip` and places it again; the pinned value changes while it is shown. */
-  refresh(): void {
-    if (this.pinned) {
-      this.show(this.pinned);
-    }
-  }
-
-  unpin(): void {
-    this.pinned = null;
-    this.hide();
-  }
-
   private hide(): void {
-    if (this.pinned) return;
     this.clearTimer();
     this.target = null;
     this.element.hidden = true;
@@ -463,6 +434,23 @@ class StatusLineView {
   /** At this point the bucket is gone, not merely close — see `onCredits`. */
   private static readonly LIMIT_SPENT_PCT = 100;
 
+  private static readonly SVG_NS = 'http://www.w3.org/2000/svg';
+  /**
+   * Ring geometry, from the design frame. 16.38 + half of 3.24 is exactly 18, so the stroke
+   * fills the 36px box to its edge and nothing is clipped. The arc spans 300° from 120°,
+   * clockwise, which leaves the 60° gap centred at the bottom.
+   */
+  private static readonly RING_R = 16.38;
+  private static readonly RING_STROKE = 3.24;
+  private static readonly RING_START_DEG = 120;
+  private static readonly RING_SPAN_DEG = 300;
+  private static readonly RING_C = 2 * Math.PI * StatusLineView.RING_R;
+  /** Gap between the compaction ring's segments; the segments share what is left of the span. */
+  private static readonly COMP_GAP_DEG = 14;
+  /** Past this the segments are thinner than their own round caps and read as noise. */
+  private static readonly COMP_MAX_SEGMENTS = 5;
+  private static readonly COMP_DEFAULT_BUDGET = 3;
+
   private readonly snapshots = new Map<string, StatusLineSnapshot>();
   private activeId: string | null = null;
   /** Belongs to the window, not to a tab: one editor, however many terminals. */
@@ -477,20 +465,13 @@ class StatusLineView {
 
   /** Mirrors the setting; the extension host owns the value, this is the drawn copy. */
   private threshold = 60;
-  /**
-   * A snapshot arriving mid-drag would empty the element and take the handle out from under the
-   * pointer. Redraws are held back until the pointer is released, then run once.
-   */
-  private dragging = false;
-  private redrawPending = false;
 
   constructor(
     private readonly element: HTMLElement,
     private readonly onHeightChange: () => void,
     private readonly onEditorReferenceClick: () => void,
     private readonly onStopTurn: () => void,
-    private readonly onThresholdChange: (value: number) => void,
-    private readonly tooltips: TooltipManager
+    private readonly onThresholdPrompt: () => void
   ) {}
 
   setThreshold(value: number): void {
@@ -532,17 +513,12 @@ class StatusLineView {
   /**
    * Rebuilds the whole element, then refits xterm if that changed the height.
    *
-   * Measured rather than inferred from `hidden`: a row can now come and go while the element
-   * stays visible — the editor row appears the moment a file is opened — and that moves the
-   * terminal's bottom edge just as much as showing the status line does. Without the refit xterm
-   * keeps its old row count.
+   * Measured rather than inferred from `hidden`: a row can come and go while the element stays
+   * visible — the editor row appears the moment a file is opened, the rings wrap onto a second
+   * line when the panel narrows — and each of those moves the terminal's bottom edge just as
+   * much as showing the status line does. Without the refit xterm keeps its old row count.
    */
   private render(): void {
-    if (this.dragging) {
-      this.redrawPending = true;
-      return;
-    }
-
     const previousHeight = this.element.hidden ? 0 : this.element.offsetHeight;
     this.draw();
     const currentHeight = this.element.hidden ? 0 : this.element.offsetHeight;
@@ -578,12 +554,7 @@ class StatusLineView {
       return;
     }
 
-    this.element.appendChild(this.buildContextRow(snapshot));
-
-    const secondary = this.buildSecondaryRow(snapshot);
-    if (secondary) {
-      this.element.appendChild(secondary);
-    }
+    this.element.appendChild(this.buildMainRow(snapshot));
 
     // Directory last: least urgent, and the only part that can get long
     if (snapshot.cwd) {
@@ -604,11 +575,12 @@ class StatusLineView {
   }
 
   /**
-   * The stop button, at the head of the context row.
+   * The stop button, at the head of the main row.
    *
-   * It sits in the flow rather than in a corner: it is the only control left, and the row it
-   * leads is the one that says how the turn is going. Fixed 16px box so the row's height is a
-   * constant — a control that grows with its content would move the terminal's bottom edge.
+   * It sits in the flow rather than in a corner: it is the only control besides the context ring,
+   * and the row it leads is the one that says how the turn is going. Fixed 36px disc so the row's
+   * height is a constant — a control that grows with its content would move the terminal's bottom
+   * edge.
    */
   private buildStopButton(): HTMLButtonElement {
     const button = document.createElement('button');
@@ -621,11 +593,13 @@ class StatusLineView {
 
     // createElementNS rather than innerHTML: SVG in an HTML string needs the namespace anyway,
     // and this keeps the webview free of markup assignment.
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 10 10');
+    const svg = document.createElementNS(StatusLineView.SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 11 11');
     svg.setAttribute('aria-hidden', 'true');
-    const shape = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    shape.setAttribute('d', 'M2 2h6v6H2z');
+    const shape = document.createElementNS(StatusLineView.SVG_NS, 'rect');
+    shape.setAttribute('width', '11');
+    shape.setAttribute('height', '11');
+    shape.setAttribute('rx', '2');
     shape.setAttribute('fill', 'currentColor');
     svg.appendChild(shape);
     button.appendChild(svg);
@@ -646,100 +620,324 @@ class StatusLineView {
   }
 
   /**
-   * The context bar plus the threshold handle above it.
+   * One 300° arc in a 36px box, drawn as a dashed `<circle>` rather than as computed path data.
    *
-   * Two layers on purpose: the track has to clip its fill (`overflow: hidden` for the rounded
-   * ends), while the handle has to stand proud of a 4px bar. The wrapper carries the grab zone,
-   * padded upwards and pulled back with a negative margin so the row's height does not change.
+   * A circle carries any fill level through `stroke-dashoffset` alone, with no trigonometry and
+   * no rounding drift at the ends. `rotate(120)` puts the dash start at the design's start point
+   * (9.81, 32.19) and the dash runs clockwise from there, leaving the 60° gap centred at the
+   * bottom. `fraction` is 0…1 of the arc, not of the circle.
    */
-  private buildBar(usedPercent: number, level: string): HTMLDivElement {
-    const wrap = document.createElement('div');
-    wrap.className = 'status-bar-wrap';
+  private buildArc(
+    fraction: number,
+    className: string,
+    startDeg = StatusLineView.RING_START_DEG,
+    spanDeg = StatusLineView.RING_SPAN_DEG,
+    linecap = 'round'
+  ): SVGCircleElement {
+    const circle = document.createElementNS(StatusLineView.SVG_NS, 'circle');
+    circle.setAttribute('class', className);
+    circle.setAttribute('cx', '18');
+    circle.setAttribute('cy', '18');
+    circle.setAttribute('r', String(StatusLineView.RING_R));
+    circle.setAttribute('fill', 'none');
+    circle.setAttribute('stroke-width', String(StatusLineView.RING_STROKE));
+    circle.setAttribute('stroke-linecap', linecap);
+    circle.setAttribute('stroke-dasharray', String(StatusLineView.RING_C));
+    circle.setAttribute('transform', `rotate(${String(startDeg)} 18 18)`);
 
-    const bar = document.createElement('div');
-    bar.className = `status-bar${level}`;
-    const fill = document.createElement('div');
-    fill.className = 'status-bar-fill';
-    fill.style.width = `${String(Math.min(100, Math.max(0, usedPercent)))}%`;
-    bar.appendChild(fill);
-    wrap.appendChild(bar);
-
-    const handle = document.createElement('div');
-    handle.className = 'status-threshold';
-    handle.dataset.tooltipPlacement = 'above';
-    handle.setAttribute('role', 'slider');
-    handle.setAttribute('aria-label', 'Context threshold');
-    this.positionHandle(handle, this.threshold);
-    wrap.appendChild(handle);
-
-    this.wireThresholdDrag(wrap, handle);
-    return wrap;
+    const span = (StatusLineView.RING_C * spanDeg) / 360;
+    const clamped = Math.min(1, Math.max(0, fraction));
+    circle.setAttribute('stroke-dashoffset', String(StatusLineView.RING_C - clamped * span));
+    return circle;
   }
 
-  private positionHandle(handle: HTMLElement, value: number): void {
-    handle.style.left = `${String(value)}%`;
-    handle.dataset.tooltip = `${String(value)}%`;
-    handle.setAttribute('aria-valuenow', String(value));
+  /** The 36px disc: track, fill, and the number that sits in the hole. */
+  private buildRing(fraction: number, value: string, level: string): HTMLSpanElement {
+    const ring = document.createElement('span');
+    ring.className = 'status-ring';
+
+    const svg = document.createElementNS(StatusLineView.SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 36 36');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.appendChild(this.buildArc(1, 'status-ring-track'));
+    svg.appendChild(this.buildArc(fraction, `status-ring-fill${level}`));
+    ring.appendChild(svg);
+
+    const label = document.createElement('span');
+    // Four characters ("100%") touch the arc at the design's 10px, so that one step goes smaller
+    label.className = `status-ring-value${level}${value.length > 3 ? ' small' : ''}`;
+    label.textContent = value;
+    ring.appendChild(label);
+
+    return ring;
   }
 
   /**
-   * Dragging the handle, and clicking the track to jump to a point.
-   *
-   * The value is only reported once the pointer is released: the setting is written to disk, and
-   * writing it on every pixel of a drag would be a file write per frame.
+   * The compaction ring: one segment per budgeted compaction rather than one continuous arc, so
+   * the count is readable without the number. The gap between segments is fixed and the segments
+   * share what is left of the 300°.
    */
-  private wireThresholdDrag(wrap: HTMLElement, handle: HTMLElement): void {
-    const valueAt = (clientX: number): number => {
-      const box = wrap.getBoundingClientRect();
-      if (box.width <= 0) return this.threshold;
-      return StatusLineView.clampThreshold(((clientX - box.left) / box.width) * 100);
-    };
+  private buildSegmentRing(filled: number, total: number, value: string): HTMLSpanElement {
+    const count = Math.min(StatusLineView.COMP_MAX_SEGMENTS, Math.max(1, Math.round(total)));
+    const gap = StatusLineView.COMP_GAP_DEG;
+    const segment = (StatusLineView.RING_SPAN_DEG - (count - 1) * gap) / count;
 
-    const commit = (): void => {
-      this.dragging = false;
-      this.tooltips.unpin();
-      this.onThresholdChange(this.threshold);
-      if (this.redrawPending) {
-        this.redrawPending = false;
-        this.render();
+    const ring = document.createElement('span');
+    ring.className = 'status-ring';
+
+    const svg = document.createElementNS(StatusLineView.SVG_NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 36 36');
+    svg.setAttribute('aria-hidden', 'true');
+    for (let index = 0; index < count; index += 1) {
+      const start = StatusLineView.RING_START_DEG + index * (segment + gap);
+      const isFilled = index < filled;
+      // Butt ends, unlike every other arc here: a round cap grows the stroke by half its width at
+      // each end, which is 5.7° at this radius. Two of those eat 11.3° of the 14° gap and the
+      // three segments read as one unbroken track — measured on the rendered ring, not guessed.
+      svg.appendChild(
+        this.buildArc(
+          1,
+          isFilled ? 'status-ring-fill' : 'status-ring-track',
+          start,
+          segment,
+          'butt'
+        )
+      );
+    }
+    ring.appendChild(svg);
+
+    const label = document.createElement('span');
+    label.className = `status-ring-value${value.length > 3 ? ' small' : ''}`;
+    label.textContent = value;
+    ring.appendChild(label);
+
+    return ring;
+  }
+
+  /** Ring plus its two-line label. `name` sits above the value the ring cannot show. */
+  private buildRingGroup(
+    key: string,
+    ring: HTMLSpanElement,
+    name: string,
+    sub: string,
+    tooltip?: string
+  ): HTMLDivElement {
+    const group = document.createElement('div');
+    group.className = `status-ring-group ${key}`;
+    if (tooltip !== undefined) {
+      group.dataset.tooltip = tooltip;
+    }
+    group.appendChild(ring);
+
+    const label = document.createElement('span');
+    label.className = 'status-ring-label';
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'status-ring-name';
+    nameEl.textContent = name;
+    label.appendChild(nameEl);
+
+    if (sub.length > 0) {
+      const subEl = document.createElement('span');
+      subEl.className = 'status-ring-sub';
+      subEl.textContent = sub;
+      label.appendChild(subEl);
+    }
+
+    group.appendChild(label);
+    return group;
+  }
+
+  /**
+   * The row that carries everything but the file and the directory: stop, model, and the four
+   * rings. The rings wrap as a group when the panel is too narrow for them — the panel is
+   * resizable and narrow by nature, and a ring that fell off the right edge would be worse than
+   * a taller row.
+   */
+  private buildMainRow(snapshot: StatusLineSnapshot): HTMLDivElement {
+    const row = document.createElement('div');
+    row.className = 'status-row main';
+
+    const head = document.createElement('div');
+    head.className = 'status-head';
+    head.appendChild(this.buildStopButton());
+
+    if (snapshot.model || snapshot.effort) {
+      const text = document.createElement('div');
+      text.className = 'status-head-text';
+      if (snapshot.model) {
+        const model = document.createElement('span');
+        model.className = 'status-model';
+        model.textContent = snapshot.model;
+        text.appendChild(model);
       }
-    };
+      if (snapshot.effort) {
+        const effort = document.createElement('span');
+        effort.className = 'status-effort';
+        effort.textContent = snapshot.effort;
+        text.appendChild(effort);
+      }
+      head.appendChild(text);
+    }
+    row.appendChild(head);
 
-    handle.addEventListener('pointerdown', (event) => {
-      event.preventDefault();
-      this.dragging = true;
-      handle.setPointerCapture(event.pointerId);
-      // Straight away and held: the number is what the gesture is for, and the pointer capture
-      // means the usual hover rules stop applying the moment the handle moves under it.
-      this.tooltips.pin(handle);
-    });
+    const rings = document.createElement('div');
+    rings.className = 'status-rings';
+    for (const group of this.buildRingGroups(snapshot)) {
+      rings.appendChild(group);
+    }
+    row.appendChild(rings);
 
-    handle.addEventListener('pointermove', (event) => {
-      if (!this.dragging) return;
-      this.threshold = valueAt(event.clientX);
-      this.positionHandle(handle, this.threshold);
-      this.tooltips.refresh();
-    });
+    return row;
+  }
 
-    handle.addEventListener('pointerup', (event) => {
-      if (!this.dragging) return;
-      handle.releasePointerCapture(event.pointerId);
-      commit();
-    });
+  private buildRingGroups(snapshot: StatusLineSnapshot): HTMLDivElement[] {
+    const groups: HTMLDivElement[] = [];
 
-    handle.addEventListener('pointercancel', () => {
-      if (this.dragging) commit();
-    });
+    // With the weekly limit spent, turns are billed to usage credits and the five-hour bucket
+    // stops counting — Claude Code then reports it as 0. A bare "0%" would read as plenty of
+    // room left, which is the opposite of the situation, so the label says which bucket it is.
+    const onCredits =
+      snapshot.weekPercent !== undefined && snapshot.weekPercent >= StatusLineView.LIMIT_SPENT_PCT;
 
-    // A click anywhere on the track moves the threshold there — the handle is 8px wide and the
-    // panel is narrow, so aiming for it is not always worth it.
-    wrap.addEventListener('pointerdown', (event) => {
-      if (event.target === handle) return;
-      this.threshold = valueAt(event.clientX);
-      this.positionHandle(handle, this.threshold);
-      this.onThresholdChange(this.threshold);
-      this.render();
+    const ctx = this.buildContextGroup(snapshot);
+    if (ctx) groups.push(ctx);
+
+    const session = this.buildSessionGroup(snapshot, onCredits);
+    if (session) groups.push(session);
+
+    if (snapshot.weekPercent !== undefined) {
+      const percent = Math.round(snapshot.weekPercent);
+      const level = percent >= StatusLineView.LIMIT_DANGER_PCT ? ' danger' : '';
+      const tooltip = [
+        snapshot.weekResetsAt ? `Weekly limit resets on ${snapshot.weekResetsAt}` : '',
+        onCredits ? 'Weekly limit spent — turns run on usage credits' : ''
+      ]
+        .filter((line) => line.length > 0)
+        .join('\n');
+      groups.push(
+        this.buildRingGroup(
+          'week',
+          this.buildRing(snapshot.weekPercent / 100, `${String(percent)}%`, level),
+          'Week',
+          snapshot.weekResetsAt ?? '',
+          tooltip.length > 0 ? tooltip : undefined
+        )
+      );
+    }
+
+    if (snapshot.compacted !== undefined) {
+      const budget = snapshot.compactBudget ?? StatusLineView.COMP_DEFAULT_BUDGET;
+      const auto = snapshot.compactAuto ?? 0;
+      groups.push(
+        this.buildRingGroup(
+          'comp',
+          this.buildSegmentRing(snapshot.compacted, budget, String(snapshot.compacted)),
+          'Comp',
+          `${String(auto)} auto`,
+          `Compacted ${String(snapshot.compacted)} of ${String(budget)} · ${String(auto)} automatic`
+        )
+      );
+    }
+
+    return groups;
+  }
+
+  /**
+   * The context ring fills against the threshold, not against a full window: the threshold is
+   * the point the row exists to warn about, so a full ring and the red are the same event. The
+   * number in the hole stays the absolute percentage — that is the value being judged.
+   *
+   * A tab Claude has not rendered yet carries no numbers, and shows no ring rather than an empty
+   * one reading "0 / 0". The stop button beside it stays either way.
+   */
+  private buildContextGroup(snapshot: StatusLineSnapshot): HTMLDivElement | null {
+    if (snapshot.totalTokens <= 0) {
+      return null;
+    }
+
+    // One name for the level so ring and number can never disagree: '' below the lead-in,
+    // then warn, then danger at the threshold itself.
+    const level =
+      snapshot.usedPercent >= this.threshold
+        ? ' danger'
+        : snapshot.usedPercent >= this.threshold - StatusLineView.WARN_LEAD_PCT
+          ? ' warn'
+          : '';
+    const percent = Math.round(snapshot.usedPercent);
+    const budget = (snapshot.totalTokens * this.threshold) / 100;
+
+    const ring = this.buildRing(
+      snapshot.usedPercent / this.threshold,
+      `${String(percent)}%`,
+      level
+    );
+
+    const group = this.buildRingGroup(
+      'ctx',
+      ring,
+      'Ctx',
+      formatK(budget),
+      `${String(percent)}% · ${formatK(snapshot.usedTokens)} / ${formatK(snapshot.totalTokens)}\nThreshold ${String(this.threshold)}% — click to change`
+    );
+
+    // The ring is the only threshold control left, so it has to be reachable by keyboard and
+    // has to say what it is. A click carries no value; the host asks for one.
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'status-ring-button';
+    button.setAttribute('aria-label', `Context threshold, ${String(this.threshold)}%`);
+    button.addEventListener('click', () => {
+      this.onThresholdPrompt();
     });
+    group.replaceChild(button, ring);
+    button.appendChild(ring);
+
+    return group;
+  }
+
+  private buildSessionGroup(
+    snapshot: StatusLineSnapshot,
+    onCredits: boolean
+  ): HTMLDivElement | null {
+    if (snapshot.sessionPercent === undefined) {
+      return null;
+    }
+
+    // Prefer the absolute point: a remembered "84 min" is wrong an hour later
+    const resetsAt = snapshot.sessionResetsAt;
+    const remainingMs = resetsAt !== undefined ? resetsAt * 1000 - Date.now() : undefined;
+    const minutes =
+      remainingMs !== undefined ? Math.round(remainingMs / 60000) : snapshot.sessionResetsInMin;
+
+    // Past the reset point the percentage describes a window that no longer exists — the watcher
+    // drops it for the same reason when it fills a fresh tab from memory. Measured against the
+    // point itself, not against the rounded minutes: rounding calls anything under 30 seconds
+    // zero, which would blank the label in its last half minute.
+    const expired = remainingMs !== undefined && remainingMs <= 0;
+    const percent = Math.round(snapshot.sessionPercent);
+    const level = onCredits || percent >= StatusLineView.LIMIT_DANGER_PCT ? ' danger' : '';
+
+    const sub = expired
+      ? 'Limit reset'
+      : minutes !== undefined
+        ? formatRemaining(minutes)
+        : resetsAt !== undefined
+          ? formatClock(resetsAt)
+          : '';
+
+    const tooltip =
+      resetsAt !== undefined && !expired
+        ? `Session limit resets at ${formatClock(resetsAt)}`
+        : undefined;
+
+    return this.buildRingGroup(
+      'sess',
+      this.buildRing(snapshot.sessionPercent / 100, `${String(percent)}%`, level),
+      onCredits ? 'Credits' : 'Sess',
+      sub,
+      tooltip
+    );
   }
 
   /**
@@ -787,178 +985,6 @@ class StatusLineView {
     });
 
     row.appendChild(button);
-    return row;
-  }
-
-  private buildContextRow(snapshot: StatusLineSnapshot): HTMLDivElement {
-    // One name for the level so bar and number can never disagree: '' below the lead-in,
-    // then warn, then danger at the threshold itself.
-    const level =
-      snapshot.usedPercent >= this.threshold
-        ? ' danger'
-        : snapshot.usedPercent >= this.threshold - StatusLineView.WARN_LEAD_PCT
-          ? ' warn'
-          : '';
-    // A tab that has not been rendered by Claude yet carries no numbers — show nothing rather
-    // than a full bar reading "0 / 0". The row itself still exists: it carries the stop button,
-    // which is worth having before the first render just as much as after it.
-    const hasContext = snapshot.totalTokens > 0;
-
-    const row = document.createElement('div');
-    row.className = 'status-row';
-    row.appendChild(this.buildStopButton());
-
-    if (snapshot.model) {
-      const model = document.createElement('span');
-      model.className = 'status-model';
-      model.textContent = snapshot.model;
-      row.appendChild(model);
-    }
-
-    if (snapshot.effort) {
-      const effort = document.createElement('span');
-      effort.className = 'status-effort';
-      effort.textContent = snapshot.effort;
-      row.appendChild(effort);
-    }
-
-    if (hasContext) {
-      row.appendChild(this.buildBar(snapshot.usedPercent, level));
-
-      const percent = document.createElement('span');
-      percent.className = `status-value${level}`;
-      percent.textContent = `${String(Math.round(snapshot.usedPercent))}%`;
-      row.appendChild(percent);
-
-      // Only what is spent. The window size stays in the tooltip: it is the same number all
-      // session long, so it earns its space once, not on every row.
-      const tokens = document.createElement('span');
-      tokens.className = 'status-value';
-      tokens.textContent = formatK(snapshot.usedTokens);
-      row.appendChild(tokens);
-
-      // Terse on purpose: the row it describes is already labelled, so the tooltip only fills in
-      // the two numbers the row drops — the window size and the threshold.
-      row.dataset.tooltip = `${String(Math.round(snapshot.usedPercent))}% ${formatK(snapshot.usedTokens)} / ${formatK(snapshot.totalTokens)} · thr ${String(this.threshold)}%`;
-    }
-
-    return row;
-  }
-
-  private buildSecondaryRow(snapshot: StatusLineSnapshot): HTMLDivElement | null {
-    const parts: { text: string; danger?: boolean; trailing?: boolean }[] = [];
-    let sessionExpired = false;
-
-    // With the weekly limit spent, turns are billed to usage credits and the five-hour bucket
-    // stops counting — Claude Code then reports it as 0. A bare "Session 0%" would read as
-    // plenty of room left, which is the opposite of the situation.
-    const onCredits =
-      snapshot.weekPercent !== undefined && snapshot.weekPercent >= StatusLineView.LIMIT_SPENT_PCT;
-
-    if (snapshot.sessionPercent !== undefined) {
-      // Prefer the absolute point: a remembered "84 min" is wrong an hour later
-      const resetsAt = snapshot.sessionResetsAt;
-      const remainingMs = resetsAt !== undefined ? resetsAt * 1000 - Date.now() : undefined;
-      const minutes =
-        remainingMs !== undefined ? Math.round(remainingMs / 60000) : snapshot.sessionResetsInMin;
-
-      // Past the reset point the percentage describes a window that no longer exists — the
-      // watcher drops it for the same reason when it fills a fresh tab from memory. Measured
-      // against the point itself, not against the rounded minutes: rounding calls anything under
-      // 30 seconds zero, which would blank the row in its last half minute.
-      const expired = remainingMs !== undefined && remainingMs <= 0;
-
-      sessionExpired = expired;
-
-      if (expired) {
-        // Not dropped silently: the row would just lose its left half at the very moment the
-        // waiting is over. Says so until Claude's next render brings a fresh percentage.
-        parts.push({ text: 'Limit reset' });
-      } else {
-        // Both, and in that order: the remaining span is the answer to "can I prompt again yet",
-        // the clock time is what you plan around once you know it is a while.
-        const clock = resetsAt !== undefined ? formatClock(resetsAt) : '';
-        const resets = [minutes !== undefined ? formatRemaining(minutes) : '', clock]
-          .filter((piece) => piece.length > 0)
-          .map((piece) => ` · ${piece}`)
-          .join('');
-        const percent = Math.round(snapshot.sessionPercent);
-        parts.push({
-          text: `Session ${String(percent)}%${onCredits ? ' (Credits)' : ''}${resets}`,
-          danger: onCredits || percent >= StatusLineView.LIMIT_DANGER_PCT
-        });
-      }
-    }
-
-    if (snapshot.compacted !== undefined) {
-      const budget =
-        snapshot.compactBudget !== undefined ? `/${String(snapshot.compactBudget)}` : '';
-      const auto =
-        snapshot.compactAuto !== undefined && snapshot.compactAuto > 0
-          ? ` (${String(snapshot.compactAuto)} auto)`
-          : '';
-      parts.push({
-        text: `Compacted ${String(snapshot.compacted)}${budget}${auto}`,
-        trailing: true
-      });
-    }
-
-    if (snapshot.weekPercent !== undefined) {
-      const resets = snapshot.weekResetsAt ? ` · ${snapshot.weekResetsAt}` : '';
-      const percent = Math.round(snapshot.weekPercent);
-      parts.push({
-        text: `Week ${String(percent)}%${resets}`,
-        danger: percent >= StatusLineView.LIMIT_DANGER_PCT,
-        trailing: true
-      });
-    }
-
-    if (parts.length === 0) {
-      return null;
-    }
-
-    const row = document.createElement('div');
-    row.className = 'status-row secondary';
-    // Only the first of the trailing group carries the push: the ones after it follow at the
-    // normal gap, or each would be shoved to the edge in turn and the group would fall apart.
-    let pushed = false;
-    parts.forEach((part) => {
-      const span = document.createElement('span');
-      const classes = ['status-value'];
-      if (part.danger) {
-        classes.push('danger');
-      }
-      if (part.trailing && !pushed) {
-        classes.push('trailing');
-        pushed = true;
-      }
-      span.className = classes.join(' ');
-      span.textContent = part.text;
-      row.appendChild(span);
-    });
-
-    // The tooltip explains the row, so it may only name a limit the row actually shows.
-    // Claude Code sends the two buckets independently and a reset time can arrive without its
-    // percentage — the segment is then dropped while the tooltip still promised a "weekly limit"
-    // nothing on screen mentioned.
-    const tooltip: string[] = [];
-    // A reset time in the past is not worth naming — the row already says the limit is back.
-    if (
-      snapshot.sessionPercent !== undefined &&
-      snapshot.sessionResetsAt !== undefined &&
-      !sessionExpired
-    ) {
-      tooltip.push(`Session limit resets at ${formatClock(snapshot.sessionResetsAt)}`);
-    }
-    if (snapshot.weekPercent !== undefined && snapshot.weekResetsAt) {
-      tooltip.push(`Weekly limit resets on ${snapshot.weekResetsAt}`);
-    }
-    if (onCredits) {
-      tooltip.push('Weekly limit spent — turns run on usage credits');
-    }
-    if (tooltip.length > 0) {
-      row.dataset.tooltip = tooltip.join('\n');
-    }
     return row;
   }
 }
@@ -1072,10 +1098,9 @@ class WebviewContext {
           this.postMessage({ type: 'stopTurn', id });
         }
       },
-      (value) => {
-        this.postMessage({ type: 'setContextThreshold', value });
-      },
-      this.tooltips
+      () => {
+        this.postMessage({ type: 'promptContextThreshold' });
+      }
     );
   }
 

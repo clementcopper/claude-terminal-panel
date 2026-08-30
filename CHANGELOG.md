@@ -28,8 +28,11 @@ Local fork, published nowhere: built and installed as `local.claude-terminal-pan
 
 ### Added
 
-- Status line rendered natively at the bottom of the panel — model, effort, context bar, token
-  count, session and weekly rate limits, compaction counter and working directory
+- Status line rendered natively at the bottom of the panel — model, effort, working directory and
+  four rings for context, session limit, weekly limit and compactions. The context ring fills
+  against the threshold and asks for a new one when clicked
+- Per-window status directory (`status/<window token>`), so one VS Code window can no longer
+  delete another window's live snapshots and blank its status line
 - Bundled status line producer (`resources/panel-statusline.js`), handed to Claude Code per
   session through `--settings`, so the row works without touching `~/.claude/settings.json`
 - `claudeTerminal.statusLine`, `claudeTerminal.statusLineProvider` (`bundled` / `own`) and

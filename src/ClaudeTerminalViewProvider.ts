@@ -309,6 +309,33 @@ export class ClaudeTerminalViewProvider
       });
   }
 
+  /**
+   * The context ring is the only threshold control left, and a click carries no value — so it
+   * asks for one. The bounds are the same 5–95 the drag handle used to enforce: a threshold at
+   * either end says nothing.
+   */
+  handlePromptContextThreshold(): void {
+    const current = this.configManager.getConfig().contextThreshold;
+
+    void vscode.window
+      .showInputBox({
+        title: 'Context threshold',
+        prompt: 'Warn when the context window is this full (5–95%)',
+        value: String(Math.round(current)),
+        validateInput: (raw) => {
+          const value = Number(raw.trim().replace('%', ''));
+          if (!Number.isFinite(value) || !Number.isInteger(value)) {
+            return 'Whole numbers only';
+          }
+          return value < 5 || value > 95 ? 'Between 5 and 95' : undefined;
+        }
+      })
+      .then((raw) => {
+        if (raw === undefined) return;
+        this.handleSetContextThreshold(Number(raw.trim().replace('%', '')));
+      });
+  }
+
   handleResize(id: string, cols: number, rows: number): void {
     // Only a real change is worth a line — the observer fires on every panel drag frame.
     if (cols !== this.lastCols || rows !== this.lastRows) {

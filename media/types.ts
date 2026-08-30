@@ -91,6 +91,7 @@ export type WebviewOutgoingMessage =
   | { type: 'insertEditorReference' }
   | { type: 'stopTurn'; id: string }
   | { type: 'setContextThreshold'; value: number }
+  | { type: 'promptContextThreshold' }
   | { type: 'themeApplied' };
 
 // Terminal entry in the map

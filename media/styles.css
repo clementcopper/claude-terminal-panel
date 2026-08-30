@@ -63,16 +63,25 @@ body {
 /* Status line at the bottom edge, fed by the statusLine script through the watcher */
 #status-line {
   /* One source for the vertical rhythm: the gap between rows, and the distance from the editor
-     row's rule to the text on either side of it. Set it in one place or the halves drift apart —
-     which is how the lower rows ended up at 1px while the top one had 2px and a border. */
-  --status-row-gap: 4px;
+     row's rule to the text on either side of it. Set it in one place or the halves drift apart. */
+  --status-row-gap: 8px;
+  /* The design's ring track is an opaque grey. `scrollbarSlider-background` is translucent in
+     dark themes, which turned the track into whatever sat behind it — an editor widget border is
+     the nearest opaque token for a hairline that has to stay a hairline. */
+  --status-ring-track: var(--vscode-editorWidget-border, #d4d4d4);
+  --status-ring-track-hover: var(--vscode-descriptionForeground, #b0b0b0);
+  --status-ring-fill: var(--vscode-progressBar-background, #0e70c0);
+  /* Deliberately literal: `charts.yellow` (#cca700) reads as a second neutral next to the red
+     below it. Chosen for the dark theme, where it carries; on a light one it is quiet. */
+  --status-warn: #fdbd00;
+  --status-danger: var(--vscode-editorError-foreground, #f14c4c);
 
   flex-shrink: 0;
-  padding: 4px 8px 6px;
+  padding: 8px;
   position: relative;
-  background-color: var(--vscode-tab-inactiveBackground, #2d2d2d);
-  border-top: 1px solid var(--vscode-tab-border, #3c3c3c);
-  color: var(--vscode-descriptionForeground, #9d9d9d);
+  background-color: var(--vscode-tab-inactiveBackground, #f3f3f3);
+  border-top: 1px solid var(--vscode-tab-border, #dcdcdc);
+  color: var(--vscode-descriptionForeground, #616161);
   font-family: var(--vscode-font-family, sans-serif);
   font-size: 10px;
   line-height: 1.45;
@@ -89,11 +98,12 @@ body {
 
 /* A snapshot older than a minute means Claude has not re-rendered since — say so quietly.
 
-   Per row, not on the whole element: `opacity` dims children beyond rescue, and two rows are not
-   stale at all. The editor row comes from VS Code, and the limits row recomputes its countdown
-   from an absolute reset point — that line is at its most useful exactly when Claude has stopped
-   rendering, because the limit is spent. Dimming it then would hide the one number still true. */
-#status-line.stale .status-row:not(.secondary):not(.editor) {
+   Only on the two things the snapshot actually dates: the model and the context ring. The editor
+   row comes from VS Code; the limit rings recompute their countdown from an absolute reset point,
+   so they are at their most useful exactly when Claude has stopped rendering. The stop button is
+   an action and must never look disabled. */
+#status-line.stale .status-head-text,
+#status-line.stale .status-ring-group.ctx {
   opacity: 0.55;
 }
 
@@ -101,96 +111,178 @@ body {
   display: flex;
   align-items: center;
   /* The panel is resizable and narrow by nature, so a row that cannot wrap gets cut off at the
-     right edge instead. Items wrap; the text inside each one still does not, or a label would
-     break in the middle of "Session 70% · 84 min". */
+     right edge instead. Items wrap; the text inside each one still does not. */
   flex-wrap: wrap;
-  column-gap: 6px;
-  /* A wrapped line is a line like any other — same rhythm as the gap between rows */
+  column-gap: 24px;
   row-gap: var(--status-row-gap);
   white-space: nowrap;
   overflow: hidden;
 }
 
+/* Stop plus model. Hugs its content so the rings get everything that is left. */
+.status-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.status-head-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
 .status-model {
-  color: var(--vscode-foreground, #ccc);
+  color: var(--vscode-foreground, #1f1f1f);
   font-weight: 600;
-  flex-shrink: 0;
-}
-
-/* The track must not use `opacity`: it would dim the fill inside it as well, which is why
-   the bar looked empty. Own colour instead. */
-.status-bar {
-  flex: 1;
-  min-width: 24px;
-  height: 4px;
-  border-radius: 2px;
-  background-color: var(--vscode-scrollbarSlider-background, rgba(255, 255, 255, 0.18));
-  position: relative;
-  overflow: hidden;
-}
-
-.status-bar-fill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  min-width: 2px;
-  border-radius: 2px;
-  background-color: var(--vscode-progressBar-background, #0e70c0);
-}
-
-/* Ten points before the threshold. Orange, not the editor's warning yellow: yellow next to the
-   red below it reads as a second neutral state rather than as the step before it. */
-.status-bar.warn .status-bar-fill {
-  background-color: var(--vscode-charts-orange, #d18616);
-}
-
-/* At the threshold: the context is full enough that a /clear is due */
-.status-bar.danger .status-bar-fill {
-  background-color: var(--vscode-editorError-foreground, #f14c4c);
-}
-
-.status-value {
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-}
-
-.status-value.warn {
-  color: var(--vscode-charts-orange, #d18616);
-}
-
-.status-value.danger {
-  color: var(--vscode-editorError-foreground, #f14c4c);
-}
-
-.status-row.secondary {
-  /* Column only: the row gap stays the shared one, so wrapped lines line up with real rows */
-  column-gap: 10px;
-  opacity: 0.85;
-}
-
-/* The session limit is the live one and stays on the left; compactions and the weekly limit are
-   reference numbers and sit against the right edge. Carried by the first of them alone. */
-.status-row.secondary .status-value.trailing {
-  margin-left: auto;
 }
 
 .status-effort {
-  flex-shrink: 0;
-  padding: 0 4px;
+  padding: 1px 4px;
   border-radius: 3px;
-  background-color: var(--vscode-badge-background, #4d4d4d);
-  color: var(--vscode-badge-foreground, #fff);
-  font-size: 9px;
+  background-color: var(--vscode-toolbar-hoverBackground, #e4e4e4);
+  color: var(--vscode-descriptionForeground, #616161);
+  font-size: 8px;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.3px;
+}
+
+/* The four rings. They wrap as a group before any of them is dropped: at 250px of panel there is
+   no arrangement that fits all four on one line, and a ring that quietly disappeared would be
+   read as a missing limit rather than as a narrow panel. */
+.status-rings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: var(--status-row-gap);
+  /* Wide enough for two groups, which is what forces the useful break: without a floor the
+     container is squeezed into the space the head leaves over and every ring lands on a line of
+     its own — measured at 260px, four ring rows and a 235px status line. With the floor it drops
+     to its own full-width line first and fits two rings per row. */
+  flex: 1 1 auto;
+  min-width: 170px;
+}
+
+.status-ring-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.status-ring {
+  position: relative;
+  display: block;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.status-ring svg {
+  display: block;
+  width: 36px;
+  height: 36px;
+}
+
+.status-ring-track {
+  stroke: var(--status-ring-track);
+}
+
+.status-ring-fill {
+  stroke: var(--status-ring-fill);
+}
+
+.status-ring-fill.warn {
+  stroke: var(--status-warn);
+}
+
+.status-ring-fill.danger {
+  stroke: var(--status-danger);
+}
+
+/* Absolutely placed rather than flex-centred: the ring is the box, and the number has to sit in
+   its hole whatever the number is. */
+.status-ring-value {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-foreground, #1f1f1f);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* "100%" touches the arc at 10px */
+.status-ring-value.small {
+  font-size: 9px;
+}
+
+.status-ring-value.warn {
+  color: var(--status-warn);
+}
+
+.status-ring-value.danger {
+  color: var(--status-danger);
+}
+
+.status-ring-label {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.status-ring-name {
+  color: var(--vscode-descriptionForeground, #616161);
+  font-size: 8px;
+  font-weight: 500;
+}
+
+.status-ring-sub {
+  color: var(--vscode-disabledForeground, #767676);
+  font-size: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The context ring is the only threshold control left, so it has to read as one — the same
+   disc the stop button uses, in the same grey. */
+.status-ring-button {
+  appearance: none;
+  border: none;
+  padding: 0;
+  background: none;
+  border-radius: 50%;
+  display: block;
+  cursor: pointer;
+  color: inherit;
+}
+
+.status-ring-button:hover {
+  background-color: var(--vscode-toolbar-hoverBackground, #e4e4e4);
+}
+
+.status-ring-button:hover .status-ring-track {
+  stroke: var(--status-ring-track-hover);
+}
+
+.status-ring-button:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #0078d4);
+  outline-offset: 1px;
 }
 
 /* The open file, at the top edge — closest to the editor it describes. It is the one row that
    does something when clicked, so it has to read as clickable rather than as label text. */
 .status-row.editor {
-  border-bottom: 1px solid var(--vscode-tab-border, #3c3c3c);
+  border-bottom: 1px solid var(--vscode-tab-border, #dcdcdc);
   /* No margin: the container's gap already sits below the rule. Only the distance above it is
-     this row's business, and it uses the same value, so the rule is centred in its own space. */
-  padding-bottom: var(--status-row-gap);
+     this row's business. */
+  padding-bottom: 5px;
 }
 
 .status-editor {
@@ -204,7 +296,7 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   font: inherit;
-  color: var(--vscode-foreground, #ccc);
+  color: var(--vscode-foreground, #1f1f1f);
   cursor: pointer;
 }
 
@@ -218,28 +310,28 @@ body {
   outline-offset: 1px;
 }
 
-/* The stop button leads the context row. Fixed 16px box: the row is 10px/1.45 ≈ 14.5px, so the
-   button sets the row height — but sets it to a constant, which costs one refit, not one per draw. */
+/* The stop button leads the main row. Fixed 36px disc, the same box as a ring, so the row's
+   height is a constant however the rings wrap. */
 .status-stop {
   appearance: none;
   border: none;
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 3px;
+  border-radius: 50%;
   cursor: pointer;
   /* An own surface rather than a bare glyph: at 10px type a lone icon disappears into the row */
-  background-color: var(--vscode-toolbar-hoverBackground, #383838);
-  color: var(--vscode-icon-foreground, #c5c5c5);
+  background-color: var(--vscode-toolbar-hoverBackground, #e4e4e4);
+  color: var(--vscode-foreground, #1f1f1f);
 }
 
 .status-stop svg {
-  width: 8px;
-  height: 8px;
+  width: 11px;
+  height: 11px;
   display: block;
 }
 
@@ -253,40 +345,10 @@ body {
   outline-offset: 1px;
 }
 
-/* Carries the grab zone for the threshold handle. Padded up and pulled back by the same amount,
-   so the pointer gets 14px to aim at while the row stays exactly as tall as it was. */
-.status-bar-wrap {
-  flex: 1;
-  min-width: 24px;
-  position: relative;
-  padding: 5px 0;
-  margin: -5px 0;
-  cursor: pointer;
-}
-
-/* The handle stands proud of a 4px bar, so it cannot live inside the track — the track clips. */
-.status-threshold {
-  position: absolute;
-  top: 50%;
-  width: 8px;
-  height: 8px;
-  margin-left: -4px;
-  transform: translateY(-50%);
-  border-radius: 50%;
-  background-color: var(--vscode-foreground, #ccc);
-  border: 1px solid var(--vscode-tab-inactiveBackground, #2d2d2d);
-  box-sizing: border-box;
-  cursor: ew-resize;
-  touch-action: none;
-}
-
-.status-threshold:hover {
-  background-color: var(--vscode-focusBorder, #0078d4);
-}
-
 /* Working directory last: least urgent, and the only part that can get long */
 .status-row.cwd {
-  opacity: 0.7;
+  color: var(--vscode-disabledForeground, #767676);
+  font-size: 9px;
 }
 
 .status-cwd {

@@ -17,6 +17,7 @@ export interface MessageHandlerContext {
   handleInsertEditorReference(): void;
   handleStopTurn(id: string): void;
   handleSetContextThreshold(value: number): void;
+  handlePromptContextThreshold(): void;
   handleThemeApplied(): void;
 }
 
@@ -66,6 +67,9 @@ const messageHandlers: MessageHandlerMap = {
   },
   setContextThreshold: (message, ctx) => {
     ctx.handleSetContextThreshold(message.value);
+  },
+  promptContextThreshold: (_message, ctx) => {
+    ctx.handlePromptContextThreshold();
   },
   themeApplied: (_message, ctx) => {
     ctx.handleThemeApplied();
