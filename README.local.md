@@ -219,8 +219,8 @@ silently, because the watch follows the inode rather than the path.
   | ≥ 439px     | 103px       | one line: stop, model, all four rings             |
   | 253–438px   | 147px       | two lines, the split moving right as it narrows   |
   | 191–252px   | 191px       | three lines, stop and model still sharing the top |
-  | 176–190px   | 191px       | three lines, stop and model alone on the first    |
-  | < 176px     | 235px       | four lines                                        |
+  | 177–190px   | 191px       | three lines, stop and model alone on the first    |
+  | < 177px     | 235px       | four lines                                        |
 
   The main row is one flat sequence — stop button, model, then a ring group per item — so the
   rings wrap one at a time instead of dropping as a block. The stop button is first in the DOM
