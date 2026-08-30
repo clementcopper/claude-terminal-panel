@@ -261,8 +261,8 @@ silently, because the watch follows the inode rather than the path.
   `--panel-mono-font` (SF Mono first), everything else `--panel-ui-font` (SF Compact Display
   first); each falls through to VS Code's own token, so a machine without the SF fonts still gets
   the editor's. `ThemeBuilder.getFontFamily()` reads the mono variable off `documentElement`
-  rather than keeping its own copy, and the open-file row is a path, so it takes the mono stack
-  too. Apple's family is **SF Compact**, not "SF Pro Compact" — SF Pro and SF Compact are
+  rather than keeping its own copy, and the two path rows — the open file and the working
+  directory — take the mono stack too. Apple's family is **SF Compact**, not "SF Pro Compact" — SF Pro and SF Compact are
   siblings.
 - The terminal's scrollbar is xterm 6's port of VS Code's scrollbar widget, not a native one.
   xterm hard-codes it to "auto" visibility, so it fades out about a second after the last scroll;

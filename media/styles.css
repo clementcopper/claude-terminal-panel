@@ -423,6 +423,8 @@ body.vscode-high-contrast-light {
    10.55:1 light on this one. */
 .status-row.cwd {
   color: var(--vscode-descriptionForeground, #767676);
+  /* A path, like the open-file row above it */
+  font-family: var(--panel-mono-font);
   font-size: 9px;
 }
 
