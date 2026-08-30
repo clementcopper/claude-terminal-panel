@@ -229,6 +229,11 @@ silently, because the watch follows the inode rather than the path.
   The steps move with the UI font: they were 20–40px wider before SF Compact Display, which is
   about 10% narrower than a default sans at the same size. Re-measure after any font change.
 
+  They were also measured with the effort badge in its long form, `HIGH · FAST`, which is about
+  50px wider than the plain `HIGH` the badge shows without fast mode. These are therefore the
+  widths at which the layout is guaranteed to fit; with the short badge each step arrives a
+  little later. Re-measuring with `HIGH` will produce smaller numbers — that is not a regression.
+
 - The context ring fills against the **threshold**, not against a full window — a full ring and
   the red are the same event — and so does the number in its hole: 32% of the window against a
   threshold of 60 reads as `53%`. It is not capped at 100, because past the threshold the ring
