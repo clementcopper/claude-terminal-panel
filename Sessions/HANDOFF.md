@@ -1,57 +1,60 @@
-# Handoff — 2026-08-30 19:25
+# Handoff — 2026-08-30 20:58
 
 Arbeitsverzeichnis: /Users/danielmartin/claude-terminal-panel
 
 ## Stand
 
-Branch `feat/context-threshold`, HEAD `84b0696`, Arbeitsbaum sauber. Die Statusleiste ist neu: vier 36px-Ringe statt Balken und Textzeile, Threshold
-über eine InputBox, SF Mono im Terminal und in beiden Pfadzeilen, SF Compact Display sonst,
-Terminal-Scrollbar wieder sichtbar. Dazu der Fensterwechsel-Bug — der Statusordner liegt jetzt
-unter `status/<window token>/`, vorher löschten sich die Fenster gegenseitig die Snapshots. Zwölf Commits, `.vsix` gebaut und installiert, Hashes stimmen. Das Figma-Design ist nachgezogen (Memory
-`statusbar-design-in-figma`).
+Branch `feat/context-threshold`, HEAD `43d9d0e`, Arbeitsbaum sauber. Fünf Commits: Terminal-Padding
+links/rechts angeglichen und dann auf 8px gebracht, Model und Effort linksbündig, Ring-Level neu.
+`.vsix` gebaut und installiert, Hashes stimmen. **Der Fenster-Reload fehlt noch** — im Panel läuft
+der alte Extension-Host, keine der fünf Änderungen ist sichtbar.
+
+Die Scrollbar-Frage ist beantwortet und abgeschlossen: Claude Code 2.1.251 nutzt den Alternate
+Screen, damit gibt es kein Terminal-Scrollback und keinen Balken. Nicht reparierbar, Daniel
+verzichtet darauf. Details in `LEARNINGS.md`.
 
 ## Mitten drin
 
-- **Der Reload ist durch**, gegengeprüft: Extension-Host seit 13:52:48, Bundle von 13:49:17, und
-  die Hashes von `extension.js`, `main.js` und `styles.css` stimmen mit dem Arbeitsbaum überein.
-  Im Panel läuft der aktuelle Stand.
-- Offen bleibt die Handprüfung, weil ein Standbild keinen Zeiger hat.
+- Nichts halb Gebautes. Offen ist nur der Reload und die Handprüfung danach.
 
 ## Nächster Schritt
 
-Von Hand im Panel durchgehen, in dieser Reihenfolge:
+Daniel bittet, `Developer: Reload Window` auszuführen (killt die Sitzungen in den Tabs), danach
+von Hand prüfen:
 
-1. Stop im Hover — Scheibe `#EC1500`, Quadrat weiß.
-2. Ctx-Ring im Hover — graue Scheibe erscheint, der Track ändert sich **nicht**.
-3. Klick auf den Ctx-Ring — Eingabe öffnet, `0` und `120` müssen abgelehnt werden.
-4. Terminal mit Scrollback — 10px-Balken sichtbar; ohne Scrollback keiner.
-5. OS-Theme umschalten — `#FDA400` und `#EC1500` sind in beiden Modi derselbe Wert.
+1. Terminaltext links und rechts gleich weit vom Rand, ~8px bei 520px Panelbreite.
+2. `Opus 5` und Effort-Badge auf derselben linken Kante.
+3. Ctx-Ring orange ab 36% Fenster, rot ab 48% (bei Threshold 60); Session und Week ab 60/80%.
+4. Comp-Ring: 2. Compaction orange, 3. rot — vorher immer blau.
 
 ## Schon probiert, geht nicht
 
-- **Fokusringe durch Löschen der Regeln entfernen** — Chromium malt dann seinen eigenen, lauter
-  als der entfernte. Es braucht `outline: none` auf `:focus` **und** `:focus-visible`.
-- **`min-width: 220px` glatt auf den Ringcontainer** — schlägt `max-width`, schnitt unter 236px
-  den Comp-Ring ab, und `overflow: hidden` verbarg es. Jetzt `min(220px, 100%)`.
-- **Die Ringe in einen eigenen Container** — der ist ein Flex-Element und bricht als Ganzes um,
-  der Stop-Button blieb allein in Zeile 1. Sie müssen Geschwister der Zeile sein.
-- **`butt`-Kappen am Comp-Ring**, um die Lücken sichtbar zu machen — bricht die Formsprache. Die
-  Lücke stattdessen auf 21° ziehen, dann tragen runde Enden.
-- **Warngelb auf 4,5:1 abdunkeln** (`#8A6200`) — wird braun. Siehe Memory
-  `farbton-schlaegt-kontrastregel`.
+- **Die Scrollbar per CSS sichtbar machen.** Das CSS war die ganze Zeit richtig, im Harness mit
+  echtem Scrollback zeichnet es einen sauberen 10px-Balken. Es gibt schlicht nichts zu scrollen.
+- **`CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1`** über `claudeTerminal.env` — funktioniert messbar
+  (Balken 338px, `opacity 1`), von Daniel wieder zurückgestellt. `settings.json` ist Originalstand.
+- **`overviewRuler: { width: 1 }`**, um FitAddons 14px-Rinne zu verkleinern — schaltet den
+  Overview-Ruler scharf, der dann zeichnet. Gemessen.
+- **Padding auf `.xterm`**, um den Text zu verschieben — `.xterm-viewport` ist absolut mit
+  `inset: 0` gegen die Padding-Box, bewegt sich also nicht, und FitAddon zieht das Padding
+  zusätzlich von der Spaltenzahl ab.
+- **Brave headless mit `--screenshot` / `--dump-dom`** beendet sich nicht, auch nicht bei einer
+  leeren Seite. Über `--remote-debugging-port` und CDP fahren, Treiber liegt im Scratchpad.
+- **Artifact-URL und Datei-Karten** haben bei Daniel beide nichts angezeigt. Bilder auf den
+  Schreibtisch legen war der Weg, der ankam (`~/Desktop/claude-altscreen.png`, `claude-inline.png`).
 
 ## Was Daniel entschieden hat
 
-- Kontrast ≥ 4,5:1 für neutralen Text, **nicht** für Warn und Danger — dort gewinnt der Farbton.
-- Ring-Label und -Wert in einer Farbe, Hierarchie nur über das Gewicht (600 gegen 400).
-- Keine Fokusringe in der Statusleiste, im Design wie im Build.
-- Ctx-Zahl zählt gegen den Threshold und wird nicht bei 100 gedeckelt.
-- Zustand „Credits" schaltet bei `sessionPercent >= 100`, nicht am Wochenlimit.
+- Terminal-Scrollbar ist verzichtbar, Alternate Screen bleibt.
+- Ring-Level auf der **Füllung**, nicht auf dem Rohprozentsatz: 60% orange, 80% rot.
+- Comp-Ring zählt statt zu füllen: 2. Compaction orange, 3. rot, unabhängig vom Budget.
+- Terminal-Padding 8px, passend zum `padding: 8px` der Statusleiste.
+- Model und Effort linksbündig — kippt die Mittelachse aus `daca24f`.
 
 ## Erledigt und vom Tisch
 
-- **Zustand 9 (Guthaben in €)** — es gibt keine Datenquelle. `stats-cache.json` führt `costUSD`,
-  im Abo überall 0; Transcripts und statusLine-Schema kennen kein Kosten- oder Guthabenfeld.
-- **Tooltip-Zustand und Fokus-Zeile im Figma-Frame** — von Daniel gestrichen, nicht als Lücke
-  führen.
-- **Eine 180px-Spalte im Breiten-Frame** — Figmas Umbruch trifft die Stufe nicht; nur als Text.
+- Ein neues Setting für den Alternate Screen — `claudeTerminal.env` kann das schon.
+- Die eigene cols-Rechnung, um FitAddons Rinne loszuwerden. Wäre der einzige Weg zu exakt 8px in
+  jeder Breite, kostet aber die Rinne und legt den Balken über die letzte Spalte.
+- Das Figma-Design ist **nicht** nachgezogen, bewusst aufgeschoben; steht in der Memory
+  `statusbar-design-in-figma` als Liste der Abweichungen.

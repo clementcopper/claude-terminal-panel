@@ -413,7 +413,36 @@ var(--vscode-editor-font-family), Menlo` ist ungültig, sobald das Token fehlt �
   musste woanders weitergehen.
 - **`node-pty` beantwortet Terminalfragen ohne VS Code.** Ob eine CLI den Alternate Screen nutzt —
   und damit ob `buffer.active.baseY` je über 0 geht — beweist ein Sechs-Sekunden-Spawn mit
-  `grep` auf `\e[?1049h` / `?1047h` / `?47h` in den Rohbytes. Claude Code nutzt ihn nicht.
+  `grep` auf `\e[?1049h` / `?1047h` / `?47h` in den Rohbytes. **Korrektur vom 30.08.2026: Claude
+  Code 2.1.251 nutzt ihn, gleich in den ersten Bytes** (`\e[?1049h \e[2J \e[H`, dazu Maus-Tracking
+  `?1000h ?1002h ?1003h ?1006h`). Die frühere Zeile hier behauptete das Gegenteil und hat eine
+  ganze Runde Ursachensuche im CSS verbrannt. Die Version mitmessen, nicht die Notiz glauben.
+- **Kein Alternate Screen, keine Terminal-Scrollbar — das ist kein Bug.** Der Alt-Buffer hat kein
+  Scrollback, `buffer.active.baseY` bleibt 0, Scrollhöhe gleich Sichthöhe, xterms Widget meldet
+  `isNeeded() === false`. Erzwingt man den Balken trotzdem, füllt der Slider den ganzen Track
+  (gemessen 479px bei 479px). Was der Nutzer scrollt, scrollt Claude selbst; das Terminal sieht
+  davon nichts. `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` schaltet zurück in den Normal Buffer —
+  gemessen dann `baseY 12`, Slider 338px, `opacity 1` —, kostet aber Claudes Maus komplett.
+  Daniel hat sich am 30.08.2026 gegen den Wechsel entschieden: Balken verzichtbar.
+- **Für PTY-Umgebungsvariablen gibt es `claudeTerminal.env` schon.** `buildEnvironment`
+  (`src/ptyManager.ts`) mischt es in die Umgebung, `ConfigManager` verwirft den Cache bei jeder
+  Settings-Änderung, und es wirkt beim nächsten Spawn — kein neues Setting, kein Build, kein
+  Fenster-Reload. Vor jedem „dafür bräuchte es ein Setting" erst hier nachsehen.
+- **FitAddon hält rechts 14px frei, bevor es Spalten rechnet.** `overviewRuler?.width || 14` in
+  `addon-fit.js`, plus bis zu einer Zelle aus `Math.floor`. Das sammelt sich vollständig rechts:
+  gemessen 10px links gegen 28px rechts. `.xterm-scrollable-element` als Flex-Container mit
+  `justify-content: center` teilt den Überhang — die Scrollbars sind absolut positioniert und
+  damit keine Flex-Elemente, es wandert nur `.xterm-screen`. Padding auf `.xterm` hilft nicht:
+  `.xterm-viewport` ist absolut mit `inset: 0` gegen die Padding-Box, und FitAddon zieht das
+  Padding zusätzlich von der Spaltenzahl ab.
+- **`overviewRuler` setzen schaltet den Overview-Ruler scharf.** `{ width: 1 }` verkleinert zwar
+  die Rinne, zeichnet aber den Ruler — gemessen, nicht vermutet. Kein Weg, die Rinne billig
+  loszuwerden.
+- **Der xterm-6-DOM steht anders da, als die Kommentare behaupteten.** `new Viewport(this.element,
+this.screenElement)` — das Scrollable-Element hängt direkt unter `.xterm`, nicht unter
+  `.xterm-viewport`; letztere ist übrig geblieben und scrollt nichts mehr. Reihenfolge:
+  `.xterm > .xterm-viewport` (vestigial) und `.xterm > .xterm-scrollable-element  mac >
+(.xterm-screen, .scrollbar.horizontal, .scrollbar.vertical > .slider)`.
 - **Ein Ersetzungsskript, das mitten in einer Kette scheitert, schreibt gar nichts.** Drei
   `assert`/`replace`-Paare in einem Python-Heredoc, das erst am Ende `write()` aufruft: schlägt
   das dritte fehl, sind auch die ersten beiden verloren, und die Ausgabe zeigt nur den einen
