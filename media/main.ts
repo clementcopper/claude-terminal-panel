@@ -791,10 +791,14 @@ class StatusLineView {
   private buildRingGroups(snapshot: StatusLineSnapshot): HTMLDivElement[] {
     const groups: HTMLDivElement[] = [];
 
-    // With the weekly limit spent, turns are billed to usage credits and the five-hour bucket
-    // stops counting — Claude Code then reports it as 0. A bare "0%" would read as plenty of
-    // room left, which is the opposite of the situation, so the label says which bucket it is.
+    // A five-hour bucket at 100% is not "nearly full", it is spent, and the turns going through
+    // are billed to usage credits — so the label says which bucket the ring is showing.
     const onCredits =
+      snapshot.sessionPercent !== undefined &&
+      snapshot.sessionPercent >= StatusLineView.LIMIT_SPENT_PCT;
+    // The weekly bucket is a separate question with a separate answer; it used to share this
+    // name, which made the two impossible to tell apart at the call site.
+    const weekSpent =
       snapshot.weekPercent !== undefined && snapshot.weekPercent >= StatusLineView.LIMIT_SPENT_PCT;
 
     const ctx = this.buildContextGroup(snapshot);
@@ -808,7 +812,7 @@ class StatusLineView {
       const level = percent >= StatusLineView.LIMIT_DANGER_PCT ? ' danger' : '';
       const tooltip = [
         snapshot.weekResetsAt ? `Weekly limit resets on ${snapshot.weekResetsAt}` : '',
-        onCredits ? 'Weekly limit spent — turns run on usage credits' : ''
+        weekSpent ? 'Weekly limit spent — turns run on usage credits' : ''
       ]
         .filter((line) => line.length > 0)
         .join('\n');
@@ -863,10 +867,15 @@ class StatusLineView {
           : '';
     const percent = Math.round(snapshot.usedPercent);
     const budget = (snapshot.totalTokens * this.threshold) / 100;
+    // The ring fills against the threshold, so the number counts against it too — otherwise the
+    // two halves of the same control say different things. Not capped at 100: past the threshold
+    // the ring can only stand full, and how far past is exactly what is worth knowing. The
+    // absolute percentage and the token counts are in the tooltip.
+    const ofThreshold = Math.round((snapshot.usedPercent / this.threshold) * 100);
 
     const ring = this.buildRing(
       snapshot.usedPercent / this.threshold,
-      `${String(percent)}%`,
+      `${String(ofThreshold)}%`,
       level
     );
 
@@ -875,7 +884,7 @@ class StatusLineView {
       ring,
       'Ctx',
       formatK(budget),
-      `${String(percent)}% · ${formatK(snapshot.usedTokens)} / ${formatK(snapshot.totalTokens)}\nThreshold ${String(this.threshold)}% — click to change`
+      `${String(percent)}% of the window · ${formatK(snapshot.usedTokens)} / ${formatK(snapshot.totalTokens)}\nThreshold ${String(this.threshold)}% — click to change`
     );
 
     // The ring is the only threshold control left, so it has to be reachable by keyboard and
@@ -923,17 +932,19 @@ class StatusLineView {
           ? formatClock(resetsAt)
           : '';
 
-    const tooltip =
-      resetsAt !== undefined && !expired
-        ? `Session limit resets at ${formatClock(resetsAt)}`
-        : undefined;
+    const tooltip = [
+      onCredits ? 'Session limit spent — turns run on usage credits' : '',
+      resetsAt !== undefined && !expired ? `Session limit resets at ${formatClock(resetsAt)}` : ''
+    ]
+      .filter((line) => line.length > 0)
+      .join('\n');
 
     return this.buildRingGroup(
       'sess',
       this.buildRing(snapshot.sessionPercent / 100, `${String(percent)}%`, level),
       onCredits ? 'Credits' : 'Sess',
       sub,
-      tooltip
+      tooltip.length > 0 ? tooltip : undefined
     );
   }
 

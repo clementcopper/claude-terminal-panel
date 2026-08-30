@@ -69,10 +69,12 @@ body {
      dark themes, which turned the track into whatever sat behind it — an editor widget border is
      the nearest opaque token for a hairline that has to stay a hairline. */
   --status-ring-track: var(--vscode-editorWidget-border, #d4d4d4);
-  --status-ring-track-hover: var(--vscode-descriptionForeground, #b0b0b0);
-  --status-ring-fill: var(--vscode-progressBar-background, #0e70c0);
-  /* Deliberately literal: `charts.yellow` (#cca700) reads as a second neutral next to the red
-     below it. Chosen for the dark theme, where it carries; on a light one it is quiet. */
+
+  /* The dark set. Measured against Dark Modern's `tab.inactiveBackground` (#181818), which is
+     what this row sits on: fill 5.01:1, warn 10.53:1, danger 4.97:1. The light theme overrides
+     all three below — a tone that carries on #181818 is not the same tone that carries on
+     #F8F8F8, and two of these failed there by a wide margin. */
+  --status-ring-fill: #7878ff;
   --status-warn: #fdbd00;
   --status-danger: var(--vscode-editorError-foreground, #f14c4c);
 
@@ -94,6 +96,18 @@ body {
 
 #status-line[hidden] {
   display: none;
+}
+
+/* VS Code stamps the theme kind on the body: `vscode-light`, `vscode-dark`,
+   `vscode-high-contrast` and `vscode-high-contrast-light`. Measured against Light Modern's
+   `tab.inactiveBackground` (#F8F8F8): the fill lands at 4.69:1, warn at 5.17:1 where #fdbd00 was
+   1.59:1, and danger at 5.33:1 where `editorError.foreground` (#E51400) was 4.46:1 — just under
+   the 4.5:1 this row is held to. */
+body.vscode-light #status-line,
+body.vscode-high-contrast-light #status-line {
+  --status-ring-fill: #5757ff;
+  --status-warn: #8a6200;
+  --status-danger: #c42b1c;
 }
 
 /* A snapshot older than a minute means Claude has not re-rendered since — say so quietly.
@@ -130,7 +144,9 @@ body {
 .status-head-text {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  /* Left, not the frame's centre: the model name and the effort badge are different lengths, and
+     centred they wander against the stop button beside them. */
+  align-items: flex-start;
   gap: 6px;
 }
 
@@ -244,13 +260,17 @@ body {
 
 .status-ring-name {
   color: var(--vscode-descriptionForeground, #616161);
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 500;
 }
 
+/* `foreground`, not `disabledForeground`: the latter is `#CCCCCC` at 50% alpha in Dark Modern,
+   which composites to 3.69:1 on that theme's ground — under the 4.5:1 this row is held to. This
+   token measures 11.06:1 dark and 10.55:1 light. In Light Modern it happens to be the same value
+   as the label above it, so the weight carries the hierarchy there. */
 .status-ring-sub {
-  color: var(--vscode-disabledForeground, #767676);
-  font-size: 8px;
+  color: var(--vscode-foreground, #1f1f1f);
+  font-size: 9px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -270,10 +290,6 @@ body {
 
 .status-ring-button:hover {
   background-color: var(--vscode-toolbar-hoverBackground, #e4e4e4);
-}
-
-.status-ring-button:hover .status-ring-track {
-  stroke: var(--status-ring-track-hover);
 }
 
 .status-ring-button:focus-visible {
@@ -350,9 +366,13 @@ body {
   outline-offset: 1px;
 }
 
-/* Working directory last: least urgent, and the only part that can get long */
+/* Working directory last: least urgent, and the only part that can get long.
+
+   Not `disabledForeground`, for the same reason the ring's value line is not: that token is
+   `#CCCCCC` at 50% alpha in Dark Modern and composites to 3.69:1 there. Measured 6.55:1 dark and
+   10.55:1 light on this one. */
 .status-row.cwd {
-  color: var(--vscode-disabledForeground, #767676);
+  color: var(--vscode-descriptionForeground, #767676);
   font-size: 9px;
 }
 

@@ -216,16 +216,29 @@ silently, because the watch follows the inode rather than the path.
 
   | Panel width | Status line | Layout                                 |
   | ----------- | ----------- | -------------------------------------- |
-  | ≥ 440px     | 103px       | head and all four rings on one line    |
-  | 320–430px   | 147px       | rings on their own line, four in a row |
-  | 236–315px   | 191px       | rings split three and one              |
-  | < 236px     | 191px       | rings split two and two                |
+  | ≥ 460px     | 103px       | head and all four rings on one line    |
+  | 330–455px   | 147px       | rings on their own line, four in a row |
+  | 255–325px   | 191px       | Ctx, Sess, Week — Comp below           |
+  | 183–250px   | 191px       | Ctx, Sess — Week, Comp below           |
+  | < 183px     | 235px       | three ring rows                        |
 
 - The context ring fills against the **threshold**, not against a full window — a full ring and
-  the red are the same event. The number in its hole stays the absolute percentage. Clicking it
-  asks for a new threshold (5–95) and writes `claudeTerminal.contextThreshold` for the workspace
-  (globally when no folder is open). Default 60.
-- The ring's arc turns yellow ten points below the threshold and red at it. Crossing it warns
+  the red are the same event — and so does the number in its hole: 32% of the window against a
+  threshold of 60 reads as `53%`. It is not capped at 100, because past the threshold the ring
+  can only stand full and how far past is the part worth knowing. The absolute percentage and
+  the token counts are in the tooltip. Clicking the ring asks for a new threshold (5–95) and
+  writes `claudeTerminal.contextThreshold` for the workspace (globally when no folder is open).
+  Default 60.
+- The Session ring's label reads `Credits` rather than `Sess` once the five-hour bucket is spent
+  (100%): the turns still going through are billed to usage credits, and the remaining time stays
+  in the line below it.
+- The ring's arc turns amber ten points below the threshold and red at it. Both tones, and the
+  ring fill, are set per theme kind off `body.vscode-light` — a colour that carries on Dark
+  Modern's `#181818` is not the one that carries on Light Modern's `#F8F8F8`. Every text colour
+  in this row measures at least 4.5:1 against its own ground in both, and the arcs at least 3:1;
+  the ring track is deliberately below that, the way a progress trough is, since the number in
+  the middle of each ring carries the value.
+- Crossing the threshold warns
   once per tab, naming the tab because the warning can come from one that is off screen; the
   warning offers to run `/clear` in that same tab. It re-arms only once the tab falls ten points
   back below the threshold, so a session sitting on the line does not warn every few seconds.

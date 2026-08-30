@@ -325,3 +325,32 @@ min-width: 0` wurde die Ringreihe auf den Rest der Zeile zusammengedrückt und j
   Kopf + 220px + Abstände erst bei 336px nicht mehr passen. Gemessene Stufen: ≥440px eine Zeile
   (103px), 320–430px Ringe auf eigener Zeile (147px), 236–315px drei plus eins (191px), darunter
   zwei plus zwei (191px).
+- **VS-Code-Tokens sind keine Kontrastgarantie — sie müssen gegen das echte Theme gerechnet
+  werden.** `--vscode-disabledForeground` ist in Dark Modern `#CCCCCC` mit 50 % Alpha und
+  komponiert auf dem Grund der Zeile (`tab.inactiveBackground` = `#181818`) zu **3,69:1**. In
+  Light Modern liefert dasselbe Token `#616161` und 5,83:1 — der Fehler steckt also im dunklen
+  Theme, obwohl die Beschwerde aus dem hellen kam. Gemessene Werte, beide Modern-Themes, Grund
+  `#F8F8F8` / `#181818`:
+
+  | Token | hell | dunkel |
+  | ----- | ---- | ------ |
+  | `foreground` | `#3B3B3B` 10,55:1 | `#CCCCCC` 11,06:1 |
+  | `descriptionForeground` | `#3B3B3B` 10,55:1 | `#9D9D9D` 6,55:1 |
+  | `disabledForeground` | `#616161` 5,83:1 | `#CCCCCC80` **3,69:1** |
+  | `editorError.foreground` | `#E51400` **4,46:1** | `#F14C4C` 4,97:1 |
+  | `#fdbd00` (literal) | **1,59:1** | 10,53:1 |
+
+  Die Werte kommen aus `<VS Code.app>/Contents/Resources/app/extensions/theme-defaults/themes/`
+  (`light_modern.json`, `dark_modern.json`, jeweils der `include`-Kette folgen) plus den Vorgaben
+  aus der Workbench-Farbregistry für Tokens, die kein Theme setzt. Achtstellige Hex-Werte tragen
+  Alpha und müssen **vor** der Messung über den Grund komponiert werden.
+- **Modusabhängige Farben gehören an `body.vscode-light`.** VS Code stempelt den Modus auf den
+  Body des Webviews; die Klassen heißen `vscode-light`, `vscode-dark`, `vscode-high-contrast` und
+  `vscode-high-contrast-light` (nachgesehen in `out/vs/workbench/contrib/webview` im App-Bundle).
+  Ein Ton, der auf `#181818` trägt, trägt nicht auf `#F8F8F8`: `#fdbd00` fällt dort von 10,53:1
+  auf 1,59:1.
+- **Die Sonde misst die Fallbacks, nicht das Theme.** Ohne VS Code lösen `var(--vscode-…)` auf die
+  CSS-Fallbacks auf, und die Kontrastzahlen stimmen dann für nichts. Die echten Token-Werte aus
+  den Theme-JSONs ziehen, per `documentElement.style.setProperty` in die Sonde injizieren, die
+  Modusklasse auf `body` setzen — und den Kontrast aus `getComputedStyle` gegen den gerenderten
+  Hintergrund rechnen statt aus dem Quelltext abzulesen.
