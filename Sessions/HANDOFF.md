@@ -12,21 +12,20 @@ unter `status/<window token>/`, vorher löschten sich die Fenster gegenseitig di
 
 ## Mitten drin
 
-- **Der Window-Reload steht aus** — für `afd2128`, `a2ce419` und `daca24f`. Im Panel läuft noch
-  der Stand von `0a6c010`. Sichtbar fehlen: cwd-Zeile in SF Mono, Modell/Effort mit 3px auf einer
-  Mittelachse, keine Fokusringe mehr.
-- Danach von Hand, weil ein Standbild keinen Zeiger hat: Stop im Hover (`#EC1500`, weißes
-  Quadrat), Ctx-Ring im Hover (Scheibe, Track unverändert), Klick öffnet die Threshold-Eingabe
-  (0 und 120 ablehnen), Terminal mit Scrollback → 10px-Balken, ohne → keiner. Und einmal das
-  OS-Theme umschalten.
+- **Der Reload ist durch**, gegengeprüft: Extension-Host seit 13:52:48, Bundle von 13:49:17, und
+  die Hashes von `extension.js`, `main.js` und `styles.css` stimmen mit dem Arbeitsbaum überein.
+  Im Panel läuft der aktuelle Stand.
+- Offen bleibt die Handprüfung, weil ein Standbild keinen Zeiger hat.
 
 ## Nächster Schritt
 
-```
-Cmd+Shift+P → "Developer: Reload Window"
-```
+Von Hand im Panel durchgehen, in dieser Reihenfolge:
 
-Killt diese Panel-Sitzung. Danach die Punkte aus „Mitten drin".
+1. Stop im Hover — Scheibe `#EC1500`, Quadrat weiß.
+2. Ctx-Ring im Hover — graue Scheibe erscheint, der Track ändert sich **nicht**.
+3. Klick auf den Ctx-Ring — Eingabe öffnet, `0` und `120` müssen abgelehnt werden.
+4. Terminal mit Scrollback — 10px-Balken sichtbar; ohne Scrollback keiner.
+5. OS-Theme umschalten — `#FDA400` und `#EC1500` sind in beiden Modi derselbe Wert.
 
 ## Schon probiert, geht nicht
 
