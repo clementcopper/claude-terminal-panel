@@ -43,12 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `$(add)` button left the view title bar — VS Code right-aligns title-bar actions, so a `+`
   beside the group tabs had to be drawn by the webview. The title bar keeps Resume, Continue and
   Restart.
-- `Cmd+Shift+\`` is now `New Terminal`(a tab inside the current group);`New Terminal Tab`opens
-a group.`Close`/`Next`/`Previous Terminal` were renamed to match.
-- **A tab group runs one CLI.** The `+` in the terminal bar and `Cmd+Shift+\`` no longer ask which
-engine to run — they open another terminal of the group's own, so Claude tabs only ever sit in
-Claude groups and OpenCode tabs in OpenCode groups. The engine question moved up one level, to
-where a group is created, and the `+` tooltip names the CLI it will open.
+- ``Cmd+Shift+` `` is now `New Terminal` (a tab inside the current group); `New Terminal Tab`
+  opens a group. `Close`/`Next`/`Previous Terminal` were renamed to match.
+- **A tab group runs one CLI.** The `+` in the terminal bar and ``Cmd+Shift+` `` no longer ask which
+  engine to run — they open another terminal of the group's own, so Claude tabs only ever sit in
+  Claude groups and OpenCode tabs in OpenCode groups. The engine question moved up one level, to
+  where a group is created, and the `+` tooltip names the CLI it will open.
 - `New Terminal (Resume Session…)` and `(Continue Last Session)` are refused in an OpenCode group
   with a message instead of dropping a Claude tab into it — `--resume` / `--continue` are
   Claude-only flags.

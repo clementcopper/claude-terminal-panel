@@ -64,7 +64,7 @@ light/dark theme switching instead.
 ## Usage
 
 1. **Open the panel** — click the terminal icon in the secondary sidebar.
-2. **Start an engine** — the `+` button (or `Cmd+Shift+\``) asks **Claude Code** or **OpenCode**,
+2. **Start an engine** — the `+` button (or ``Cmd+Shift+` ``) asks **Claude Code** or **OpenCode**,
    then spawns the tab. The very first tab in an empty panel spawns the configured engine directly.
 3. **Interact** — prompt your assistant straight in the terminal.
 4. **Add another** — `+` again, or open a custom-command tab from the CLI icon button.
@@ -89,13 +89,13 @@ which sessions a tab offers depends on the tab's directory — shown in the tab 
 
 ### Keyboard Shortcuts
 
-| Action                  | Windows/Linux   | macOS           |
-| ----------------------- | --------------- | --------------- |
-| New Tab                 | `Ctrl+Shift+\`` | `Cmd+Shift+\``  |
-| Close Tab               | `Ctrl+W`        | `Cmd+W`         |
-| Next Tab                | `Ctrl+PageDown` | `Cmd+Opt+Right` |
-| Previous Tab            | `Ctrl+PageUp`   | `Cmd+Opt+Left`  |
-| Add Selection to Prompt | `Ctrl+Alt+K`    | `Cmd+Opt+K`     |
+| Action                  | Windows/Linux     | macOS            |
+| ----------------------- | ----------------- | ---------------- |
+| New Tab                 | ``Ctrl+Shift+` `` | ``Cmd+Shift+` `` |
+| Close Tab               | `Ctrl+W`          | `Cmd+W`          |
+| Next Tab                | `Ctrl+PageDown`   | `Cmd+Opt+Right`  |
+| Previous Tab            | `Ctrl+PageUp`     | `Cmd+Opt+Left`   |
+| Add Selection to Prompt | `Ctrl+Alt+K`      | `Cmd+Opt+K`      |
 
 ## Configuration
 
