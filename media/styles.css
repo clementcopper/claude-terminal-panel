@@ -46,7 +46,18 @@ body {
      `ThemeBuilder.getFontFamily()`, so the only thing inheriting from here is the tab bar. */
   font-family: var(--panel-ui-font);
   display: flex;
+  flex-direction: column;
+}
+
+/* Terminal, status line and the vertical tab bar, side by side under the group bar. The group bar
+   is the one strip that runs the full width — the tab bar starts below it, so the outer tabs read
+   as the level above the inner ones rather than as a second bar beside them. */
+#body-row {
+  display: flex;
   flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
 }
 
 /* Terminal plus its status line form the left column; the tab bar stays beside them,
@@ -70,6 +81,10 @@ body {
   height: 28px;
   flex-shrink: 0;
   background-color: var(--vscode-editorGroupHeader-tabsBackground, #252526);
+  /* The bottom edge only. VS Code frames the secondary sidebar itself
+     (`.part.auxiliarybar { border: 1px solid var(--vscode-surface-border …) }` in its own
+     stylesheet), so a border on the top or the sides here lands right beside that one and reads as
+     a double line. */
   border-bottom: 1px solid var(--vscode-tab-border, #3c3c3c);
   overflow-x: auto;
   overflow-y: hidden;
@@ -93,8 +108,10 @@ body {
   z-index: 1;
   flex-shrink: 0;
   width: 26px;
+  /* No border of its own: the group tab before it already draws one on its right edge, and the two
+     sat next to each other as a 2px line — measured 4 device pixels at a 2x scale factor, against
+     1 for every other separator in the bar. */
   border: none;
-  border-left: 1px solid var(--vscode-tab-border, #3c3c3c);
   background-color: var(--vscode-editorGroupHeader-tabsBackground, #252526);
   color: var(--vscode-tab-inactiveForeground, #8c8c8c);
   cursor: pointer;
@@ -104,10 +121,13 @@ body {
   justify-content: center;
 }
 
+/* 11px, halfway between the 13px it started at and the 9px of the close glyph beside it: at the
+   close glyph's own size the `+` read too small for a control that is always visible, while 13px
+   read heavier than the `×` next to it. */
 .group-add::before {
   content: '';
-  width: 13px;
-  height: 13px;
+  width: 11px;
+  height: 11px;
   -webkit-mask-image: url('icons/plus.png');
   mask-image: url('icons/plus.png');
   -webkit-mask-repeat: no-repeat;
@@ -740,8 +760,8 @@ body.vscode-high-contrast-light {
 
 .tab-add::before {
   content: '';
-  width: 13px;
-  height: 13px;
+  width: 11px;
+  height: 11px;
   -webkit-mask-image: url('icons/plus.png');
   mask-image: url('icons/plus.png');
   -webkit-mask-repeat: no-repeat;

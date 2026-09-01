@@ -1429,12 +1429,14 @@ export class ClaudeTerminalViewProvider
     <link href="${stylesUri.toString()}" rel="stylesheet">
 </head>
 <body>
-    <div id="terminal-column">
-        <div id="group-bar"></div>
-        <div id="terminals-container"></div>
-        <div id="status-line" hidden></div>
+    <div id="group-bar"></div>
+    <div id="body-row">
+        <div id="terminal-column">
+            <div id="terminals-container"></div>
+            <div id="status-line" hidden></div>
+        </div>
+        <div id="tab-bar"></div>
     </div>
-    <div id="tab-bar"></div>
     <script nonce="${nonce}" src="${scriptUri.toString()}"></script>
 </body>
 </html>`;
