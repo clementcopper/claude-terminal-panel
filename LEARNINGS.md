@@ -324,6 +324,16 @@ code 129]` (128 + SIGHUP, der Kill selbst) in der frisch gestarteten Sitzung —
   Handler. Gemessen mit `chrome-headless-shell --dump-dom` (in
   `~/Library/Caches/ms-playwright/chromium_headless_shell-*/`), Ergebnisse als JSON in ein
   `<pre>` geschrieben und herausgegrept.
+- **`--dump-dom` stellt keine `ResizeObserver`-Rückrufe zu.** In `chrome-headless-shell` mit
+  `--virtual-time-budget` feuerte ein Observer genau einmal — beim Beobachtungsstart — und danach
+  bei keiner der Größenänderungen mehr; eine erste Messreihe meldete deshalb „Klasse bleibt
+  gesetzt" und sah wie ein Fehler in der View aus, obwohl der Fehler in der Sonde saß. Zustellung
+  hängt am Rendering-Lebenszyklus, den `--dump-dom` nicht durchläuft. Über CDP dagegen zuverlässig:
+  Größe mit `Emulation.setDeviceMetricsOverride` setzen, mit `Page.captureScreenshot` einen Frame
+  erzwingen, dann `Runtime.evaluate` lesen. Jeder Pfad, der an `ResizeObserver`,
+  `IntersectionObserver` oder `requestAnimationFrame` hängt, braucht diesen Weg — `rAF` läuft im
+  `--dump-dom`-Lauf ebenfalls nicht, eine `await`-Kette darauf hängt still.
+
 - **Die Sonde selbst zuerst nachmessen.** Ein `style.width` auf `#terminal-column` hatte keine
   Wirkung: das Element ist Flex-Item mit `flex: 1`, also `flex-basis: 0`, und das schlägt die
   Breite. Fünf Messreihen sahen dadurch identisch aus, ohne dass etwas gemeldet wurde. Erst

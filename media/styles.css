@@ -368,6 +368,15 @@ body.vscode-high-contrast-light {
   column-gap: 12px;
 }
 
+/* Once the whole block fits on one line, the leftover width splits evenly on both sides — the
+   frame's 500px case, where the margins measure 51px each. Set by `updateCentering()`, which
+   measures the wrap instead of guessing a width. Only this row: the file row and the directory
+   row keep the left edge in the frame too. The head's 12px `margin-right` sits between the head
+   and the first ring, so it stays inside the block and the two margins stay equal. */
+.status-row.main.centered {
+  justify-content: center;
+}
+
 /* Stop plus model, the one pair that stays together — the disc and the label beside it read as
    a single mark. Everything after it is a ring group and wraps on its own.
 

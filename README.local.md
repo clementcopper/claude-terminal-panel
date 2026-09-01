@@ -396,6 +396,20 @@ silently, because the watch follows the inode rather than the path.
   widths at which the layout is guaranteed to fit; with the short badge each step arrives a
   little later. Re-measuring with `HIGH` will produce smaller numbers — that is not a regression.
 
+- **The main row centres once it fits on one line**, and the leftover width then splits evenly on
+  both sides — the design's 500px frame, where the two margins measure 51px each. The file row and
+  the working-directory row keep the left edge, in the frame as well as here. The condition is
+  measured, not a breakpoint: `StatusLineView.updateCentering()` compares the `offsetTop` of the
+  row's items and only sets `.centered` when they all share one, so the trigger moves with the UI
+  font and with the length of the effort badge instead of drifting away from a hard-coded width.
+  A panel of 400px or less stays left-aligned whatever fits — a snapshot carrying a single ring
+  fits on one line in a narrow panel too, and centring it there is not what the design shows. A
+  `ResizeObserver` on the status line runs the same check after a resize, because a resize alone
+  never rebuilds the row; `justify-content` changes neither the wrap nor the height, so it cannot
+  feed itself. Measured over CDP in the headless harness, driving real resizes: 300px three lines
+  left, 380/400/401px two lines left, 600px one line with 41.53px on each side, 700px 91.53px,
+  800px 141.53px, and the row heights unchanged from the table above at every step.
+
 - The context ring fills against the **threshold**, not against a full window, and so does the
   number in its hole: 32% of the window against a
   threshold of 60 reads as `53%`. It is not capped at 100, because past the threshold the ring

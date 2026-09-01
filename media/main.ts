@@ -501,6 +501,9 @@ class StatusLineView {
   private static readonly COMP_MAX_SEGMENTS = 5;
   private static readonly COMP_DEFAULT_BUDGET = 3;
 
+  /** Below this panel width the row stays left-aligned even when it happens to fit on one line. */
+  private static readonly CENTER_MIN_PANEL_PX = 400;
+
   private readonly snapshots = new Map<string, StatusLineSnapshot>();
   private activeId: string | null = null;
   /** Belongs to the window, not to a tab: one editor, however many terminals. */
@@ -522,7 +525,12 @@ class StatusLineView {
     private readonly onEditorReferenceClick: () => void,
     private readonly onStopTurn: () => void,
     private readonly onThresholdPrompt: () => void
-  ) {}
+  ) {
+    // Centring is a measurement, not a breakpoint, so it has to be taken again whenever the panel
+    // changes width — a resize on its own never rebuilds the row. Toggling `justify-content`
+    // changes neither the wrap nor the height, so this cannot feed itself.
+    new ResizeObserver(() => this.updateCentering()).observe(element);
+  }
 
   setThreshold(value: number): void {
     const clamped = StatusLineView.clampThreshold(value);
@@ -622,6 +630,34 @@ class StatusLineView {
 
     const ageMs = Date.now() - snapshot.updatedAt * 1000;
     this.element.classList.toggle('stale', ageMs > StatusLineView.STALE_AFTER_MS);
+
+    this.updateCentering();
+  }
+
+  /**
+   * Centres the main row once it fits on one line.
+   *
+   * The condition is measured rather than derived from a width: the row wraps at whatever width
+   * its own contents need, and that moves with the UI font and with the length of the effort
+   * badge. Reconstructing the threshold from the tab bar and the padding would be the same
+   * mistake `measureInitialDimensions` once made.
+   *
+   * The panel width is the second half of the condition, because a snapshot carrying a single
+   * ring fits on one line in a narrow panel too, and centring it there is not what the frame
+   * shows. Only this row: the file and the directory keep the left edge.
+   */
+  private updateCentering(): void {
+    const row = this.element.querySelector<HTMLElement>('.status-row.main');
+    if (!row) return;
+
+    const items = Array.from(row.children) as HTMLElement[];
+    const oneLine =
+      items.length > 0 && items.every((item) => item.offsetTop === items[0].offsetTop);
+    const centered = oneLine && document.body.clientWidth > StatusLineView.CENTER_MIN_PANEL_PX;
+
+    if (centered !== row.classList.contains('centered')) {
+      row.classList.toggle('centered', centered);
+    }
   }
 
   /**
