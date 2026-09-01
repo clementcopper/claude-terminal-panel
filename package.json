@@ -41,7 +41,7 @@
         {
           "id": "claudeTerminalContainer",
           "title": "Claude Terminal",
-          "icon": "$(terminal)"
+          "icon": "media/icons/container.png"
         }
       ]
     },
@@ -60,52 +60,89 @@
         "command": "claudeTerminal.restart",
         "title": "Restart Terminal",
         "category": "Claude Terminal",
-        "icon": "$(debug-restart)"
+        "icon": {
+          "light": "media/icons/restart-light.png",
+          "dark": "media/icons/restart-dark.png"
+        }
       },
       {
         "command": "claudeTerminal.newTab",
+        "title": "New Terminal",
+        "category": "Claude Terminal",
+        "icon": "$(add)"
+      },
+      {
+        "command": "claudeTerminal.newGroup",
         "title": "New Terminal Tab",
         "category": "Claude Terminal",
         "icon": "$(add)"
       },
       {
-        "command": "claudeTerminal.newTabContinue",
-        "title": "New Terminal Tab (Continue Last Session)",
-        "category": "Claude Terminal",
-        "icon": "$(debug-continue)"
-      },
-      {
-        "command": "claudeTerminal.newTabResume",
-        "title": "New Terminal Tab (Resume Session…)",
-        "category": "Claude Terminal",
-        "icon": "$(history)"
-      },
-      {
-        "command": "claudeTerminal.resumeSession",
-        "title": "Resume Session in Current Tab…",
-        "category": "Claude Terminal",
-        "icon": "$(history)"
-      },
-      {
-        "command": "claudeTerminal.continueSession",
-        "title": "Continue Last Session in Current Tab",
-        "category": "Claude Terminal",
-        "icon": "$(debug-continue)"
-      },
-      {
-        "command": "claudeTerminal.closeTab",
+        "command": "claudeTerminal.closeGroup",
         "title": "Close Terminal Tab",
         "category": "Claude Terminal",
         "icon": "$(close)"
       },
       {
-        "command": "claudeTerminal.nextTab",
+        "command": "claudeTerminal.nextGroup",
         "title": "Next Terminal Tab",
         "category": "Claude Terminal"
       },
       {
-        "command": "claudeTerminal.previousTab",
+        "command": "claudeTerminal.previousGroup",
         "title": "Previous Terminal Tab",
+        "category": "Claude Terminal"
+      },
+      {
+        "command": "claudeTerminal.newTabContinue",
+        "title": "New Terminal (Continue Last Session)",
+        "category": "Claude Terminal",
+        "icon": {
+          "light": "media/icons/continue-light.png",
+          "dark": "media/icons/continue-dark.png"
+        }
+      },
+      {
+        "command": "claudeTerminal.newTabResume",
+        "title": "New Terminal (Resume Session…)",
+        "category": "Claude Terminal",
+        "icon": {
+          "light": "media/icons/resume-light.png",
+          "dark": "media/icons/resume-dark.png"
+        }
+      },
+      {
+        "command": "claudeTerminal.resumeSession",
+        "title": "Resume Session in Current Tab…",
+        "category": "Claude Terminal",
+        "icon": {
+          "light": "media/icons/resume-light.png",
+          "dark": "media/icons/resume-dark.png"
+        }
+      },
+      {
+        "command": "claudeTerminal.continueSession",
+        "title": "Continue Last Session in Current Tab",
+        "category": "Claude Terminal",
+        "icon": {
+          "light": "media/icons/continue-light.png",
+          "dark": "media/icons/continue-dark.png"
+        }
+      },
+      {
+        "command": "claudeTerminal.closeTab",
+        "title": "Close Terminal",
+        "category": "Claude Terminal",
+        "icon": "$(close)"
+      },
+      {
+        "command": "claudeTerminal.nextTab",
+        "title": "Next Terminal",
+        "category": "Claude Terminal"
+      },
+      {
+        "command": "claudeTerminal.previousTab",
+        "title": "Previous Terminal",
         "category": "Claude Terminal"
       },
       {
@@ -141,6 +178,18 @@
         "when": "focusedView == 'claudeTerminal.terminalView'"
       },
       {
+        "command": "claudeTerminal.nextGroup",
+        "key": "ctrl+alt+pagedown",
+        "mac": "cmd+alt+down",
+        "when": "focusedView == 'claudeTerminal.terminalView'"
+      },
+      {
+        "command": "claudeTerminal.previousGroup",
+        "key": "ctrl+alt+pageup",
+        "mac": "cmd+alt+up",
+        "when": "focusedView == 'claudeTerminal.terminalView'"
+      },
+      {
         "command": "claudeTerminal.insertEditorReference",
         "key": "ctrl+alt+k",
         "mac": "cmd+alt+k"
@@ -149,24 +198,19 @@
     "menus": {
       "view/title": [
         {
-          "command": "claudeTerminal.newTab",
+          "command": "claudeTerminal.resumeSession",
           "when": "view == claudeTerminal.terminalView",
           "group": "navigation@1"
         },
         {
-          "command": "claudeTerminal.resumeSession",
+          "command": "claudeTerminal.continueSession",
           "when": "view == claudeTerminal.terminalView",
           "group": "navigation@2"
         },
         {
-          "command": "claudeTerminal.continueSession",
-          "when": "view == claudeTerminal.terminalView",
-          "group": "navigation@3"
-        },
-        {
           "command": "claudeTerminal.restart",
           "when": "view == claudeTerminal.terminalView",
-          "group": "navigation@4"
+          "group": "navigation@3"
         }
       ]
     },
@@ -205,11 +249,6 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Fixed working directory for the terminal, `~` allowed (empty = first workspace folder). Claude Code stores its session history per directory, so pinning this keeps `/resume` showing the same sessions no matter which folder is open."
-        },
-        "claudeTerminal.preloadHelp": {
-          "type": "boolean",
-          "default": false,
-          "description": "On startup, probe other CLI agents (gemini, aider, codex, gh, interpreter, opencode) for their --help output. Off means only the configured command is probed."
         },
         "claudeTerminal.statusLine": {
           "type": "boolean",

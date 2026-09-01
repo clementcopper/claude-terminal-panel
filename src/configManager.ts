@@ -38,7 +38,6 @@ export class ConfigManager {
       env: config.get<Record<string, string>>('env', {}),
       directMode: config.get<boolean>('directMode', true),
       cwd: config.get<string>('cwd', ''),
-      preloadHelp: config.get<boolean>('preloadHelp', false),
       statusLine: config.get<boolean>('statusLine', true),
       statusLineProvider: config.get<'bundled' | 'own'>('statusLineProvider', 'bundled'),
       statusLineCompactBudget: config.get<number>('statusLineCompactBudget', 0),

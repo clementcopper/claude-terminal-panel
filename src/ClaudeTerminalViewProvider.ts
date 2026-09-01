@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as nodePath from 'path';
 import { randomBytes } from 'crypto';
+import { existsSync } from 'fs';
 import { PtyManager, type PtyEventCallbacks } from './ptyManager';
 import { ConfigManager } from './configManager';
 import { TerminalStateManager } from './terminalStateManager';
@@ -8,14 +9,16 @@ import { dispatchMessage, type MessageHandlerContext } from './messageHandlers';
 import type {
   WebviewMessage,
   TerminalInstance,
+  TerminalGroup,
   TerminalConfig,
   ExtensionMessage,
   EditorContext,
   StatusLineSnapshot,
-  Engine
+  Engine,
+  PersistedGroup,
+  PersistedLayout
 } from './types';
 import { ENGINE_ACCENT_COLORS } from './types';
-import { CommandInputPicker } from './commandInputPicker';
 import { PromptDetector, type PromptDetectorConfig } from './promptDetector';
 import { StatusLineWatcher } from './statusLineWatcher';
 import { EditorContextTracker } from './editorContextTracker';
@@ -47,7 +50,6 @@ export class ClaudeTerminalViewProvider
   private readonly configManager = new ConfigManager();
   private readonly stateManager = new TerminalStateManager();
   private readonly ptyManager: PtyManager;
-  private readonly commandPicker = new CommandInputPicker();
   private readonly promptDetector: PromptDetector;
   private readonly statusLineWatcher: StatusLineWatcher;
   private readonly editorTracker: EditorContextTracker;
@@ -79,6 +81,20 @@ export class ClaudeTerminalViewProvider
   private readonly thresholdNotified = new Set<string>();
 
   /**
+   * Restored tabs that have never run. Their element exists so the tab is there to click, but no
+   * process was started: a reload with four groups would otherwise spawn a CLI session per tab,
+   * and every Claude session counts against the account's limits. The process starts the first
+   * time the tab is switched to.
+   */
+  private readonly coldTerminals = new Set<string>();
+
+  /** Key under which the tab layout is remembered for this workspace. */
+  private static readonly LAYOUT_KEY = 'claudeTerminal.layout';
+
+  /** Ceiling on tabs restored per group, so a corrupt entry cannot open hundreds. */
+  private static readonly MAX_RESTORED_TABS = 16;
+
+  /**
    * Tracks the last known terminal appearance. OpenCode's TUI only re-resolves its static theme
    * when it is poked (the `\x1b[?997;1n` notification), and that poke has to land only after the
    * webview has actually re-painted xterm's new background — otherwise OpenCode re-queries against
@@ -89,7 +105,11 @@ export class ClaudeTerminalViewProvider
   private lastAppearance: 'dark' | 'light' = this.resolveAppearance();
   private readonly themeSubscription: vscode.Disposable;
 
-  constructor(private readonly extensionUri: vscode.Uri) {
+  constructor(
+    private readonly extensionUri: vscode.Uri,
+    /** Workspace-scoped, not global: groups carry working directories, which belong to a project. */
+    private readonly workspaceState?: vscode.Memento
+  ) {
     const callbacks: PtyEventCallbacks = {
       onData: this.handlePtyData.bind(this),
       onExit: this.handlePtyExit.bind(this),
@@ -126,15 +146,6 @@ export class ClaudeTerminalViewProvider
         this.ptyManager.write(tabId, kind === 'text' ? bracketedPaste(text) : text);
       }
     });
-
-    // Pre-load help for the configured command. Probing the other CLI agents spawns a
-    // process per candidate on every window start, so it is opt-in.
-    const config = this.configManager.getConfig();
-    this.commandPicker.preloadCommands(
-      config.preloadHelp
-        ? [config.command, 'claude', 'gemini', 'aider', 'codex', 'gh', 'interpreter', 'opencode']
-        : [config.command]
-    );
 
     // OpenCode's TUI only re-resolves its static theme after a `\x1b[?997;1n` notification triggers
     // a palette re-query (see `handleThemeNotification` in opencode's `packages/tui/src/context/theme.tsx`).
@@ -200,10 +211,15 @@ export class ClaudeTerminalViewProvider
     );
 
     if (existing.length === 0) {
-      void this.createTerminal();
+      // First webview of a fresh extension host. A later rebuild (moving the panel, "Reload
+      // Webviews") finds the tabs still here and takes the restore path below instead.
+      void this.restoreOrCreate();
       return;
     }
 
+    // Every terminal of every group needs its wrapper back, not just the active group's: the
+    // inactive ones stay hidden, but their xterm instance and its scrollback have to exist, or
+    // switching groups later would land on an empty element.
     for (const tab of existing) {
       this.postMessage({
         type: 'createTab',
@@ -219,11 +235,15 @@ export class ClaudeTerminalViewProvider
         this.sendInitialStatusLine(tab.id, tab.cwd);
       }
     }
+    this.sendGroupsUpdate();
     this.sendTabsUpdate();
 
     const activeId = this.stateManager.getActiveId() ?? existing[existing.length - 1].id;
     this.stateManager.setActive(activeId);
     this.postMessage({ type: 'switchTab', id: activeId });
+    // `setActive` may have moved the active group along with the tab; the bar has to follow.
+    this.sendGroupsUpdate();
+    this.sendTabsUpdate();
   }
 
   /**
@@ -233,6 +253,15 @@ export class ClaudeTerminalViewProvider
   handleTerminalReady(id: string, cols: number, rows: number): void {
     this.lastCols = cols;
     this.lastRows = rows;
+
+    if (this.coldTerminals.has(id)) {
+      // A restored tab reports its size as soon as its element exists, before anyone has asked
+      // for a process. Nothing to spawn and nothing to resize — passing this on would log
+      // "resize of unknown terminal" once per cold tab on every reload, which is exactly the
+      // warning you want to still mean something when a real one shows up.
+      log('tab', `${id} ready ${String(cols)}x${String(rows)} (cold, not started)`);
+      return;
+    }
 
     const pending = this.pendingSpawns.get(id);
     if (!pending) {
@@ -341,33 +370,65 @@ export class ClaudeTerminalViewProvider
     if (cols !== this.lastCols || rows !== this.lastRows) {
       log('tab', `${id} resize ${String(cols)}x${String(rows)}`);
     }
+    // Worth keeping even for a tab that has not started: this is the size its process will be
+    // spawned at once it is woken.
     this.lastCols = cols;
     this.lastRows = rows;
+    if (this.coldTerminals.has(id)) {
+      return;
+    }
     this.ptyManager.resize(id, cols, rows);
   }
 
   handleNewTab(): void {
-    this.promptNewTab();
+    this.newTabInActiveGroup();
   }
 
   /**
-   * New tab entry point for the `+` button and the `claudeTerminal.newTab` shortcut:
-   * ask which engine to run, then open the tab. The very first tab (empty panel) is
-   * spawned directly with the configured engine instead of asking.
+   * The `+` in the terminal bar and the `claudeTerminal.newTab` shortcut: another terminal of the
+   * group's own CLI.
+   *
+   * No engine question here — the group already answered it, and asking again is what let a
+   * purple OpenCode tab end up inside an orange Claude group, where the group's name and accent
+   * bar then described only some of its terminals. The choice moved up one level: it is made once,
+   * when the group is created.
    */
-  public promptNewTab(): void {
-    void this.promptAndCreateTerminal();
+  public newTabInActiveGroup(): void {
+    const engine = this.stateManager.getActiveGroup()?.engine ?? 'claude';
+    void this.createTerminal(engine);
   }
 
-  handleNewTabWithCommand(): void {
-    void this.promptAndCreateTerminalWithCommand();
-  }
   handleCloseTab(id: string): void {
     this.closeTerminal(id);
   }
 
   handleSwitchTab(id: string): void {
     this.switchToTerminal(id);
+  }
+
+  handleNewGroup(): void {
+    void this.promptAndCreateGroup();
+  }
+
+  handleCloseGroup(id: string): void {
+    this.closeGroup(id);
+  }
+
+  handleSwitchGroup(id: string): void {
+    this.switchToGroup(id);
+  }
+
+  /**
+   * The webview commits an inline rename here. It is echoed back through `groupsUpdate` rather
+   * than trusted to have stuck: an empty or unchanged name is refused by the state manager, and
+   * the bar then redraws the name that actually applies.
+   */
+  handleRenameGroup(id: string, name: string): void {
+    if (this.stateManager.renameGroup(id, name)) {
+      log('tab', `group ${id} renamed`);
+      this.persistLayout();
+    }
+    this.sendGroupsUpdate();
   }
 
   handleInsertEditorReference(): void {
@@ -570,14 +631,16 @@ export class ClaudeTerminalViewProvider
    * `restart`/`resume`/`continue` read the engine back from the active tab instead of
    * assuming the configured engine, so a tab keeps its CLI across respawns.
    */
-  public async createTerminal(engine: Engine = 'claude'): Promise<string> {
+  public async createTerminal(engine: Engine = 'claude', cold = false): Promise<string> {
+    // The group owns the directory; the tab inherits it. That is also what keeps
+    // `respawnActive` honest — restart/resume/continue reuse the tab's cwd, and session
+    // history lives per directory.
+    const group = await this.ensureActiveGroup(engine);
+    const cwd = group.cwd;
+    const folderIndex = group.workspaceFolderIndex;
+
     const id = this.stateManager.generateId();
     const name = this.stateManager.generateName(engine);
-
-    // Select working directory first to get folder index
-    const { path: cwd, folderIndex } = await this.ptyManager.selectWorkingDirectory(
-      this.configManager.getConfig().cwd
-    );
 
     const instance: TerminalInstance = {
       id,
@@ -586,25 +649,35 @@ export class ClaudeTerminalViewProvider
       isActive: false,
       workspaceFolderIndex: folderIndex,
       cwd,
-      engine
+      engine,
+      groupId: group.id
     };
 
     // Add instance first, then activate (so setActive can find it)
     this.stateManager.set(id, instance);
     this.stateManager.setActive(id);
 
-    // Notify webview with accent color
+    // Notify webview with accent color. A cold tab is not starting anything, so it gets no
+    // "starting…" indicator — that would promise a process nobody asked for yet.
     const accentColor = this.getAccentColor(engine);
-    this.postMessage({ type: 'createTab', id, name, accentColor, awaitingStart: true });
+    this.postMessage({ type: 'createTab', id, name, accentColor, awaitingStart: !cold });
     this.sendTabsUpdate();
+    this.sendGroupsUpdate();
     this.sendInitialStatusLine(id, cwd);
 
+    if (cold) {
+      this.coldTerminals.add(id);
+      log('tab', `${id} restored cold (${engine}) in ${cwd}, group ${group.id}`);
+      return id;
+    }
+
     const config = this.engineConfig(engine);
-    log('tab', `${id} created (${engine}) in ${cwd}`);
+    log('tab', `${id} created (${engine}) in ${cwd}, group ${group.id}`);
     this.spawnWhenMeasured(id, config, cwd);
 
     // Switch to the new tab
     this.postMessage({ type: 'switchTab', id });
+    this.persistLayout();
 
     return id;
   }
@@ -627,21 +700,140 @@ export class ClaudeTerminalViewProvider
     });
   }
 
+  // --- Group Management (Public API) ---
+
   /**
-   * Asks the user which CLI to run before opening a new tab.
+   * The group a new terminal belongs to. Creating the very first one asks for a working
+   * directory exactly the way opening a tab always has, and takes its name and accent from the
+   * engine that terminal runs.
    */
-  private async promptAndCreateTerminal(): Promise<void> {
+  private async ensureActiveGroup(engine: Engine): Promise<TerminalGroup> {
+    const existing = this.stateManager.getActiveGroup();
+    if (existing) {
+      return existing;
+    }
+    return this.newGroup(engine);
+  }
+
+  /**
+   * Creates a group with its own working directory and makes it active. It has no terminal yet —
+   * every caller opens one straight after, which is what gives the group its first tab.
+   */
+  private async newGroup(engine: Engine): Promise<TerminalGroup> {
+    const { path: cwd, folderIndex } = await this.ptyManager.selectWorkingDirectory(
+      this.configManager.getConfig().cwd
+    );
+    const group = this.stateManager.createGroup(cwd, engine, folderIndex);
+    this.stateManager.setActiveGroup(group.id);
+    log('tab', `group ${group.id} created (${engine}) in ${cwd}`);
+    this.sendGroupsUpdate();
+    this.persistLayout();
+    return group;
+  }
+
+  /**
+   * The `+` in the group bar and the `claudeTerminal.newGroup` command: ask which CLI to run,
+   * ask where, then open the group's first terminal there. The answer also names the group —
+   * an OpenCode group reads `OpenCode 2`, not `Claude 2`.
+   */
+  public async promptAndCreateGroup(): Promise<void> {
     const engine = await this.promptForEngine();
     if (!engine) {
       return;
     }
+    await this.newGroup(engine);
     await this.createTerminal(engine);
   }
 
   /**
-   * QuickPick for the engine choice behind `+` and the new-tab shortcut: Claude Code or
-   * OpenCode. Everything else (custom command, --resume/--continue) is reachable through
-   * its own entry points.
+   * Switches to another group: its remembered tab comes back, the inner tab bar is rebuilt for
+   * it. Nothing is torn down — the other groups' terminals only stop being displayed, so their
+   * xterm instances and scrollback survive.
+   */
+  public switchToGroup(groupId: string): void {
+    const group = this.stateManager.getGroup(groupId);
+    if (!group || this.stateManager.getActiveGroupId() === groupId) {
+      return;
+    }
+
+    this.stateManager.setActiveGroup(groupId);
+    const target = group.activeTerminalId ?? group.terminalIds[group.terminalIds.length - 1];
+    if (target) {
+      this.stateManager.setActive(target);
+      this.postMessage({ type: 'switchTab', id: target });
+      const instance = this.stateManager.get(target);
+      if (instance) {
+        this.startIfCold(target, instance);
+      }
+    }
+    this.sendTabsUpdate();
+    this.sendGroupsUpdate();
+    this.persistLayout();
+  }
+
+  /**
+   * Closes a group and every terminal in it. The last group stays: the panel is never without
+   * one, the same way `handleReady` never leaves it without a tab.
+   */
+  public closeGroup(groupId: string): void {
+    const group = this.stateManager.getGroup(groupId);
+    if (!group) return;
+
+    if (this.stateManager.groupCount <= 1) {
+      return;
+    }
+
+    const wasActive = this.stateManager.getActiveGroupId() === groupId;
+    for (const terminalId of [...group.terminalIds]) {
+      this.disposeTerminal(terminalId);
+    }
+    this.stateManager.deleteGroup(groupId);
+    log('tab', `group ${groupId} closed`);
+
+    if (wasActive) {
+      const next = this.stateManager.getActiveGroupId();
+      const nextGroup = next ? this.stateManager.getGroup(next) : undefined;
+      const target =
+        nextGroup?.activeTerminalId ?? nextGroup?.terminalIds[nextGroup.terminalIds.length - 1];
+      if (target) {
+        this.stateManager.setActive(target);
+        this.postMessage({ type: 'switchTab', id: target });
+      } else {
+        this.stateManager.clearActive();
+      }
+    }
+
+    this.sendTabsUpdate();
+    this.sendGroupsUpdate();
+    this.persistLayout();
+  }
+
+  public closeActiveGroup(): void {
+    const activeGroupId = this.stateManager.getActiveGroupId();
+    if (activeGroupId) {
+      this.closeGroup(activeGroupId);
+    }
+  }
+
+  public switchToNextGroup(): void {
+    this.cycleGroup(1);
+  }
+
+  public switchToPreviousGroup(): void {
+    this.cycleGroup(-1);
+  }
+
+  private cycleGroup(step: number): void {
+    const ids = this.stateManager.getAllGroupIds();
+    if (ids.length <= 1) return;
+    const currentIndex = ids.indexOf(this.stateManager.getActiveGroupId() ?? '');
+    const nextIndex = (currentIndex + step + ids.length) % ids.length;
+    this.switchToGroup(ids[nextIndex]);
+  }
+
+  /**
+   * QuickPick behind the group bar's `+`: Claude Code or OpenCode. Asked once per group, and it
+   * fixes that group's CLI, name and accent — every terminal opened in it runs the same one.
    */
   private async promptForEngine(): Promise<Engine | undefined> {
     const config = this.configManager.getConfig();
@@ -659,47 +851,43 @@ export class ClaudeTerminalViewProvider
     ];
 
     const picked = await vscode.window.showQuickPick(items, {
-      title: 'New Terminal',
-      placeHolder: 'Choose the CLI to run'
+      title: 'New Terminal Tab',
+      placeHolder: 'Choose the CLI this tab group runs'
     });
 
     return picked?.engine;
   }
 
-  private async promptAndCreateTerminalWithCommand(): Promise<void> {
-    const config = this.configManager.getConfig();
-    const defaultCommand = [config.command, ...config.args].join(' ');
-
-    const result = await this.commandPicker.promptForCommand(defaultCommand);
-
-    if (!result.cancelled && result.command) {
-      await this.createTerminalWithCommand(result.command, result.args);
-    }
-  }
-
-  public async createTerminalWithCommand(command: string, args: string[]): Promise<string> {
+  /**
+   * Opens a tab running a specific command line rather than the engine's configured one.
+   *
+   * Only `createTerminalWithSessionFlag` reaches this now — the hand-typed custom command it was
+   * also built for is gone, together with the rule it could break: a group runs one CLI, and a
+   * freely typed command was the last way to put the other one inside it.
+   */
+  private async createTerminalWithCommand(command: string, args: string[]): Promise<string> {
     const id = this.stateManager.generateId();
-    // A hand-typed command is not necessarily Claude; only Claude gets the engineered tab
-    // semantics. Careful with opencode: the name/label still follows the command.
+    // Still derived rather than assumed: the caller passes the configured Claude command, which
+    // the user may have pointed somewhere else.
     const engine: Engine =
       nodePath.basename(command).replace(/\.(exe|cmd|bat)$/i, '') === 'claude'
         ? 'claude'
         : 'opencode';
     const name = this.stateManager.generateName(engine);
 
-    // Select working directory first to get folder index
-    const { path: cwd, folderIndex } = await this.ptyManager.selectWorkingDirectory(
-      this.configManager.getConfig().cwd
-    );
+    // Same rule as `createTerminal`: the group decides where this runs.
+    const group = await this.ensureActiveGroup(engine);
+    const cwd = group.cwd;
 
     const instance: TerminalInstance = {
       id,
       name,
       pty: undefined,
       isActive: false,
-      workspaceFolderIndex: folderIndex,
+      workspaceFolderIndex: group.workspaceFolderIndex,
       cwd,
-      engine
+      engine,
+      groupId: group.id
     };
 
     this.stateManager.set(id, instance);
@@ -708,6 +896,7 @@ export class ClaudeTerminalViewProvider
     const accentColor = this.getAccentColor(engine);
     this.postMessage({ type: 'createTab', id, name, accentColor, awaitingStart: true });
     this.sendTabsUpdate();
+    this.sendGroupsUpdate();
     this.sendInitialStatusLine(id, cwd);
 
     // Use provided command/args instead of config
@@ -728,16 +917,29 @@ export class ClaudeTerminalViewProvider
    * `--resume`/`--continue` are Claude-specific flags; OpenCode has its own session flow
    * under `/sessions`, so this is only wired to the Claude engine.
    */
-  public async createTerminalWithSessionFlag(flag: '--continue' | '--resume'): Promise<string> {
+  public async createTerminalWithSessionFlag(
+    flag: '--continue' | '--resume'
+  ): Promise<string | undefined> {
     const engine: Engine = 'claude';
+    // These flags are Claude-only, so the tab would be a Claude tab — and a Claude tab has no
+    // business in an OpenCode group. Refuse rather than break the group's one-CLI rule.
+    const group = this.stateManager.getActiveGroup();
+    if (group && group.engine !== engine) {
+      void vscode.window.showInformationMessage(
+        `Claude Terminal: ${flag} is Claude Code only, and “${group.name}” is an OpenCode tab group. Open a Claude tab group first.`
+      );
+      return undefined;
+    }
     const config = this.engineConfig(engine);
     return this.createTerminalWithCommand(config.command, [...config.args, flag]);
   }
 
-  public closeTerminal(terminalId: string): void {
-    const instance = this.stateManager.get(terminalId);
-    if (!instance) return;
-
+  /**
+   * Kills a terminal and drops every trace of it, without deciding what becomes active next.
+   * Split out so closing a whole group can reuse it — there, picking a successor per terminal
+   * would only fight the group switch that follows.
+   */
+  private disposeTerminal(terminalId: string): void {
     const pending = this.pendingSpawns.get(terminalId);
     if (pending) {
       clearTimeout(pending.timer);
@@ -749,30 +951,58 @@ export class ClaudeTerminalViewProvider
     this.promptDetector.removeTerminal(terminalId);
     this.statusLineWatcher.removeTerminal(terminalId);
     this.thresholdNotified.delete(terminalId);
+    this.coldTerminals.delete(terminalId);
     this.interAgentRouter?.unregisterPresence(terminalId);
     this.stateManager.delete(terminalId);
     this.postMessage({ type: 'removeTab', id: terminalId });
+  }
 
-    // Handle active terminal closure
-    if (this.stateManager.getActiveId() === terminalId) {
+  public closeTerminal(terminalId: string): void {
+    const instance = this.stateManager.get(terminalId);
+    if (!instance) return;
+
+    const groupId = instance.groupId;
+    const wasActive = this.stateManager.getActiveId() === terminalId;
+    this.disposeTerminal(terminalId);
+
+    // A group with no terminals left has nothing to show. It goes with its last tab — unless it
+    // is the only group, which stays and gets a fresh terminal instead, so the panel is never
+    // empty.
+    const group = this.stateManager.getGroup(groupId);
+    if (group && group.terminalIds.length === 0) {
+      if (this.stateManager.groupCount > 1) {
+        this.closeGroup(groupId);
+      } else {
+        this.stateManager.clearActive();
+        this.sendGroupsUpdate();
+        void this.createTerminal();
+      }
+      return;
+    }
+
+    if (wasActive) {
       this.handleActiveTerminalClosed();
       return;
     }
 
     this.sendTabsUpdate();
+    this.sendGroupsUpdate();
+    this.persistLayout();
   }
 
+  /**
+   * Picks the successor inside the closed tab's own group — never a terminal from another one,
+   * which would silently move the user to a different working directory.
+   */
   private handleActiveTerminalClosed(): void {
-    const remaining = this.stateManager.getAll();
+    const remaining = this.stateManager.getGroupTerminals();
     if (remaining.length > 0) {
       const newActive = remaining[remaining.length - 1];
       this.switchToTerminal(newActive.id);
-    } else {
-      this.stateManager.clearActive();
-      void this.createTerminal();
       return;
     }
-    this.sendTabsUpdate();
+    this.stateManager.clearActive();
+    void this.createTerminal();
   }
 
   public closeActiveTerminal(): void {
@@ -788,25 +1018,46 @@ export class ClaudeTerminalViewProvider
 
     this.stateManager.setActive(terminalId);
     this.postMessage({ type: 'switchTab', id: terminalId });
+    this.startIfCold(terminalId, instance);
     this.sendTabsUpdate();
+    // Activating a tab of another group activates that group too.
+    this.sendGroupsUpdate();
+    this.persistLayout();
   }
 
-  public switchToNextTerminal(): void {
-    const ids = this.stateManager.getAllIds();
-    if (ids.length <= 1) return;
+  /**
+   * A restored tab starts its process the first time it is actually looked at.
+   *
+   * It goes through `spawnWhenMeasured` like any other tab rather than spawning straight away:
+   * the webview reports `terminalReady` only once per tab, so `startTerminal` tells it to measure
+   * and report again. That keeps the one rule that matters — a process learns its window size
+   * before it paints its first frame.
+   */
+  private startIfCold(terminalId: string, instance: TerminalInstance): void {
+    if (!this.coldTerminals.delete(terminalId)) {
+      return;
+    }
+    log('tab', `${terminalId} woken, starting process`);
+    this.spawnWhenMeasured(terminalId, this.engineConfig(instance.engine), instance.cwd);
+    this.postMessage({ type: 'startTerminal', id: terminalId });
+  }
 
-    const currentIndex = ids.indexOf(this.stateManager.getActiveId() ?? '');
-    const nextIndex = (currentIndex + 1) % ids.length;
-    this.switchToTerminal(ids[nextIndex]);
+  /** Cycles within the active group only — the shortcut must not jump to another directory. */
+  public switchToNextTerminal(): void {
+    this.cycleTerminal(1);
   }
 
   public switchToPreviousTerminal(): void {
-    const ids = this.stateManager.getAllIds();
+    this.cycleTerminal(-1);
+  }
+
+  private cycleTerminal(step: number): void {
+    const ids = this.stateManager.getGroupTerminals().map((t) => t.id);
     if (ids.length <= 1) return;
 
     const currentIndex = ids.indexOf(this.stateManager.getActiveId() ?? '');
-    const prevIndex = (currentIndex - 1 + ids.length) % ids.length;
-    this.switchToTerminal(ids[prevIndex]);
+    const nextIndex = (currentIndex + step + ids.length) % ids.length;
+    this.switchToTerminal(ids[nextIndex]);
   }
 
   public restart(): void {
@@ -836,6 +1087,8 @@ export class ClaudeTerminalViewProvider
     if (!activeId) return;
 
     this.thresholdNotified.delete(activeId);
+    // Restart/resume/continue start the process outright, so the tab is no longer cold.
+    this.coldTerminals.delete(activeId);
 
     // No guard flag needed for the old process: `PtyManager` drops it from its map here, and
     // both its handlers check that identity before reporting anything.
@@ -897,7 +1150,6 @@ export class ClaudeTerminalViewProvider
     this.statusLineWatcher.dispose();
     this.editorTracker.dispose();
     this.configManager.dispose();
-    this.commandPicker.dispose();
   }
 
   // --- Private Helpers ---
@@ -984,6 +1236,9 @@ export class ClaudeTerminalViewProvider
   private handleNotificationChange(terminalId: string, isWaiting: boolean): void {
     this.stateManager.setWaitingForInput(terminalId, isWaiting);
     this.postMessage({ type: 'setNotification', id: terminalId, show: isWaiting });
+    // A tab waiting for input in a group that is not on screen would otherwise be invisible —
+    // its pill has nowhere to sit. The group tab carries it instead.
+    this.sendGroupsUpdate();
   }
 
   private getAccentColor(engine: Engine): string {
@@ -997,6 +1252,158 @@ export class ClaudeTerminalViewProvider
   private sendTabsUpdate(): void {
     const tabs = this.stateManager.getTabsInfo();
     this.postMessage({ type: 'tabsUpdate', tabs });
+  }
+
+  private sendGroupsUpdate(): void {
+    const groups = this.stateManager.getGroupsInfo();
+    this.postMessage({ type: 'groupsUpdate', groups });
+  }
+
+  /**
+   * Writes the current groups to `workspaceState`.
+   *
+   * Called from the structural changes only — creating, closing, renaming and switching — not from
+   * `sendGroupsUpdate`, which also fires whenever a tab starts or stops waiting for input and would
+   * turn a prompt flicker into a disk write.
+   */
+  private persistLayout(): void {
+    if (!this.workspaceState) return;
+
+    const activeGroupId = this.stateManager.getActiveGroupId();
+    const groups = this.stateManager.getAllGroups();
+    const layout: PersistedLayout = {
+      version: 1,
+      activeGroupIndex: Math.max(
+        0,
+        groups.findIndex((g) => g.id === activeGroupId)
+      ),
+      groups: groups.map((g) => ({
+        name: g.name,
+        cwd: g.cwd,
+        engine: g.engine,
+        workspaceFolderIndex: g.workspaceFolderIndex,
+        terminalCount: g.terminalIds.length,
+        activeTerminalIndex: Math.max(
+          0,
+          g.terminalIds.indexOf(g.activeTerminalId ?? g.terminalIds[0])
+        )
+      }))
+    };
+    void this.workspaceState.update(ClaudeTerminalViewProvider.LAYOUT_KEY, layout);
+  }
+
+  /**
+   * The remembered layout, or undefined when there is none or it does not hold up.
+   *
+   * Read as `unknown` and narrowed field by field on purpose: this comes off disk, where it may
+   * have been written by an older shape of the extension or edited by hand. Trusting the type
+   * parameter here would let a stale entry spawn terminals from garbage.
+   */
+  private readLayout(): PersistedLayout | undefined {
+    const stored: unknown = this.workspaceState?.get(ClaudeTerminalViewProvider.LAYOUT_KEY);
+    if (typeof stored !== 'object' || stored === null) {
+      return undefined;
+    }
+    const record = stored as Record<string, unknown>;
+    if (record.version !== 1 || !Array.isArray(record.groups)) {
+      return undefined;
+    }
+
+    const groups: PersistedGroup[] = [];
+    for (const entry of record.groups as unknown[]) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const g = entry as Record<string, unknown>;
+      if (
+        typeof g.cwd !== 'string' ||
+        typeof g.name !== 'string' ||
+        (g.engine !== 'claude' && g.engine !== 'opencode') ||
+        typeof g.terminalCount !== 'number' ||
+        !Number.isInteger(g.terminalCount) ||
+        g.terminalCount < 1
+      ) {
+        continue;
+      }
+      groups.push({
+        name: g.name,
+        cwd: g.cwd,
+        engine: g.engine,
+        workspaceFolderIndex:
+          typeof g.workspaceFolderIndex === 'number' ? g.workspaceFolderIndex : undefined,
+        // A tab count in the thousands would be a corrupt entry, not a layout worth honouring.
+        terminalCount: Math.min(g.terminalCount, ClaudeTerminalViewProvider.MAX_RESTORED_TABS),
+        activeTerminalIndex:
+          typeof g.activeTerminalIndex === 'number' && Number.isInteger(g.activeTerminalIndex)
+            ? g.activeTerminalIndex
+            : 0
+      });
+    }
+    if (groups.length === 0) {
+      return undefined;
+    }
+
+    return {
+      version: 1,
+      groups,
+      activeGroupIndex: typeof record.activeGroupIndex === 'number' ? record.activeGroupIndex : 0
+    };
+  }
+
+  /**
+   * Rebuilds the remembered groups after a window reload. Everything comes back cold except the
+   * one tab that was on screen — the processes died with the extension host, and starting one CLI
+   * session per restored tab is a cost the user never asked for.
+   *
+   * A group whose directory has since disappeared is dropped rather than spawned in a path that
+   * no longer exists.
+   */
+  private async restoreOrCreate(): Promise<void> {
+    const layout = this.readLayout();
+    if (layout && (await this.restoreLayout(layout))) {
+      return;
+    }
+    await this.createTerminal();
+  }
+
+  private async restoreLayout(layout: PersistedLayout): Promise<boolean> {
+    const wanted = layout.groups.filter((g) => existsSync(g.cwd));
+    if (wanted.length === 0) {
+      return false;
+    }
+
+    const activeIndex = Math.min(Math.max(layout.activeGroupIndex, 0), wanted.length - 1);
+    let activeTerminalId: string | undefined;
+
+    for (const [index, saved] of wanted.entries()) {
+      const group = this.stateManager.createGroup(
+        saved.cwd,
+        saved.engine,
+        saved.workspaceFolderIndex
+      );
+      this.stateManager.renameGroup(group.id, saved.name);
+      this.stateManager.setActiveGroup(group.id);
+
+      const activeTab = Math.min(Math.max(saved.activeTerminalIndex, 0), saved.terminalCount - 1);
+      for (let tab = 0; tab < saved.terminalCount; tab++) {
+        const id = await this.createTerminal(saved.engine, true);
+        if (index === activeIndex && tab === activeTab) {
+          activeTerminalId = id;
+        }
+      }
+    }
+
+    log(
+      'tab',
+      `restored ${String(wanted.length)} group(s) from workspaceState, all tabs cold except one`
+    );
+
+    this.sendGroupsUpdate();
+    this.sendTabsUpdate();
+    if (activeTerminalId) {
+      // The one tab on screen is worth a process: this goes through `switchToTerminal`, which
+      // wakes it exactly the way clicking any other restored tab would.
+      this.switchToTerminal(activeTerminalId);
+    }
+    return true;
   }
 
   private getHtmlForWebview(webview: vscode.Webview): string {
@@ -1017,12 +1424,13 @@ export class ClaudeTerminalViewProvider
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; img-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
     <link href="${xtermCssUri.toString()}" rel="stylesheet">
     <link href="${stylesUri.toString()}" rel="stylesheet">
 </head>
 <body>
     <div id="terminal-column">
+        <div id="group-bar"></div>
         <div id="terminals-container"></div>
         <div id="status-line" hidden></div>
     </div>

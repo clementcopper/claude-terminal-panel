@@ -57,11 +57,27 @@ export interface EditorContext {
   endLine?: number;
 }
 
+/**
+ * One outer tab: a group of terminals sharing a working directory. Separate declaration from
+ * `src/types.ts` for the same reason as everything else here — the two bundles share no module.
+ */
+export interface GroupInfo {
+  id: string;
+  name: string;
+  isActive: boolean;
+  cwd: string;
+  terminalCount: number;
+  hasWaitingTerminal: boolean;
+  engine?: 'claude' | 'opencode';
+  accentColor?: string;
+}
+
 // Message types from extension to webview
 export type WebviewIncomingMessage =
   | { type: 'output'; id: string; data: string }
   | { type: 'clear'; id: string }
   | { type: 'tabsUpdate'; tabs: TabInfo[] }
+  | { type: 'groupsUpdate'; groups: GroupInfo[] }
   | {
       type: 'createTab';
       id: string;
@@ -70,6 +86,7 @@ export type WebviewIncomingMessage =
       awaitingStart: boolean;
     }
   | { type: 'switchTab'; id: string }
+  | { type: 'startTerminal'; id: string }
   | { type: 'removeTab'; id: string }
   | { type: 'setNotification'; id: string; show: boolean }
   | { type: 'statusLine'; id: string; data: StatusLineSnapshot | null }
@@ -84,9 +101,12 @@ export type WebviewOutgoingMessage =
   | { type: 'resize'; id: string; cols: number; rows: number }
   | { type: 'terminalReady'; id: string; cols: number; rows: number }
   | { type: 'newTab' }
-  | { type: 'newTabWithCommand' }
   | { type: 'closeTab'; id: string }
   | { type: 'switchTab'; id: string }
+  | { type: 'newGroup' }
+  | { type: 'closeGroup'; id: string }
+  | { type: 'switchGroup'; id: string }
+  | { type: 'renameGroup'; id: string; name: string }
   | { type: 'openFile'; id: string; path: string; line?: number; column?: number }
   | { type: 'insertEditorReference' }
   | { type: 'stopTurn'; id: string }
@@ -103,6 +123,8 @@ export interface TerminalEntry {
   lastScrollTop: number;
   /** Set once `terminalReady` has been sent for this tab; the host starts the process on it. */
   readySent?: boolean;
+  /** Kept for the startup indicator a restored tab shows when it is finally woken. */
+  name?: string;
   /** The "starting…" indicator and its two timers, all cleared on the first byte of output. */
   startupIndicator?: HTMLElement;
   startupShowTimer?: number;

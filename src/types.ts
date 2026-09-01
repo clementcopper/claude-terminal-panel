@@ -52,8 +52,6 @@ export interface TerminalConfig {
   directMode: boolean;
   /** Fixed working directory. Empty means: use the workspace folder. */
   cwd: string;
-  /** Probe other CLI agents for --help output on startup. */
-  preloadHelp: boolean;
   /** Render the statusLine script's data at the bottom of the panel. */
   statusLine: boolean;
   /**
@@ -121,6 +119,71 @@ export interface TerminalInstance {
   cwd?: string;
   /** Which CLI agent this tab runs; drives restart/resume/continue. */
   engine: Engine;
+  /** The group this tab belongs to. Groups own the working directory; tabs inherit it. */
+  groupId: string;
+}
+
+/**
+ * The outer tab level: a group of terminals sharing one working directory.
+ *
+ * Terminal ids stay globally unique across groups on purpose — they key `PtyManager.ptys`, the
+ * status line's `<terminalId>.json`, `MY_TAB_ID` in the PTY env, the inter-agent presence file
+ * and the webview's `#terminal-<id>`. Grouping sits on top of all that and none of those
+ * contracts had to learn about it.
+ */
+export interface TerminalGroup {
+  id: string;
+  name: string;
+  /** Every terminal opened in this group starts here. Session history lives per directory. */
+  cwd: string;
+  workspaceFolderIndex?: number;
+  /**
+   * The CLI the group was opened for. It fixes the group's name and accent bar; the inner `+`
+   * can still open a tab of the other engine inside it, which does not rename the group.
+   */
+  engine: Engine;
+  /** Tab order within the group. */
+  terminalIds: string[];
+  /** Which tab to return to when the group is activated again. */
+  activeTerminalId?: string;
+}
+
+/**
+ * The tab layout as it is written to `workspaceState`, so a window reload comes back to the same
+ * groups. Only the shape survives — the processes die with the extension host, so there is no
+ * scrollback and no session to restore, and every terminal comes back cold.
+ *
+ * Deliberately index-based and free of ids: ids are minted per run and mean nothing across one.
+ */
+export interface PersistedGroup {
+  name: string;
+  cwd: string;
+  engine: Engine;
+  workspaceFolderIndex?: number;
+  /** How many terminals the group had. Each comes back as one cold tab. */
+  terminalCount: number;
+  /** Which of them was on screen, as an index into that count. */
+  activeTerminalIndex: number;
+}
+
+export interface PersistedLayout {
+  /** Bumped when the shape changes; an unknown version is discarded rather than guessed at. */
+  version: 1;
+  groups: PersistedGroup[];
+  activeGroupIndex: number;
+}
+
+// Group information for the UI's outer tab bar
+export interface GroupInfo {
+  id: string;
+  name: string;
+  isActive: boolean;
+  cwd: string;
+  terminalCount: number;
+  /** Any terminal in the group waiting for input — the group tab shows a pill for it. */
+  hasWaitingTerminal: boolean;
+  engine: Engine;
+  accentColor?: string;
 }
 
 // Tab information for UI
@@ -148,9 +211,14 @@ export type WebviewMessage =
    */
   | { type: 'terminalReady'; id: string; cols: number; rows: number }
   | { type: 'newTab' }
-  | { type: 'newTabWithCommand' }
   | { type: 'closeTab'; id: string }
   | { type: 'switchTab'; id: string }
+  /** The `+` in the group bar: a new group, with its own working directory. */
+  | { type: 'newGroup' }
+  | { type: 'closeGroup'; id: string }
+  | { type: 'switchGroup'; id: string }
+  /** Inline rename from the group tab. An empty or unchanged name is dropped by the host. */
+  | { type: 'renameGroup'; id: string; name: string }
   | { type: 'openFile'; id: string; path: string; line?: number; column?: number }
   // No tab id: the reference goes to whichever tab is active when it is asked for
   | { type: 'insertEditorReference' }
@@ -174,7 +242,9 @@ export type WebviewMessage =
 export type ExtensionMessage =
   | { type: 'output'; id: string; data: string }
   | { type: 'clear'; id: string }
+  /** Only the active group's tabs — the inner bar never shows another group's terminals. */
   | { type: 'tabsUpdate'; tabs: TabInfo[] }
+  | { type: 'groupsUpdate'; groups: GroupInfo[] }
   /**
    * `awaitingStart` distinguishes a brand new tab from one being restored after the webview was
    * rebuilt: only the new one has a process that has yet to print anything, and only there is a
@@ -188,6 +258,12 @@ export type ExtensionMessage =
       awaitingStart: boolean;
     }
   | { type: 'switchTab'; id: string }
+  /**
+   * Wake a restored tab that has never run: re-measure it and report `terminalReady` again, which
+   * is what starts its process. The webview reports ready only once per tab, so without this a
+   * cold tab could never ask for its own process.
+   */
+  | { type: 'startTerminal'; id: string }
   | { type: 'removeTab'; id: string }
   | { type: 'setNotification'; id: string; show: boolean }
   | { type: 'statusLine'; id: string; data: StatusLineSnapshot | null }

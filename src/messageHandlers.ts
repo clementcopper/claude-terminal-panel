@@ -10,9 +10,12 @@ export interface MessageHandlerContext {
   handleResize(id: string, cols: number, rows: number): void;
   handleTerminalReady(id: string, cols: number, rows: number): void;
   handleNewTab(): void;
-  handleNewTabWithCommand(): void;
   handleCloseTab(id: string): void;
   handleSwitchTab(id: string): void;
+  handleNewGroup(): void;
+  handleCloseGroup(id: string): void;
+  handleSwitchGroup(id: string): void;
+  handleRenameGroup(id: string, name: string): void;
   handleOpenFile(id: string, path: string, line?: number, column?: number): void;
   handleInsertEditorReference(): void;
   handleStopTurn(id: string): void;
@@ -47,14 +50,23 @@ const messageHandlers: MessageHandlerMap = {
   newTab: (_message, ctx) => {
     ctx.handleNewTab();
   },
-  newTabWithCommand: (_message, ctx) => {
-    ctx.handleNewTabWithCommand();
-  },
   closeTab: (message, ctx) => {
     ctx.handleCloseTab(message.id);
   },
   switchTab: (message, ctx) => {
     ctx.handleSwitchTab(message.id);
+  },
+  newGroup: (_message, ctx) => {
+    ctx.handleNewGroup();
+  },
+  closeGroup: (message, ctx) => {
+    ctx.handleCloseGroup(message.id);
+  },
+  switchGroup: (message, ctx) => {
+    ctx.handleSwitchGroup(message.id);
+  },
+  renameGroup: (message, ctx) => {
+    ctx.handleRenameGroup(message.id, message.name);
   },
   openFile: (message, ctx) => {
     ctx.handleOpenFile(message.id, message.path, message.line, message.column);

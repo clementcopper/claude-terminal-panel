@@ -9,18 +9,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Choose the engine when opening a new tab: the `+` button and `Claude Terminal: New Terminal Tab`
-  (`Cmd+Shift+\``) now ask **Claude Code** or **OpenCode** instead of spawning the configured
-  command without asking. The first tab after the panel opens still starts the configured engine.
+- **Two levels of tabs.** Claude Terminal tabs (groups) each hold their own terminal tabs. The
+  group bar runs horizontally above the terminal, its `+` behind the tabs; the vertical bar on the
+  right keeps showing the active group's terminals. A group owns a working directory and every
+  terminal opened in it starts there, so a group is effectively one project.
+- Group commands: `Claude Terminal: New Terminal Tab`, `Close Terminal Tab`, `Next Terminal Tab`
+  (`Cmd+Alt+Down`) and `Previous Terminal Tab` (`Cmd+Alt+Up`).
+- A group is **named after its working directory** — `claude-terminal-panel`, `figma-cli` — and
+  coloured by the CLI it runs, on a 2px accent bar along the group tab's bottom edge. The bar is a
+  pseudo-element rather than a border, so dimming it for an inactive group leaves the tab's name
+  and its notification pill at full contrast. Names are never truncated; the bar scrolls sideways
+  instead, with the `+` pinned to its right edge.
+- **The tab layout is remembered per workspace.** Group names, directories, CLIs, order, tab counts
+  and which tab was on screen go into `workspaceState`, so a window reload or a VS Code restart
+  comes back to the same groups. Only the shape returns — the processes die with the extension
+  host, so every restored tab is **cold**: it holds its place in the bar and starts its CLI the
+  first time it is switched to. A reload with four groups therefore costs one session, not four.
+  A group whose directory has since disappeared is dropped rather than restored.
+- **Double-click a group tab to rename it.** The name turns into a text field in place: Enter
+  commits, Escape reverts, clicking away commits. An empty name is refused. A rename in progress
+  survives a redraw of the bar, so an unrelated group's notification cannot eat what you typed.
+- A terminal waiting for input in a group that is off screen shows its pill on the group tab.
+- Choose the engine when opening a tab group: `Claude Terminal: New Terminal Tab` and the `+` in
+  the group bar ask **Claude Code** or **OpenCode**. The answer fixes that group's CLI, and the
+  first group after the panel opens starts the configured engine without asking.
 - Each tab remembers its engine (`claude` / `opencode`); `Restart`, `Resume` and `Continue` reuse
   the tab's own engine instead of falling back to the configured Claude command.
 - `claudeTerminal.opencodeCommand` (default `opencode`) — the command an OpenCode tab runs.
 - Tab tooltips show the engine alongside the working directory.
 
+### Changed
+
+- The `$(add)` button left the view title bar — VS Code right-aligns title-bar actions, so a `+`
+  beside the group tabs had to be drawn by the webview. The title bar keeps Resume, Continue and
+  Restart.
+- `Cmd+Shift+\`` is now `New Terminal`(a tab inside the current group);`New Terminal Tab`opens
+a group.`Close`/`Next`/`Previous Terminal` were renamed to match.
+- **A tab group runs one CLI.** The `+` in the terminal bar and `Cmd+Shift+\`` no longer ask which
+engine to run — they open another terminal of the group's own, so Claude tabs only ever sit in
+Claude groups and OpenCode tabs in OpenCode groups. The engine question moved up one level, to
+where a group is created, and the `+` tooltip names the CLI it will open.
+- `New Terminal (Resume Session…)` and `(Continue Last Session)` are refused in an OpenCode group
+  with a message instead of dropping a Claude tab into it — `--resume` / `--continue` are
+  Claude-only flags.
+- **The panel's icons are SF Symbols**, rendered from macOS by `scripts/render-icons.sh`:
+  `clock.arrow.circlepath` for Resume, `forward.frame` for Continue, `arrow.clockwise` for Restart,
+  `viewfinder` for the view container, `plus` and `xmark` for the webview's buttons — all at SF Pro
+  Medium.
+
+  The codicons they replace could not be made consistent. VS Code colours the debug ones globally
+  through a theming participant (Continue `#007ACC`/`#75BEFF`, Restart `#388A34`/`#89D185`) while
+  `$(history)` fell through to `icon.foreground` — `#3B3B3B` in Light Modern, which reads as black
+  beside them — and it was also the lightest of the three: measured at 16px it carried 49.4 ink
+  against 60.7 and 60.3. Nothing in the coloured debug family combined a distinct shape, a matching
+  weight and a sensible meaning; SF Symbols have the weight axis that makes the set consistent.
+
+  All six are now the theme's own grey, so no icon stands out from the workbench. AppKit rasterises
+  symbols when it draws them, so these are PNGs at 3x rather than SVGs. The webview's `plus` and
+  `xmark` are applied as CSS `mask-image` with `background-color: currentColor`, which keeps one
+  file per icon and lets them follow the theme the way a codicon does — the webview CSP gained an
+  `img-src` for that.
+
+- Cycling tabs stays inside the active group, so the shortcut cannot land in another directory.
+- A new terminal inherits its group's working directory instead of asking again; the directory is
+  asked for once, when the group is created.
+
+### Removed
+
+- **`New Terminal with Custom Command`**, and the four modules only it reached —
+  `commandInputPicker`, `commandHelpParser`, `pathAutocompleteProvider`, `helpExecutor`, 1,144
+  lines together — plus the `claudeTerminal.preloadHelp` setting that fed them. The panel supports
+  Claude Code and OpenCode and nothing else, so a free-text command line had no remaining job, and
+  it was the last way to put a tab of one CLI inside a group of the other. The right-hand bar keeps
+  one button, the `+`. Per-tab flags go in `claudeTerminal.args`; `New Terminal (Resume Session…)`
+  and `(Continue Last Session)` are unaffected. The extension bundle drops from 122 KB to 95 KB.
+
+### Fixed
+
+- The first row count handed to a new PTY is measured against a real `.terminal-wrapper` in the
+  terminals container instead of being reconstructed from the viewport. The old arithmetic
+  hardcoded the tab bar's 36px and ignored the wrapper's 10px/6px insets: measured at a 320px ×
+  600px panel it reported 37 rows where the wrapper fits 34 — and it would have missed the new
+  group bar on top of that. The estimate now matches the tab's own `terminalReady` exactly.
+
 ### Notes
 
 - OpenCode tabs get no status line (that row is Claude-specific), and the Claude-only
   `--resume` / `--continue` session flags do not apply to them.
+- A window reload brings the groups back, but not their processes: restored tabs are cold and
+  start their CLI the first time they are looked at.
 
 ## [1.1.0] - 2026-08-05
 

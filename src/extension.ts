@@ -11,7 +11,7 @@ export function activate(context: vscode.ExtensionContext) {
   initLog(output);
   log('ext', 'activate');
 
-  terminalProvider = new ClaudeTerminalViewProvider(context.extensionUri);
+  terminalProvider = new ClaudeTerminalViewProvider(context.extensionUri, context.workspaceState);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('claudeTerminal.terminalView', terminalProvider, {
@@ -30,7 +30,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Multi-tab commands
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeTerminal.newTab', () => {
-      terminalProvider?.promptNewTab();
+      terminalProvider?.newTabInActiveGroup();
     })
   );
 
@@ -80,6 +80,32 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('claudeTerminal.previousTab', () => {
       terminalProvider?.switchToPreviousTerminal();
+    })
+  );
+
+  // Group commands — the outer tab level. A group owns a working directory; its terminals
+  // inherit it.
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeTerminal.newGroup', () => {
+      void terminalProvider?.promptAndCreateGroup();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeTerminal.closeGroup', () => {
+      terminalProvider?.closeActiveGroup();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeTerminal.nextGroup', () => {
+      terminalProvider?.switchToNextGroup();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand('claudeTerminal.previousGroup', () => {
+      terminalProvider?.switchToPreviousGroup();
     })
   );
 

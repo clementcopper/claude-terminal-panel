@@ -6,6 +6,7 @@ import type {
   WebviewIncomingMessage,
   WebviewOutgoingMessage,
   TabInfo,
+  GroupInfo,
   TerminalEntry,
   XTermTheme,
   StatusLineSnapshot,
@@ -298,8 +299,14 @@ const messageHandlers: MessageHandlers = {
   tabsUpdate: (message, ctx) => {
     ctx.renderTabBar(message.tabs);
   },
+  groupsUpdate: (message, ctx) => {
+    ctx.renderGroupBar(message.groups);
+  },
   createTab: (message, ctx) => {
     ctx.createTerminalElement(message.id, message.name, message.awaitingStart);
+  },
+  startTerminal: (message, ctx) => {
+    ctx.startRestoredTerminal(message.id);
   },
   switchTab: (message, ctx) => {
     ctx.switchToTerminal(message.id);
@@ -1134,6 +1141,12 @@ class WebviewContext {
   private readonly themeBuilder = new ThemeBuilder();
   private readonly vscode: VSCodeAPI;
   private readonly tabBar: HTMLElement;
+  private readonly groupBar: HTMLElement;
+  /** The group whose tab is currently being renamed inline, and the text typed so far. */
+  private renamingGroupId: string | null = null;
+  private renameDraft: string | null = null;
+  /** The active group's CLI, so the inner `+` can say which one it will open. */
+  private activeGroupEngine: 'claude' | 'opencode' = 'claude';
   private readonly terminalsContainer: HTMLElement;
   private readonly statusLine: StatusLineView;
   private readonly tooltips = new TooltipManager();
@@ -1145,14 +1158,16 @@ class WebviewContext {
     this.vscode = acquireVsCodeApi();
 
     const tabBar = document.getElementById('tab-bar');
+    const groupBar = document.getElementById('group-bar');
     const terminalsContainer = document.getElementById('terminals-container');
     const statusLineElement = document.getElementById('status-line');
 
-    if (!tabBar || !terminalsContainer || !statusLineElement) {
+    if (!tabBar || !groupBar || !terminalsContainer || !statusLineElement) {
       throw new Error('Required DOM elements not found');
     }
 
     this.tabBar = tabBar;
+    this.groupBar = groupBar;
     this.terminalsContainer = terminalsContainer;
     // Showing or hiding a row changes the terminal's height, so xterm has to refit.
     this.statusLine = new StatusLineView(
@@ -1337,12 +1352,24 @@ class WebviewContext {
     this.postMessage({ type: 'ready', cols, rows });
   }
 
+  /**
+   * Measures against a throwaway `.terminal-wrapper` inside the real `#terminals-container`,
+   * rather than reconstructing that box from the viewport.
+   *
+   * FitAddon measures the wrapper, so this is the same box a real tab gets — with the vertical
+   * tab bar, the group bar and the wrapper's own 10px/6px insets already taken out by the CSS
+   * that owns them. The old arithmetic hardcoded the tab bar's 36px, knew nothing about the
+   * group bar and ignored the insets; measured at a 320px panel it reported 35 rows where the
+   * real wrapper fits 33.
+   *
+   * The status line is still not in it — it is hidden at this point and appears later, which is
+   * why `StatusLineView` triggers a refit when it changes height.
+   */
   private measureInitialDimensions(): { cols: number; rows: number } {
     const tempContainer = document.createElement('div');
-    tempContainer.style.cssText =
-      // 36px is the vertical tab bar; the terminal wrapper itself has no padding
-      'position: absolute; visibility: hidden; width: calc(100% - 36px); height: 100%;';
-    document.body.appendChild(tempContainer);
+    tempContainer.className = 'terminal-wrapper';
+    tempContainer.style.visibility = 'hidden';
+    this.terminalsContainer.appendChild(tempContainer);
 
     const tempTerminal = new Terminal({
       cursorBlink: true,
@@ -1368,6 +1395,199 @@ class WebviewContext {
     this.vscode.postMessage(message);
   }
 
+  /**
+   * The outer bar: the group tabs, then the `+` behind them — the same order `renderTabBar` uses
+   * for the inner bar. The button is sticky against the right edge, so a row of groups too wide
+   * for a narrow panel scrolls under it instead of pushing it out of reach.
+   */
+  renderGroupBar(groups: GroupInfo[]): void {
+    this.groupBar.innerHTML = '';
+
+    const closable = groups.length > 1;
+    groups.forEach((group) => {
+      this.groupBar.appendChild(this.createGroupElement(group, closable));
+    });
+
+    this.groupBar.appendChild(this.createGroupAddButton());
+
+    // The inner `+` opens a terminal of the active group's CLI, so its tooltip has to follow the
+    // group. `tabsUpdate` is sent before `groupsUpdate`, so the button already exists here and is
+    // relabelled in place rather than waiting for the next tab-bar render.
+    const active = groups.find((g) => g.isActive);
+    this.activeGroupEngine = active?.engine ?? 'claude';
+    const addButton = this.tabBar.querySelector<HTMLElement>('.tab-add');
+    if (addButton) {
+      addButton.dataset.tooltip = this.newTerminalTooltip();
+    }
+
+    // A rename in progress has to survive this rebuild. `groupsUpdate` fires for things that have
+    // nothing to do with the tab being renamed — another group's terminal starting to wait for
+    // input, say — and the field would otherwise vanish mid-word. Restored after appending, since
+    // an element outside the document cannot take focus.
+    if (this.renamingGroupId !== null) {
+      const group = groups.find((g) => g.id === this.renamingGroupId);
+      const element = this.groupBar.querySelector<HTMLDivElement>(
+        `.group-tab[data-id="${CSS.escape(this.renamingGroupId)}"]`
+      );
+      if (group && element) {
+        this.startGroupRename(element, group);
+      } else {
+        // The group is gone (closed elsewhere); drop the pending edit rather than keep a draft
+        // for something that no longer exists.
+        this.renamingGroupId = null;
+        this.renameDraft = null;
+      }
+    }
+  }
+
+  /**
+   * Turns the group tab's name into a text field. Enter commits, Escape reverts, losing focus
+   * commits — the same bargain VS Code's own inline renames make.
+   */
+  private startGroupRename(element: HTMLDivElement, group: GroupInfo): void {
+    const nameElement = element.querySelector<HTMLElement>('.group-tab-name');
+    if (!nameElement) {
+      return;
+    }
+
+    this.renamingGroupId = group.id;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'group-tab-rename';
+    input.value = this.renameDraft ?? group.name;
+    input.setAttribute('aria-label', `Rename ${group.name}`);
+    // The field grows with what is typed, so a long folder name is never cut off mid-rename
+    // either. `size` counts characters, which is close enough at this type size.
+    const fitToValue = (): void => {
+      input.size = Math.max(input.value.length + 1, 6);
+    };
+    fitToValue();
+    nameElement.replaceWith(input);
+
+    let finished = false;
+    const finish = (commit: boolean): void => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      const value = input.value;
+      this.renamingGroupId = null;
+      this.renameDraft = null;
+      input.replaceWith(nameElement);
+      if (commit) {
+        // The host refuses an empty or unchanged name and answers with `groupsUpdate` either
+        // way, so the bar always ends up showing the name that actually applies.
+        this.postMessage({ type: 'renameGroup', id: group.id, name: value });
+      }
+    };
+
+    input.oninput = (): void => {
+      this.renameDraft = input.value;
+      fitToValue();
+    };
+    // Keystrokes must not reach the tab bar or the terminal behind it.
+    input.onkeydown = (event): void => {
+      event.stopPropagation();
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        finish(true);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        finish(false);
+      }
+    };
+    // `isConnected` separates a real blur from the field being torn out by a redraw. Committing
+    // on the latter would post the half-typed draft and cancel the restore above.
+    input.onblur = (): void => {
+      if (input.isConnected) {
+        finish(true);
+      }
+    };
+    input.onclick = (event): void => {
+      event.stopPropagation();
+    };
+    input.ondblclick = (event): void => {
+      event.stopPropagation();
+    };
+
+    input.focus();
+    input.select();
+  }
+
+  private createGroupAddButton(): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.className = 'group-add';
+    button.dataset.tooltip = 'New Terminal Tab';
+    button.setAttribute('aria-label', 'New Terminal Tab');
+    button.onclick = (): void => {
+      this.postMessage({ type: 'newGroup' });
+    };
+    return button;
+  }
+
+  private createGroupElement(group: GroupInfo, closable: boolean): HTMLDivElement {
+    const element = document.createElement('div');
+    element.className = `group-tab ${group.isActive ? 'active' : ''}`;
+    element.dataset.id = group.id;
+    // The directory is the point of a group, so it belongs in the tooltip.
+    const engineLabel = group.engine === 'opencode' ? 'OpenCode' : 'Claude';
+    const count = `${String(group.terminalCount)} terminal${group.terminalCount === 1 ? '' : 's'}`;
+    element.dataset.tooltip = `${group.name} — ${engineLabel} — ${count} — ${group.cwd}`;
+
+    // The accent goes on a custom property, not on the element's own colour: the bar is drawn by
+    // `.group-tab::after`, so the inactive state can dim the bar alone. Dimming the element would
+    // take the name and — worse — the waiting-for-input pill down with it.
+    if (group.accentColor) {
+      element.style.setProperty('--group-accent', group.accentColor);
+    }
+
+    const nameElement = document.createElement('span');
+    nameElement.className = 'group-tab-name';
+    nameElement.textContent = group.name;
+    element.appendChild(nameElement);
+
+    // A pill here stands for a terminal waiting for input in a group that may be off screen —
+    // without it that tab has nowhere to announce itself.
+    if (group.hasWaitingTerminal) {
+      const pill = document.createElement('span');
+      pill.className = 'notification-pill';
+      element.appendChild(pill);
+    }
+
+    // The last group has no close button: the panel is never without one.
+    if (closable) {
+      const closeButton = document.createElement('button');
+      closeButton.className = 'group-tab-close';
+      closeButton.dataset.tooltip = 'Close Terminal Tab';
+      closeButton.setAttribute('aria-label', `Close ${group.name}`);
+      closeButton.onclick = (event): void => {
+        event.stopPropagation();
+        this.postMessage({ type: 'closeGroup', id: group.id });
+      };
+      // Two quick clicks on the close button must not also open the rename field.
+      closeButton.ondblclick = (event): void => {
+        event.stopPropagation();
+      };
+      element.appendChild(closeButton);
+    }
+
+    element.onclick = (): void => {
+      if (!group.isActive) {
+        this.postMessage({ type: 'switchGroup', id: group.id });
+      }
+    };
+
+    // Double-click renames. The two clicks underneath have already activated the group, which is
+    // what you want anyway — you rename the tab you just moved to.
+    element.ondblclick = (): void => {
+      if (this.renamingGroupId === null) {
+        this.startGroupRename(element, group);
+      }
+    };
+
+    return element;
+  }
+
   renderTabBar(tabsList: TabInfo[]): void {
     this.tabBar.innerHTML = '';
 
@@ -1378,9 +1598,6 @@ class WebviewContext {
 
     const addButton = this.createAddButton();
     this.tabBar.appendChild(addButton);
-
-    const customCmdButton = this.createCustomCommandButton();
-    this.tabBar.appendChild(customCmdButton);
   }
 
   private createTabElement(tab: TabInfo, index: number): HTMLDivElement {
@@ -1434,26 +1651,18 @@ class WebviewContext {
   private createAddButton(): HTMLButtonElement {
     const addButton = document.createElement('button');
     addButton.className = 'tab-add';
-    addButton.innerHTML = '+';
-    addButton.dataset.tooltip = 'New Terminal (Cmd+Shift+`)';
+    // The button no longer asks which CLI to run — it opens the group's. Naming it here is the
+    // only place that says so before you click.
+    addButton.dataset.tooltip = this.newTerminalTooltip();
     addButton.onclick = () => {
       this.postMessage({ type: 'newTab' });
     };
     return addButton;
   }
 
-  private createCustomCommandButton(): HTMLButtonElement {
-    const button = document.createElement('button');
-    button.className = 'tab-add';
-    button.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="display: block; margin: auto;">
-      <path d="M1 3.5L4.5 7 1 10.5v1.12l4.5-4.5v-.24L1 2.38V3.5zm5 9h9v-1H6v1z"/>
-      <path d="M11 3v2H9v1h2v2h1V6h2V5h-2V3h-1z"/>
-    </svg>`;
-    button.dataset.tooltip = 'New Terminal with Custom Command';
-    button.onclick = () => {
-      this.postMessage({ type: 'newTabWithCommand' });
-    };
-    return button;
+  private newTerminalTooltip(): string {
+    const label = this.activeGroupEngine === 'opencode' ? 'OpenCode' : 'Claude';
+    return `New ${label} Terminal (Cmd+Shift+\`)`;
   }
 
   createTerminalElement(id: string, name = '', awaitingStart = false): TerminalEntry {
@@ -1502,6 +1711,7 @@ class WebviewContext {
     });
 
     ScrollManager.setupScrollTracking(entry);
+    entry.name = name;
     this.state.set(id, entry);
 
     if (awaitingStart) {
@@ -1611,6 +1821,24 @@ class WebviewContext {
         rows: entry.terminal.rows
       });
     }, WebviewContext.READY_SETTLE_MS);
+  }
+
+  /**
+   * Wakes a restored tab whose process was never started.
+   *
+   * `terminalReady` is sent once per tab, so a tab restored cold has already spent its one report
+   * and could never ask for a process. Clearing `readySent` lets it report again, which is what
+   * the host waits for before spawning — the size still reaches the CLI before its first frame.
+   */
+  startRestoredTerminal(id: string): void {
+    const entry = this.state.get(id);
+    if (!entry) {
+      return;
+    }
+    entry.readySent = false;
+    this.startStartupIndicator(entry, entry.name ?? '');
+    entry.fitAddon.fit();
+    this.scheduleReadyReport(id, entry);
   }
 
   switchToTerminal(id: string): void {

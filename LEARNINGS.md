@@ -215,6 +215,52 @@ Non-obvious findings and dead ends. Only add what saves future work.
   `measureInitialDimensions` lag messbar daneben, weil Statuszeile und Editor-Zeile darin fehlen:
   bei 520 × 400 px meldete sie 65 × 25, das Terminal hielt am Ende 62 × 18 — sieben Zeilen zu viel.
   Der Host wartet jetzt auf `terminalReady` aus dem Webview.
+- **AppKit rastert SF Symbols beim Zeichnen — es gibt keinen Vektorweg.** `NSImage.draw` in einen
+  PDF-Kontext liefert `/Im1 Do`, ein Bild, keine Pfade. Der Umweg über die Glyphe scheitert auch:
+  `SFSymbolsFallback.otf` nennt seine Glyphen `uniXXXXXX`, und die Zuordnung Name → Codepoint steht
+  in keiner der Plists des Programms, sondern wird von CoreText zur Laufzeit aufgelöst. Wer SF
+  Symbols in einer Nicht-Apple-Oberfläche braucht, rendert PNG in 3x — oder zeichnet selbst.
+- **Die Verfügbarkeit eines SF Symbols richtet sich nach dem Betriebssystem, nicht nach der App.**
+  SF Symbols 6.0 listet Zeichen, die macOS 13 nicht kennt; `NSImage(systemSymbolName:)` gibt dann
+  `nil`. Jeden neuen Namen einmal durch das Render-Skript schicken, bevor er verdrahtet wird —
+  `SYMBOL NOT FOUND` ist die einzige Rückmeldung, die man bekommt.
+- **VS Code färbt die Debug-Codicons global ein, und der Klassenname steht nirgends im Bundle.**
+  Ein Theming-Participant baut den Selektor zur Laufzeit über `ThemeIcon.asCSSSelector(icon)`,
+  weshalb `grep codicon-debug-continue` im ausgelieferten JS null Treffer liefert, obwohl die Regel
+  wirkt — auch in einer fremden View-Titelleiste. Ich hatte daraus zuerst geschlossen, es gebe
+  keine Einfärbung; Daniel sah blau und grün. Bei VS-Code-Chrom nie aus einem fehlenden Literal auf
+  fehlendes Verhalten schließen.
+- **`icon` in `contributes.commands` nimmt ein Hell/Dunkel-Paar, `viewsContainers.icon` nicht.**
+  Für den Container braucht es deshalb einen Ton, der auf beiden Gründen trägt: `#797979` misst
+  4,10:1 auf `#F8F8F8` und 4,08:1 auf `#181818`. Ein einzelnes `#3B3B3B` fiele auf Dunkel auf
+  1,59:1.
+- **Eine CSS-Maske ist ein Bildabruf.** `mask-image: url(...)` im Webview scheitert stumm an
+  `default-src 'none'`, weil die CSP kein `img-src` hatte — kein Fehler, nur ein Knopf, der ein
+  volles Rechteck in `currentColor` malt. Genau daran erkennt man es auch: Deckung ~25 % der
+  Knopffläche statt ~4 %.
+- **Ein Tab, der nie gestartet wurde, hat seine eine Meldung schon verbraucht.** Das Webview
+  schickt `terminalReady` genau einmal pro Tab (`readySent`), und ein wiederhergestellter Tab
+  schickt sie beim Anlegen — also lange bevor jemand einen Prozess will. Ohne einen Weg, die
+  Meldung zurückzusetzen, könnte so ein Tab nie um seinen eigenen Prozess bitten. Lösung:
+  `startTerminal` vom Host, `readySent = false`, neu fitten, neu melden. Wer stattdessen direkt
+  mit `lastCols/lastRows` spawnt, umgeht genau die Messung, für die die ganze Kette existiert.
+- **Eine Warnung, die bei jedem Start feuert, ist keine Warnung mehr.** Kalte Tabs meldeten
+  `terminalReady`, der Host reichte es an `ptyManager.resize` weiter, und das loggte
+  `resize of unknown terminal` — einmal pro wiederhergestelltem Tab, bei jedem Reload. Dieselbe
+  Zeile will man sehen, wenn wirklich etwas kaputt ist. Vor dem Weiterreichen prüfen, ob der Tab
+  überhaupt laufen soll.
+- **Eine Box nachbauen ist schlechter, als die echte zu messen.** `measureInitialDimensions` hat
+  die Terminalbreite aus `calc(100% - 36px)` rekonstruiert — die Tab-Leiste als Zahl im JS, obwohl
+  sie im CSS steht — und die Insets des Wrappers (10px oben, 6px unten) gar nicht gekannt. Im
+  Headless-Render bei 320 × 600 meldete das 37 Zeilen, der echte Wrapper fasst 34. Jetzt hängt ein
+  `visibility:hidden`-`.terminal-wrapper` im echten `#terminals-container`, FitAddon misst genau
+  die Box, die ein echter Tab bekommt, und die Schätzung ist identisch mit `terminalReady`. Jede
+  neue Leiste im Layout ist damit automatisch drin, statt eine weitere Konstante zu brauchen.
+- **Der CDP-Harness kann das echte `main.js` fahren, nicht nur Markup.** Seite mit dem gleichen
+  Body-Skelett, `window.acquireVsCodeApi` vorher als Stub setzen (sammelt `postMessage` in einem
+  Array), dann `media/main.js` laden und Nachrichten mit
+  `dispatchEvent(new MessageEvent('message', {data}))` einspielen. Damit misst man den echten
+  Render-Pfad inklusive `ready`/`terminalReady`, nicht eine nachgebaute Meinung davon.
 - **Die Größe muss sich erst beruhigen, bevor man sie meldet.** Zwei RAFs reichen nicht: die
   Statuszeile kommt in den Nachrichten direkt hinter `createTab` und ändert die Höhe danach. Ein
   Timer, den jeder Fit neu startet (80 ms), meldet den Wert, den das Terminal behält — im Harness

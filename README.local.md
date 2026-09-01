@@ -77,20 +77,182 @@ there is nothing to bundle. A Linux binary in the archive does no harm on macOS,
 
 ## Differences from upstream
 
-| Area                         | Change                                                                                                                                                                                                                            |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status line                  | Claude's status data rendered natively at the bottom edge instead of as text in the scrollback; `claudeTerminal.statusLine` switches it off                                                                                       |
-| Title bar                    | `Resume Session in Current Tab…` and `Continue Last Session in Current Tab` respawn the **active** tab with `--resume` / `--continue`, in the tab's own directory                                                                 |
-| Commands                     | `New Terminal Tab (Resume Session…)` and `(Continue Last Session)` do the same in an **additional** tab; Command Palette only                                                                                                     |
-| Tab tooltip                  | shows the working directory, because Claude Code stores session history per directory                                                                                                                                             |
-| Engine choice                | the `+` button and `New Terminal Tab` ask **Claude Code** or **OpenCode** before spawning; each tab remembers its engine for restart/resume/continue; Claude-only session flags and the status line are skipped for OpenCode tabs |
-| Editor row                   | the open file sits above the status line with its selected range; clicking it puts the **selected code** into the prompt, `@path` only when nothing is selected                                                                   |
-| `claudeTerminal.cwd`         | fixed working directory independent of the open folder, `~` allowed                                                                                                                                                               |
-| `claudeTerminal.preloadHelp` | defaults to `false`. On, startup probes eight CLI binaries with `--help`                                                                                                                                                          |
-| Help probing                 | runs without `shell: true`; command names must match `^[A-Za-z0-9._@/-]+$`                                                                                                                                                        |
-| File links                   | paths outside the workspace and the terminal's cwd ask before opening                                                                                                                                                             |
-| Nonce                        | `crypto.randomBytes` instead of `Math.random`                                                                                                                                                                                     |
-| Build chain                  | no `@electron/rebuild`, no `node-abi`, no `postinstall`                                                                                                                                                                           |
+| Area                 | Change                                                                                                                                                                                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tab levels           | two: Claude Terminal tabs (groups) in a horizontal bar above the terminal, each holding its own terminal tabs in the vertical bar on the right. A group owns a working directory and its terminals inherit it — see below                               |
+| Status line          | Claude's status data rendered natively at the bottom edge instead of as text in the scrollback; `claudeTerminal.statusLine` switches it off                                                                                                             |
+| Title bar            | `Resume Session in Current Tab…` and `Continue Last Session in Current Tab` respawn the **active** tab with `--resume` / `--continue`, in the tab's own directory                                                                                       |
+| Commands             | `New Terminal Tab (Resume Session…)` and `(Continue Last Session)` do the same in an **additional** tab; Command Palette only                                                                                                                           |
+| Tab tooltip          | shows the working directory, because Claude Code stores session history per directory                                                                                                                                                                   |
+| Engine choice        | asked once per tab group (**Claude Code** or **OpenCode**), never per terminal; a group runs one CLI and every tab in it remembers that engine for restart/resume/continue; Claude-only session flags and the status line are skipped for OpenCode tabs |
+| Editor row           | the open file sits above the status line with its selected range; clicking it puts the **selected code** into the prompt, `@path` only when nothing is selected                                                                                         |
+| `claudeTerminal.cwd` | fixed working directory independent of the open folder, `~` allowed                                                                                                                                                                                     |
+| File links           | paths outside the workspace and the terminal's cwd ask before opening                                                                                                                                                                                   |
+| Icons                | SF Symbols at SF Pro Medium instead of codicons, in the theme's own grey; regenerate with `scripts/render-icons.sh` — see below                                                                                                                         |
+| Nonce                | `crypto.randomBytes` instead of `Math.random`                                                                                                                                                                                                           |
+| Build chain          | no `@electron/rebuild`, no `node-abi`, no `postinstall`                                                                                                                                                                                                 |
+
+## Tab groups
+
+Two levels of tabs. The horizontal `#group-bar` above the terminal holds **Claude Terminal tabs**
+(groups); the vertical `#tab-bar` on the right holds the **terminals of the active group**, as it
+always has. Both bars are drawn by the webview rather than contributed to the VS Code title bar,
+which is what lets the `+` for a new group sit beside the group tabs at all: title-bar actions are
+right-aligned there, with no contribution point that would move one next to a tab. It comes behind
+the tabs, like the `+` in the inner bar, and is `position: sticky` at `right: 0` so a row of groups
+too wide for the panel scrolls under it instead of pushing it out of reach.
+
+A group is **named after the last segment of its working directory** — `claude-terminal-panel`,
+`figma-cli`, `designdone.de` — because that is what tells two groups apart; a filesystem root with
+no last segment falls back to the CLI label. The name is **never truncated**: `.group-tab-name`
+carries no `max-width` and no ellipsis, so a long folder name simply makes the bar scroll sideways,
+with the `+` pinned to its right edge. The rename field grows with what is typed for the same
+reason.
+
+The CLI shows as colour instead — `#d97757` for Claude, `#9d7cd8` for OpenCode, the same two
+accents the inner tabs use, on a 2px bar along the group tab's bottom edge (the inner tabs already
+own the left edge). The bar is a `::after` pseudo-element fed by a
+`--group-accent` custom property rather than a border, because the inactive state dims it to 0.45:
+`opacity` on the tab itself would take the name and the waiting-for-input pill down with it. The
+**A group runs one CLI.** The engine is chosen once, when the group is created, and the `+` in the
+terminal bar opens another terminal of that same CLI without asking again — so Claude tabs only sit
+in Claude groups and OpenCode tabs in OpenCode groups, and the group's name and accent describe
+every terminal in it rather than just the first. The `+` tooltip names the CLI it will open.
+`New Terminal (Resume Session…)` and `(Continue Last Session)` are refused in an OpenCode group,
+because `--resume` / `--continue` are Claude-only flags and the resulting tab would be a Claude one.
+
+There is no way past the rule. `New Terminal with Custom Command` used to be one — it ran whatever
+was typed, so `opencode` in a Claude group produced an OpenCode tab there — and it is gone, along
+with the help parser and path completion it needed. The panel supports these two CLIs and nothing
+else, so a free-text command line had no remaining job. Per-tab flags go in `claudeTerminal.args`.
+
+**Double-click a group tab to rename it.** The `.group-tab-name` span is swapped for an input in
+place — Enter commits, Escape reverts, blur commits — and the host refuses an empty or unchanged
+name, answering with a `groupsUpdate` either way so the bar always shows the name that actually
+applies. Default names carry no number, because a number would only sit in front of the name you
+are about to type.
+
+Two details make the field survive its surroundings. `renderGroupBar` rebuilds the whole bar on
+every `groupsUpdate`, and those fire for unrelated reasons (another group's terminal starting to
+wait for input), so the renaming group's id and the current draft are held on the webview context
+and the field is re-opened after the rebuild — after appending, since a detached element cannot
+take focus. And the blur handler checks `input.isConnected`: without it, being torn out by that
+same rebuild would read as a blur and commit the half-typed draft.
+
+A group owns a working directory. Creating one asks for it exactly as opening a tab always did
+(`PtyManager.selectWorkingDirectory`, a QuickPick only in a multi-root workspace); every terminal
+opened in the group then starts there without asking again. That makes a group one project, which
+is the unit Claude Code already works in — session history lives per directory, so `--resume` in
+any tab of a group offers that group's sessions.
+
+**Terminal ids stay globally unique across groups.** They key `PtyManager.ptys`, the status line's
+`<terminalId>.json`, `MY_TAB_ID` / `CLAUDE_PANEL_TAB_ID` in the PTY env, the inter-agent presence
+file and the webview's `#terminal-<id>`. Because they never collide, no per-tab message carries a
+group id and none of those contracts had to learn about grouping; `groupsUpdate` is the only new
+message going out, `newGroup` / `closeGroup` / `switchGroup` the only ones coming back.
+
+Switching groups tears nothing down. `switchToTerminal` already hides every wrapper but one, so the
+inactive groups' xterm instances and their scrollback simply stay hidden and survive.
+
+### Behaviour worth knowing
+
+- The last group cannot be closed and renders without a close button; closing a group's last
+  terminal closes the group with it, unless it is the only one — then a fresh terminal opens in
+  the same directory.
+- `Cmd+Alt+Left/Right` cycle terminals **within** the active group, so the shortcut can never land
+  in another working directory. `Cmd+Alt+Up/Down` cycle groups.
+- A terminal waiting for input in a group that is off screen shows its pill on the **group** tab —
+  otherwise that notification would have nowhere to appear.
+- The group **shape** survives a window reload; the processes do not. See "Remembering the
+  layout" below.
+- The group bar has a fixed 28px height and is in the document from the first paint, even while
+  empty, so it is part of the box `measureInitialDimensions` measures rather than a later height
+  change the PTY would never hear about.
+
+### Remembering the layout
+
+The groups are written to `context.workspaceState` under `claudeTerminal.layout` — workspace scope,
+not global, because groups carry working directories and those belong to a project. Saved on
+structural change only (create, close, rename, switch), never from `sendGroupsUpdate`, which also
+fires whenever a tab starts or stops waiting for input and would turn a prompt flicker into a disk
+write.
+
+The record is index-based and free of ids, since ids are minted per run: per group the name, cwd,
+engine, workspace folder index, tab count and which tab was on screen, plus which group was active.
+It is read back as `unknown` and narrowed field by field — it comes off disk, where an older shape
+of the extension or a hand edit could have left anything — with the tab count clamped to 16 so a
+corrupt entry cannot open hundreds of terminals, and groups whose directory no longer exists
+dropped.
+
+**Restored tabs are cold.** The extension host dies with the window, so the processes are gone and
+there is no scrollback or session to bring back; what returns is the shape. Starting a CLI per
+restored tab would cost a Claude session per tab on every reload, and those count against the
+account's limits — so a restored tab exists in the bar with no process, and starts the first time
+it is switched to. Only the one tab that was on screen starts immediately, because switching to it
+is exactly what the restore does last.
+
+Waking one goes through the normal measurement path rather than spawning straight away. The webview
+sends `terminalReady` once per tab and a cold tab has already spent that report, so the host sends
+`startTerminal`, the webview clears `readySent`, re-fits and reports again — which is what the host
+was waiting for. That keeps the rule the whole startup path exists for: a process learns its window
+size before it paints its first frame. `handleTerminalReady` and `handleResize` both ignore a cold
+tab; without that, every reload would log `resize of unknown terminal` once per restored tab and
+train you to ignore the one warning that matters.
+
+A **webview** rebuild is a different thing entirely and needs none of this: moving the panel to the
+other sidebar or running `Developer: Reload Webviews` leaves the extension host and its PTYs alive,
+and `handleReady` finds the tabs still in the state manager and replays them, scrollback included.
+
+## Icons
+
+Every icon the fork contributes is an **SF Symbol at SF Pro Medium**, rendered from macOS by
+`scripts/render-icons.sh` into `media/icons/`. Regenerating them needs the Swift command line
+tools; the script is the only reason those PNGs are reproducible rather than mystery binaries.
+
+| Slot                  | Symbol                   |
+| --------------------- | ------------------------ |
+| Resume Session        | `clock.arrow.circlepath` |
+| Continue Last Session | `forward.frame`          |
+| Restart Terminal      | `arrow.clockwise`        |
+| View container        | `viewfinder`             |
+| Webview `+`           | `plus`                   |
+| Webview `×`           | `xmark`                  |
+
+**They are PNGs, not SVGs.** AppKit rasterises a symbol when it draws it — a PDF exported from
+`NSImage.draw` contains `/Im1 Do`, an image, with no paths to lift out. They are therefore rendered
+at 3x (36pt on a 48×48 canvas) and scaled into VS Code's 16px box. The common square canvas
+matters: the symbols have different natural aspect ratios, and without it VS Code would scale each
+to a different apparent size.
+
+**Availability follows the OS, not the SF Symbols app.** A name introduced in a later release fails
+with `SYMBOL NOT FOUND` even though the app lists it — `clock.arrow.trianglehead.counterclockwise.rotate.90`
+does exactly that on macOS 13. Check a new name by running the script before wiring it in.
+
+**Colour.** The three title-bar actions ship a light/dark pair, and VS Code picks by theme type —
+so the file named `light` carries the _dark_ grey `#3B3B3B`, the one named `dark` carries
+`#CCCCCC`. The view container contributes a single path with no pair, so it uses one balanced grey:
+`#797979` measures 4.10:1 on Light Modern's `#F8F8F8` and 4.08:1 on Dark Modern's `#181818`, where
+a single `#3B3B3B` would fall to 1.59:1 on dark.
+
+The webview's two buttons carry no colour at all. They are applied as CSS `mask-image` over
+`background-color: currentColor`, so one file follows the theme the way a codicon does — which is
+also why the webview's CSP had to gain an `img-src`: a mask is an image fetch, and the policy
+starts at `default-src 'none'`.
+
+### Why not codicons
+
+The three title-bar actions were codicons and could not be made consistent. VS Code colours the
+debug ones globally, through a theming participant that builds its selector with
+`ThemeIcon.asCSSSelector` at runtime — which is why the class name appears nowhere in the shipped
+bundle, and why `$(debug-continue)` renders blue (`#007ACC` light / `#75BEFF` dark) and
+`$(debug-restart)` green (`#388A34` / `#89D185`) even in a view title bar. `$(history)` had no such
+colour and fell through to `icon.foreground`, black-ish at `#3B3B3B` in Light Modern.
+
+It was also the lightest of the three. Measured at 16px as summed alpha coverage: `history` 49.4,
+`debug-continue` 60.7, `debug-restart` 60.3. Nothing in the coloured debug family combined a
+distinct shape, a matching weight and a defensible meaning — `debug-reverse-continue` matched the
+weight at 61.7 but is a mirrored Continue, and `debug-step-back` looks distinct but drops to 47.6.
+SF Symbols have the weight axis that the codicon set does not.
 
 ## Status line
 

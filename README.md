@@ -111,7 +111,6 @@ Set via VS Code Settings (`Cmd+,` / `Ctrl+,`):
 | `claudeTerminal.cwd`                     | string  | `""`         | Fixed working directory, `~` allowed (empty = first workspace folder)         |
 | `claudeTerminal.env`                     | object  | `{}`         | Additional environment variables                                              |
 | `claudeTerminal.directMode`              | boolean | `true`       | Run directly, no shell wrapper                                                |
-| `claudeTerminal.preloadHelp`             | boolean | `false`      | On startup, probe the engines' CLIs for `--help` (for flag suggestions)       |
 | `claudeTerminal.statusLine`              | boolean | `true`       | Render Claude's native status line at the bottom of the panel                 |
 | `claudeTerminal.statusLineProvider`      | string  | `"bundled"`  | `bundled` ships the producer; `own` expects your script to write the snapshot |
 | `claudeTerminal.statusLineCompactBudget` | number  | `0`          | Compaction target, shown as `Compacted 1/3`; `0` shows the count alone        |

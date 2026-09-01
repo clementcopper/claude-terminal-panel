@@ -59,6 +59,182 @@ body {
   min-height: 0;
 }
 
+/* The outer tab level: groups of terminals, each with its own working directory. Fixed height,
+   present from the first paint even while empty — `measureInitialDimensions` subtracts it, and a
+   bar that only appeared with the first group would change the terminal height after the PTY had
+   already been told its size. */
+#group-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  height: 28px;
+  flex-shrink: 0;
+  background-color: var(--vscode-editorGroupHeader-tabsBackground, #252526);
+  border-bottom: 1px solid var(--vscode-tab-border, #3c3c3c);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+#group-bar::-webkit-scrollbar {
+  display: none;
+}
+
+/* The three glyph buttons below draw an SF Symbol as a mask rather than a background image: the
+   shape comes from the PNG, the colour from `currentColor`. One file instead of a light and a dark
+   copy, and it follows the theme the way a codicon would. Both `-webkit-mask-*` and the unprefixed
+   properties are set — Electron's Chromium still matches the prefixed ones. */
+
+/* Sits behind the group tabs. Sticky against the right edge so it stays reachable however many
+   groups there are — they scroll under it rather than pushing it out of the bar. */
+.group-add {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  flex-shrink: 0;
+  width: 26px;
+  border: none;
+  border-left: 1px solid var(--vscode-tab-border, #3c3c3c);
+  background-color: var(--vscode-editorGroupHeader-tabsBackground, #252526);
+  color: var(--vscode-tab-inactiveForeground, #8c8c8c);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.group-add::before {
+  content: '';
+  width: 13px;
+  height: 13px;
+  -webkit-mask-image: url('icons/plus.png');
+  mask-image: url('icons/plus.png');
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  background-color: currentColor;
+}
+
+.group-add:hover {
+  background-color: var(--vscode-tab-hoverBackground, #383838);
+  color: var(--vscode-tab-activeForeground, #ffffff);
+}
+
+.group-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 0 6px 0 8px;
+  background-color: var(--vscode-tab-inactiveBackground, #2d2d2d);
+  border-right: 1px solid var(--vscode-tab-border, #3c3c3c);
+  color: var(--vscode-tab-inactiveForeground, #8c8c8c);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  position: relative;
+  transition: background-color 0.1s ease;
+}
+
+/* The engine bar, on the bottom edge where the terminal begins — the inner tabs already own the
+   left edge. Its colour comes from `--group-accent` (Claude vs OpenCode), set inline per tab.
+
+   It is a separate element rather than a border so the inactive state can dim the bar by itself:
+   `opacity` on the tab would dim its children too, and the waiting-for-input pill has to keep its
+   full contrast whether or not the group is on screen. */
+.group-tab::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background-color: var(--group-accent, transparent);
+  opacity: 0.45;
+  transition: opacity 0.1s ease;
+  pointer-events: none;
+}
+
+.group-tab:hover {
+  background-color: var(--vscode-tab-hoverBackground, #383838);
+}
+
+.group-tab.active {
+  background-color: var(--vscode-tab-activeBackground, #1e1e1e);
+  color: var(--vscode-tab-activeForeground, #ffffff);
+}
+
+.group-tab.active::after {
+  opacity: 1;
+}
+
+/* Never truncated: a shortened folder name is worse than no name, and two projects can share the
+   first ten characters. The bar scrolls sideways instead — that is what `overflow-x` is there for. */
+.group-tab-name {
+  white-space: nowrap;
+}
+
+/* Replaces the name in place on a double-click. Inherits the tab's type so the text does not
+   shift as it turns editable — only the ring around it says the field is live. */
+.group-tab-rename {
+  min-width: 0;
+  padding: 0 2px;
+  border: none;
+  border-radius: 2px;
+  outline: 1px solid var(--vscode-focusBorder, #007acc);
+  background-color: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, #cccccc);
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+}
+
+.group-tab-close {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.group-tab-close::before {
+  content: '';
+  width: 9px;
+  height: 9px;
+  -webkit-mask-image: url('icons/xmark.png');
+  mask-image: url('icons/xmark.png');
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  background-color: currentColor;
+}
+
+.group-tab:hover .group-tab-close,
+.group-tab.active .group-tab-close {
+  opacity: 0.7;
+}
+
+.group-tab-close:hover {
+  opacity: 1;
+  background-color: var(--vscode-toolbar-hoverBackground, #383838);
+}
+
 /* Terminals container - takes most of the space */
 #terminals-container {
   flex: 1;
@@ -550,8 +726,22 @@ body.vscode-high-contrast-light {
   border-bottom: 1px solid var(--vscode-tab-border, #3c3c3c);
   color: var(--vscode-icon-foreground, #c5c5c5);
   cursor: pointer;
-  font-size: 14px;
   flex-shrink: 0;
+}
+
+.tab-add::before {
+  content: '';
+  width: 13px;
+  height: 13px;
+  -webkit-mask-image: url('icons/plus.png');
+  mask-image: url('icons/plus.png');
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  background-color: currentColor;
 }
 
 .tab-add:hover {
@@ -660,6 +850,14 @@ body.vscode-high-contrast-light {
 }
 
 /* Notification pill for waiting input */
+/* On a group tab the pill sits inline before the name, not pinned to a corner: the group bar is
+   horizontal, and the corner is where the close button lives. */
+.group-tab .notification-pill {
+  position: static;
+  flex-shrink: 0;
+  order: -1;
+}
+
 .notification-pill {
   position: absolute;
   top: 1px;

@@ -1,60 +1,54 @@
-# Handoff — 2026-08-30 20:58
+# Handoff — 2026-09-01 12:50
 
 Arbeitsverzeichnis: /Users/danielmartin/claude-terminal-panel
 
 ## Stand
 
-Branch `feat/context-threshold`, HEAD `43d9d0e`, Arbeitsbaum sauber. Fünf Commits: Terminal-Padding
-links/rechts angeglichen und dann auf 8px gebracht, Model und Effort linksbündig, Ring-Level neu.
-`.vsix` gebaut und installiert, Hashes stimmen. **Der Fenster-Reload fehlt noch** — im Panel läuft
-der alte Extension-Host, keine der fünf Änderungen ist sichtbar.
+Branch `feat/context-threshold`, HEAD `2906212`. **Alles uncommittet**: 15 geändert, 4 gelöscht,
+3 neue Pfade (`media/icons/`, `scripts/render-icons.sh`, `scripts/render-sf-symbol.swift`). Eine
+große Runde: zweistufige Tabs (Gruppen über Terminals), Persistenz der Gruppen in
+`workspaceState`, Ausbau des Custom-Command-Wegs, und alle Icons auf SF Symbols. Lint, beide
+`tsc --noEmit` und `npm run package` sind grün; `.vsix` ist gebaut und installiert.
 
-Die Scrollbar-Frage ist beantwortet und abgeschlossen: Claude Code 2.1.251 nutzt den Alternate
-Screen, damit gibt es kein Terminal-Scrollback und keinen Balken. Nicht reparierbar, Daniel
-verzichtet darauf. Details in `LEARNINGS.md`.
+**Der Fenster-Reload fehlt.** Im Panel läuft der alte Extension-Host — nichts davon ist von Hand
+geprüft. Details stehen in `CHANGELOG.md` unter `[Unreleased]` und in `README.local.md`
+(Abschnitte „Tab groups" und „Icons").
 
 ## Mitten drin
 
-- Nichts halb Gebautes. Offen ist nur der Reload und die Handprüfung danach.
+- Handprüfung nach dem Reload, in dieser Reihenfolge: Gruppen anlegen/umbenennen/schließen →
+  Fenster neu laden → kommen Gruppen mit Namen und Reihenfolge zurück, läuft **nur** der zuletzt
+  aktive Tab, starten die anderen beim Klick? → `New Terminal (Resume Session…)` aus der Palette
+  (der Pfad, der beim Custom-Command-Ausbau am ehesten mitgestorben wäre).
+- Offene Designfrage: Resume trägt 48,0 Tinte gegen 36,5 (Continue) und 35,0 (Restart). Wenn es
+  zu schwer wirkt, in `scripts/render-icons.sh` die Punktgröße für `clock.arrow.circlepath` von
+  36 auf ~32 setzen und neu rendern.
 
 ## Nächster Schritt
 
-Daniel bittet, `Developer: Reload Window` auszuführen (killt die Sitzungen in den Tabs), danach
-von Hand prüfen:
-
-1. Terminaltext links und rechts gleich weit vom Rand, ~8px bei 520px Panelbreite.
-2. `Opus 5` und Effort-Badge auf derselben linken Kante.
-3. Ctx-Ring orange ab 36% Fenster, rot ab 48% (bei Threshold 60); Session und Week ab 60/80%.
-4. Comp-Ring: 2. Compaction orange, 3. rot — vorher immer blau.
+`Cmd+Shift+P` → `Developer: Reload Window`, danach im Panel `claude --resume`.
 
 ## Schon probiert, geht nicht
 
-- **Die Scrollbar per CSS sichtbar machen.** Das CSS war die ganze Zeit richtig, im Harness mit
-  echtem Scrollback zeichnet es einen sauberen 10px-Balken. Es gibt schlicht nichts zu scrollen.
-- **`CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1`** über `claudeTerminal.env` — funktioniert messbar
-  (Balken 338px, `opacity 1`), von Daniel wieder zurückgestellt. `settings.json` ist Originalstand.
-- **`overviewRuler: { width: 1 }`**, um FitAddons 14px-Rinne zu verkleinern — schaltet den
-  Overview-Ruler scharf, der dann zeichnet. Gemessen.
-- **Padding auf `.xterm`**, um den Text zu verschieben — `.xterm-viewport` ist absolut mit
-  `inset: 0` gegen die Padding-Box, bewegt sich also nicht, und FitAddon zieht das Padding
-  zusätzlich von der Spaltenzahl ab.
-- **Brave headless mit `--screenshot` / `--dump-dom`** beendet sich nicht, auch nicht bei einer
-  leeren Seite. Über `--remote-debugging-port` und CDP fahren, Treiber liegt im Scratchpad.
-- **Artifact-URL und Datei-Karten** haben bei Daniel beide nichts angezeigt. Bilder auf den
-  Schreibtisch legen war der Weg, der ankam (`~/Desktop/claude-altscreen.png`, `claude-inline.png`).
+- **SF Symbols als SVG geht nicht.** AppKit rastert beim Zeichnen (`/Im1 Do` im exportierten PDF),
+  und `SFSymbolsFallback.otf` nennt seine Glyphen `uniXXXXXX` — die Zuordnung Name → Codepoint
+  steht in keiner Plist. Deshalb PNG in 3x. Nicht nochmal suchen.
+- `clock.arrow.trianglehead.counterclockwise.rotate.90` existiert unter macOS 13 nicht (SF Symbols
+  7). Ersetzt durch `clock.arrow.circlepath`.
+- Kein PDF→SVG-Konverter auf der Maschine (`pdftocairo`, `mutool`, `inkscape`, `pdf2svg` fehlen).
+- Codicons konnten das Problem nicht lösen: in der eingefärbten Debug-Familie gibt es kein Symbol,
+  das gleichzeitig eigenständig aussieht, ~60 Tinte trägt und sinnvoll „Resume" heißt.
 
 ## Was Daniel entschieden hat
 
-- Terminal-Scrollbar ist verzichtbar, Alternate Screen bleibt.
-- Ring-Level auf der **Füllung**, nicht auf dem Rohprozentsatz: 60% orange, 80% rot.
-- Comp-Ring zählt statt zu füllen: 2. Compaction orange, 3. rot, unabhängig vom Budget.
-- Terminal-Padding 8px, passend zum `padding: 8px` der Statusleiste.
-- Model und Effort linksbündig — kippt die Mittelachse aus `daca24f`.
+- Ein Gruppen-Tab = **eine CLI**. Das innere `+` fragt nicht mehr, es öffnet die CLI der Gruppe.
+- Wiederhergestellte Tabs sind **kalt** — Prozess erst beim ersten Anklicken, wegen der Sessions.
+- Gruppennamen aus dem cwd-Basename, **nie gekürzt**, Doppelklick zum Umbenennen.
+- Icons: SF Symbols, SF Pro Medium, alle in Theme-Grau. **Gewicht geht vor Farbe.**
+- `New Terminal with Custom Command` ist ersatzlos raus, samt vier Modulen und `preloadHelp`.
 
 ## Erledigt und vom Tisch
 
-- Ein neues Setting für den Alternate Screen — `claudeTerminal.env` kann das schon.
-- Die eigene cols-Rechnung, um FitAddons Rinne loszuwerden. Wäre der einzige Weg zu exakt 8px in
-  jeder Breite, kostet aber die Rinne und legt den Balken über die letzte Spalte.
-- Das Figma-Design ist **nicht** nachgezogen, bewusst aufgeschoben; steht in der Memory
-  `statusbar-design-in-figma` als Liste der Abweichungen.
+- Der Codicon-Weg für die Icons — mehrfach durchgemessen, verworfen.
+- Eigene SVGs zeichnen und Claude-Orange als Icon-Farbe — beides angeboten, beides abgelehnt.
+- Das fünfte Icon in der Titelleiste gehört VS Code (`…`-Überlauf bzw. Schließen), nicht uns.
