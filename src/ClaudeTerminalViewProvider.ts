@@ -88,6 +88,19 @@ export class ClaudeTerminalViewProvider
    */
   private readonly coldTerminals = new Set<string>();
 
+  /**
+   * What to spawn if a tab's process exits with code 1, tried in order and consumed as it goes.
+   *
+   * `--resume` hands the tab to Claude's session picker, and cancelling that picker with Escape
+   * ends the process — measured against the real CLI: `claude --resume` plus `\x1b` exits with
+   * code 1. By then the session the tab was running is already gone, because the resume killed it
+   * to make room for the picker. There is no session id anywhere in this extension to go back to;
+   * continuity lives in the CLI's own history, which is per working directory, so the way back is
+   * another start with `--continue` — the newest session of that directory, which is the one that
+   * was running.
+   */
+  private readonly exitRecovery = new Map<string, { args: string[]; note: string }[]>();
+
   /** Key under which the tab layout is remembered for this workspace. */
   private static readonly LAYOUT_KEY = 'claudeTerminal.layout';
 
@@ -570,14 +583,37 @@ export class ClaudeTerminalViewProvider
     }
   }
 
+  /**
+   * Reports the exit — or, for a tab that was handed to the session picker, quietly puts it back.
+   *
+   * The recovery plan is a list and every step is consumed exactly once, so this cannot turn into
+   * a restart carousel: `--continue` fails with code 1 of its own when the directory has no
+   * session yet (`No conversation found to continue`, measured), and the plain start behind it is
+   * the last entry. When the list runs out, the familiar exit line stands.
+   */
   private handlePtyExit(terminalId: string, exitCode: number | null): void {
-    if (!this.disposed && this.view) {
-      this.postMessage({
-        type: 'output',
-        id: terminalId,
-        data: `\r\n[Process exited with code ${String(exitCode ?? 0)}]\r\n`
-      });
+    if (this.disposed || !this.view) return;
+
+    const plan = exitCode === 1 ? this.exitRecovery.get(terminalId) : undefined;
+    const next = plan?.shift();
+    if (next) {
+      if (plan && plan.length === 0) {
+        this.exitRecovery.delete(terminalId);
+      }
+      this.postMessage({ type: 'output', id: terminalId, data: `\r\n${next.note}\r\n` });
+      // Out of node-pty's own exit callback before spawning the replacement.
+      setTimeout(() => {
+        this.respawnTerminal(terminalId, next.args);
+      }, 0);
+      return;
     }
+
+    this.exitRecovery.delete(terminalId);
+    this.postMessage({
+      type: 'output',
+      id: terminalId,
+      data: `\r\n[Process exited with code ${String(exitCode ?? 0)}]\r\n`
+    });
   }
 
   private handlePtyError(terminalId: string, error: string): void {
@@ -931,7 +967,15 @@ export class ClaudeTerminalViewProvider
       return undefined;
     }
     const config = this.engineConfig(engine);
-    return this.createTerminalWithCommand(config.command, [...config.args, flag]);
+    const id = await this.createTerminalWithCommand(config.command, [...config.args, flag]);
+    // Cancelling the picker in a tab that was opened for it leaves nothing to go back to — the tab
+    // is new. It carries on with a plain session rather than dying on `[Process exited with code 1]`.
+    if (id && flag === '--resume') {
+      this.exitRecovery.set(id, [
+        { args: [], note: '[Resume cancelled — starting a new session]' }
+      ]);
+    }
+    return id;
   }
 
   /**
@@ -952,6 +996,7 @@ export class ClaudeTerminalViewProvider
     this.statusLineWatcher.removeTerminal(terminalId);
     this.thresholdNotified.delete(terminalId);
     this.coldTerminals.delete(terminalId);
+    this.exitRecovery.delete(terminalId);
     this.interAgentRouter?.unregisterPresence(terminalId);
     this.stateManager.delete(terminalId);
     this.postMessage({ type: 'removeTab', id: terminalId });
@@ -1061,6 +1106,9 @@ export class ClaudeTerminalViewProvider
   }
 
   public restart(): void {
+    // A plan belongs to the resume that created it: any other explicit start supersedes it.
+    const activeId = this.stateManager.getActiveId();
+    if (activeId) this.exitRecovery.delete(activeId);
     this.respawnActive([]);
   }
 
@@ -1069,11 +1117,22 @@ export class ClaudeTerminalViewProvider
    * tab's own directory instead of starting a fresh conversation. No new tab.
    */
   public resumeActiveTerminal(): void {
+    const activeId = this.stateManager.getActiveId();
+    // Only a Claude tab reaches the picker at all: `respawnTerminal` drops the session flags on an
+    // OpenCode tab, so there the resume is a plain restart with nothing to recover from.
+    if (activeId && (this.stateManager.get(activeId)?.engine ?? 'claude') === 'claude') {
+      this.exitRecovery.set(activeId, [
+        { args: ['--continue'], note: "[Resume cancelled — reopening the tab's last session]" },
+        { args: [], note: '[No session to return to — starting a new one]' }
+      ]);
+    }
     this.respawnActive(['--resume']);
   }
 
   /** Respawns the active tab with `--continue`: straight back into its last session. */
   public continueActiveTerminal(): void {
+    const activeId = this.stateManager.getActiveId();
+    if (activeId) this.exitRecovery.delete(activeId);
     this.respawnActive(['--continue']);
   }
 
@@ -1085,28 +1144,37 @@ export class ClaudeTerminalViewProvider
   private respawnActive(extraArgs: string[]): void {
     const activeId = this.stateManager.getActiveId();
     if (!activeId) return;
+    this.respawnTerminal(activeId, extraArgs);
+  }
 
-    this.thresholdNotified.delete(activeId);
+  /**
+   * The same for a named tab rather than the active one: a process that exits recovers itself, and
+   * the tab it belongs to is not necessarily the one on screen.
+   */
+  private respawnTerminal(terminalId: string, extraArgs: string[]): void {
+    if (!this.stateManager.get(terminalId)) return;
+
+    this.thresholdNotified.delete(terminalId);
     // Restart/resume/continue start the process outright, so the tab is no longer cold.
-    this.coldTerminals.delete(activeId);
+    this.coldTerminals.delete(terminalId);
 
     // No guard flag needed for the old process: `PtyManager` drops it from its map here, and
     // both its handlers check that identity before reporting anything.
-    this.ptyManager.kill(activeId);
+    this.ptyManager.kill(terminalId);
 
     // The tab keeps its own engine: a restart on an OpenCode tab must come back as
     // OpenCode, not silently fall back to the configured Claude command. Resume/continue
     // flags are Claude-specific, so they only apply to Claude tabs.
-    const active = this.stateManager.get(activeId);
-    const engine = active?.engine ?? 'claude';
+    const instance = this.stateManager.get(terminalId);
+    const engine = instance?.engine ?? 'claude';
     const config = this.engineConfig(engine);
-    const cwd = active?.cwd;
+    const cwd = instance?.cwd;
     const spawnConfig =
       engine === 'claude' && extraArgs.length > 0
         ? { ...config, args: [...config.args, ...extraArgs] }
         : config;
-    this.ptyManager.spawn(activeId, spawnConfig, this.lastCols, this.lastRows, cwd);
-    this.registerPresence(activeId);
+    this.ptyManager.spawn(terminalId, spawnConfig, this.lastCols, this.lastRows, cwd);
+    this.registerPresence(terminalId);
   }
 
   /**

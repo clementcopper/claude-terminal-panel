@@ -324,6 +324,19 @@ code 129]` (128 + SIGHUP, der Kill selbst) in der frisch gestarteten Sitzung —
   Handler. Gemessen mit `chrome-headless-shell --dump-dom` (in
   `~/Library/Caches/ms-playwright/chromium_headless_shell-*/`), Ergebnisse als JSON in ein
   `<pre>` geschrieben und herausgegrept.
+- **Claude Codes Auswahl-Dialoge enden mit Exit-Code 1, nicht mit einer Rückkehr.** Im PTY
+  gemessen: `claude --resume` plus `\x1b` beendet den Prozess mit `{"exitCode":1,"signal":0}`, und
+  `claude --continue` in einem Verzeichnis ohne Sitzung ebenfalls mit 1 („No conversation found to
+  continue"). Wer einen Tab für `--resume` neu startet, muss den Abbruch also selbst auffangen —
+  die vorherige Sitzung ist zu dem Zeitpunkt schon tot.
+- **Der Provider lässt sich ohne VS Code fahren.** `npx esbuild src/ClaudeTerminalViewProvider.ts
+--bundle --platform=node --format=cjs --alias:vscode=<stub> --alias:node-pty=<stub>` reicht, um
+  Spawn-Ketten deterministisch zu prüfen. Zwei Fallen: der `vscode`-Stub braucht auch
+  `window.tabGroups.activeTabGroup.activeTab`, weil `EditorContextTracker` schon im Konstruktor
+  liest; und der `node-pty`-Stub wird **mitgebündelt**, die Sonde bekommt also eine zweite Kopie —
+  Aufzeichnungen gehören auf `globalThis`, sonst sieht sie null Spawns und man sucht den Fehler im
+  Produktionscode.
+
 - **`--dump-dom` stellt keine `ResizeObserver`-Rückrufe zu.** In `chrome-headless-shell` mit
   `--virtual-time-budget` feuerte ein Observer genau einmal — beim Beobachtungsstart — und danach
   bei keiner der Größenänderungen mehr; eine erste Messreihe meldete deshalb „Klasse bleibt

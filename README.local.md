@@ -366,6 +366,19 @@ silently, because the watch follows the inode rather than the path.
 
 ### Behaviour worth knowing
 
+- **Cancelling the session picker no longer kills the tab.** `claude --resume` ends with exit code
+  1 when the list is dismissed with Escape (measured against the real CLI in a PTY), and by then
+  the session the tab was running is gone — the resume killed it to make room for the picker. The
+  tab therefore carries a recovery plan: on exit code 1 it comes back with `--continue`, the newest
+  session of its own directory, which is the one that was running. If that fails too — an empty
+  directory answers `No conversation found to continue`, also code 1 — it starts a plain session.
+  A tab opened by `New Terminal Tab (Resume Session…)` has no previous session, so its plan is the
+  plain start alone. Each step is consumed once, so the third exit prints the familiar
+  `[Process exited with code 1]` instead of restarting again; `Restart` and `Continue` drop a
+  pending plan, and so does an exit with any other code. Driven end to end against the real
+  provider with `vscode` and `node-pty` stubbed out: resume → `--continue` → plain → message, plus
+  a plain tab exiting 1 and a resumed tab exiting 0, neither of which respawns.
+
 - The row only updates when Claude re-renders its status line. Idle, the last value stands;
   `updatedAt` older than 60 s greys the row out.
 - Tabs running something other than Claude never write a file, so their row stays hidden.
