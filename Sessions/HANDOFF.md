@@ -4,11 +4,10 @@ Arbeitsverzeichnis: /Users/danielmartin/claude-terminal-panel
 
 ## Stand
 
-Branch `feat/context-threshold`, HEAD `094de94`. Sechs Commits seit dem letzten Handoff, alle bis
-`e71d73b` gepusht nach `origin` (clementcopper); `094de94` (Regeln in `.claude/rules/`, Korrekturen
-darin) ist **nur lokal**. Arbeitsbaum: `LEARNINGS.md` und drei Regeldateien vom Pre-Clear geändert,
-nicht committet. Gebaut und installiert ist der Stand von `e71d73b`; Daniel hat alles bis auf die
-Resume-Rettung im Panel gesehen und abgenommen.
+Alles liegt auf **`main`**, HEAD `4a09108`, gepusht nach `origin` (clementcopper); `feat/context-threshold`
+ist lokal und remote gelöscht (2026-09-03, per Fast-Forward gemergt). Arbeitsbaum sauber. Gebaut und
+installiert ist der Stand von `e71d73b`; Daniel hat alles bis auf die Resume-Rettung im Panel gesehen
+und abgenommen.
 
 Drin seit 2026-09-01: Statuszeile zentriert, sobald sie einzeilig ist und Panel > 400px
 (`updateCentering`, gemessen, kein Breakpoint); Icons `semibold` mit Deckel pro Symbol, `+` 11px;
@@ -17,16 +16,11 @@ Resume-Abbruch startet den Tab mit `--continue`, dann ohne Flags, dann Exit-Zeil
 
 ## Mitten drin
 
-- Pre-Clear-Änderungen uncommittet: `LEARNINGS.md` (+5 Bullets), `.claude/rules/{webview,packaging,statusline-ui}.md` (+4 Zeilen).
 - `Sessions/**` fehlt in `.vscodeignore` — `vsce ls` listet die Handoff-Dateien im `.vsix`.
 
 ## Nächster Schritt
 
-```
-git add LEARNINGS.md .claude/rules && git commit -m "docs: learnings from the icon, tab bar and resume rounds" && git push origin feat/context-threshold
-```
-
-Danach `Sessions/**` in `.vscodeignore` eintragen, `npx vsce ls | grep Sessions` muss leer sein.
+`Sessions/**` in `.vscodeignore` eintragen, dann `npx vsce ls | grep Sessions` — muss leer sein.
 Reload steht noch aus für `e71d73b`: `Resume` → ESC muss in dieselbe Sitzung zurückführen.
 
 ## Schon probiert, geht nicht
@@ -49,4 +43,4 @@ Reload steht noch aus für `e71d73b`: `Resume` → ESC muss in dieselbe Sitzung 
 
 - Icon-Vergleichsbogen als Artifact (`claude.ai/code/artifact/9163bca2-…`) — Entscheidung gefallen, Watch beendet.
 - Node-Pfad in `CLAUDE.md` korrigiert (v22.14.0 Standard, kein nvm-v20).
-- Merge nach `main` weiterhin nicht angefragt.
+- Merge nach `main` erledigt, Feature-Branch weg.
