@@ -4,8 +4,6 @@ import type { FitAddon as XTermFitAddon } from '@xterm/addon-fit';
 // VS Code API types for webview
 export interface VSCodeAPI {
   postMessage(message: WebviewOutgoingMessage): void;
-  getState<T>(): T | undefined;
-  setState<T>(state: T): void;
 }
 
 // Global declarations for VSCode webview API

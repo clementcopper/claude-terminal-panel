@@ -182,13 +182,6 @@ export class TerminalStateManager {
   }
 
   /**
-   * Gets the count of terminals.
-   */
-  get count(): number {
-    return this.terminals.size;
-  }
-
-  /**
    * Gets the active terminal ID.
    */
   getActiveId(): string | undefined {
@@ -277,14 +270,5 @@ export class TerminalStateManager {
       engine: g.engine,
       accentColor: ENGINE_ACCENT_COLORS[g.engine]
     }));
-  }
-
-  /**
-   * Iterates over all terminal IDs.
-   */
-  forEachId(callback: (id: string) => void): void {
-    for (const id of this.terminals.keys()) {
-      callback(id);
-    }
   }
 }
