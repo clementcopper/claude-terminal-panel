@@ -26,6 +26,10 @@ Non-obvious findings and dead ends. Only add what saves future work.
   cannot go into `.gitignore` by convention here, but sits in the working tree as untracked noise.
   An entry in `.git/info/exclude` hides it locally only; `vsce` does not read that file. Checked:
   `vsce ls` still lists `dist/extension.js`, `media/main.js` and `media/xterm.css` afterwards.
+- **`Sessions/` fährt im `.vsix` mit.** `vsce ls` (2026-09-03) listet `Sessions/HANDOFF.md` und die
+  Tagesdateien — `.vscodeignore` kennt `.claude/**`, aber kein `Sessions/**`. Das Paket ist deshalb
+  ein paar KB Handoff-Text schwerer und trägt interne Notizen. Beim nächsten Packen eine Zeile
+  `Sessions/**` ergänzen und mit `vsce ls | grep Sessions` gegenprüfen.
 
 ## Native module
 
@@ -156,6 +160,21 @@ Non-obvious findings and dead ends. Only add what saves future work.
   still read as sitting too low; the fix was 4 px more at the top inset and 5 px of margin below
   the container, both set by eye. Write into the comment that the numbers are deliberately uneven,
   or the next reader restores the matching values and undoes it.
+- **VS Code rahmt die Sekundärleiste selbst.** `.monaco-workbench.floating-panels .part.auxiliarybar`
+  trägt `border: 1px solid var(--vscode-surface-border …)` und `border-radius:
+var(--vscode-cornerRadius-large)`; die Webview-Fläche (`.webview-overlay-content`) wird mit
+  denselben 8px beschnitten. Eine Haarlinie links/rechts/oben an `#group-bar` lag direkt daneben und
+  las sich als Doppellinie, ein eigener Radius oben rechts verdoppelte die Ecke. Am 2026-09-02 blieb
+  nur die Linie unten; Ecken und Seiten gehören dem Workbench. Der Schalter dafür wäre
+  `workbench.experimental.floatingPanels`, aber der gilt workbench-weit.
+- **Der `+` der Gruppenleiste klebt nur bei Überlauf am rechten Rand.** `position: sticky; right: 0`
+  pinnt erst, wenn der Inhalt breiter als die Leiste ist; bei zwei kurzen Namen steht er mitten in
+  der Leiste (gemessen bei 520px: `add.x = 248`, Leiste 520). Ein Rand-Detail für den Button muss
+  deshalb auch auf der Leiste selbst sitzen — oder gar nicht.
+- **Zwei zusammenstoßende Haarlinien sind eine 2px-Linie.** `.group-tab { border-right }` plus
+  `.group-add { border-left }` an derselben Stelle: im 2x-Render 4 Gerätepixel breit, jede andere
+  Trennlinie 2. Daniel sah „eine eigene Linie" am Button. Pixelscan entlang einer Zeile
+  (`getpixel` je x, Übergänge > 8 melden) findet das in Sekunden.
 
 ## OpenCode theme in the panel
 
@@ -274,6 +293,13 @@ Non-obvious findings and dead ends. Only add what saves future work.
 code 129]` (128 + SIGHUP, der Kill selbst) in der frisch gestarteten Sitzung — und Restbytes der
   alten PTY gleich hinterher. `PtyManager` vergleicht jetzt in beiden Handlern die PTY-Instanz mit
   der, die für die Tab-ID eingetragen ist; alles andere ist ein bereits abgeräumter Prozess.
+- **Ein größerer Rahmen macht das Icon kleiner, nicht das Glyph größer.** VS Code skaliert die ganze
+  PNG in 16px; wer `clock.arrow.circlepath` bei 44pt (51px Tinte) in einen 56px-Rahmen setzt, bekommt
+  dieselbe Glyphe kleiner als bei 40pt in 48px. Beschnitt vermeidet man mit einem Deckel **pro
+  Symbol**: größte Punktgröße, deren Tinte noch 1px Rand lässt (resume 40, continue/restart 42, Rest
+  44 in 48px, 2026-09-01). Vergleich mit den Codicons **bei 16px**: Tintenkasten und Farbmasse
+  (Summe Alpha) gegen `codicon.ttf` aus `out/media/` gerendert; `medium 36` lag drei Pixel Kante
+  unter `add`/`close`. Die Glyphengröße im 48px-Quell-PNG sagt darüber nichts.
 
 ## OpenCode-Startzeit
 
@@ -436,6 +462,15 @@ min-width: 0` wurde die Ringreihe auf den Rest der Zeile zusammengedrückt und j
   `foreground` und `descriptionForeground` sogar auf denselben Wert (`#3B3B3B`) zusammen, die
   Hierarchie verschwindet also ganz. Eine Farbe für beide Zeilen, Unterschied über das
   Schriftgewicht: das trägt in beiden Modi gleich.
+- **Figma-Mocks tragen schematische Abstände.** Die fünf Panelbreiten-Frames (`915:6228`) setzen
+  überall `itemSpacing: 8`, der Build hat 12px zwischen den Ringen und 24px nach dem Kopf — und die
+  Umbruchbereiche, die in den Frames notiert sind („gilt 253–438 px"), stammen aus der Messung
+  des Builds mit 12/24. Nur die Ausrichtung (`CENTER` ab 500px, `MIN` darunter) war die Vorgabe.
+  Vor dem Übernehmen eines Frame-Werts prüfen, ob die übrigen Zahlen im Frame zum Build passen.
+- **figma-cli liest aus diesem Projekt.** Daniel startet den Daemon (`! node
+~/figma-cli/src/index.js connect`), danach `get <id>`, `node tree <id> -d 5` und `eval` mit
+  `figma.getNodeById` für `itemSpacing`/`primaryAxisAlignItems` — alles lesend. Framelink ist hier
+  nicht registriert (`~/.claude.json`: nur Business und designdone.de).
 
 ## Schriften und Scrollbar im Panel
 
