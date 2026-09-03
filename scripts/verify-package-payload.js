@@ -219,6 +219,19 @@ function checkVsix(vsixPath) {
     problems.push(`${String(debugSymbols.length)} .pdb debug symbols were packaged`);
   }
 
+  // `*.ts` and `tsconfig.json` in .vscodeignore do not cross a directory boundary, so the webview
+  // sources under media/ shipped unnoticed. The bundle is what loads; sources never belong here.
+  const sources = entries.filter(
+    (entry) => entry.name.endsWith('.ts') || entry.name.endsWith('/tsconfig.json')
+  );
+  if (sources.length > 0) {
+    problems.push(
+      `${String(sources.length)} TypeScript sources were packaged: ${sources
+        .map((entry) => entry.name.replace(/^extension\//, ''))
+        .join(', ')}`
+    );
+  }
+
   if (problems.length > 0) {
     fail(`${path.basename(target)} is not installable everywhere`, problems);
   }

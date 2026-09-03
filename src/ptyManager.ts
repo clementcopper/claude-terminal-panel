@@ -107,6 +107,13 @@ export class PtyManager {
     if (fixed) {
       return { path: fixed, folderIndex: undefined };
     }
+    // The warning lives here, at the one place that decides a new tab's directory. The resolver
+    // itself runs again on every spawn, and warning there showed the same popup twice per tab.
+    if (configuredCwd.trim()) {
+      void vscode.window.showWarningMessage(
+        `Claude Terminal: claudeTerminal.cwd does not exist, falling back to the workspace folder: ${configuredCwd.trim()}`
+      );
+    }
 
     const folders = vscode.workspace.workspaceFolders;
 
@@ -168,6 +175,9 @@ export class PtyManager {
   /**
    * Resolves the `claudeTerminal.cwd` setting: expands a leading `~` and requires
    * the directory to exist. Returns undefined when unset or unusable.
+   *
+   * Deliberately silent: it runs on every spawn, so a respawn of a tab that never recorded a cwd
+   * falls back without a popup — that tab was already warned when it was created.
    */
   private resolveConfiguredCwd(configuredCwd: string): string | undefined {
     const raw = configuredCwd.trim();
@@ -178,14 +188,7 @@ export class PtyManager {
     const expanded =
       raw === '~' || raw.startsWith('~/') ? path.join(os.homedir(), raw.slice(1)) : raw;
 
-    if (!fs.existsSync(expanded)) {
-      void vscode.window.showWarningMessage(
-        `Claude Terminal: claudeTerminal.cwd does not exist, falling back to the workspace folder: ${expanded}`
-      );
-      return undefined;
-    }
-
-    return expanded;
+    return fs.existsSync(expanded) ? expanded : undefined;
   }
 
   /**

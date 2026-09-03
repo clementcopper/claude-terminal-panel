@@ -5,6 +5,11 @@ src/**
 *.map
 *.ts
 tsconfig.json
+# `*.ts` and `tsconfig.json` are matched by vsce without crossing a directory boundary, so
+# the webview sources under media/ slipped through and shipped 43 KB of TypeScript to every
+# user. The bundle media/main.js is what the webview loads; the sources have no business here.
+media/**/*.ts
+media/**/tsconfig.json
 *.md
 .husky/**
 .editorconfig
