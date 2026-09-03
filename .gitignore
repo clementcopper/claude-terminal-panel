@@ -1,7 +1,7 @@
 node_modules/
 *.vsix
 .vscode-test/
-.claude/
+.claude/settings.local.json
 .DS_Store
 
 # Screenshots dropped into the project folder. Keeping them out of the .vsix needs a

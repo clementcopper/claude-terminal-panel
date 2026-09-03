@@ -9,12 +9,12 @@ a VS Code extension that runs Claude Code in a PTY inside the secondary sidebar.
 installed **only on this machine** as `local.claude-terminal-panel-local`; the Marketplace version
 is uninstalled. Renamed on purpose so a Marketplace update cannot overwrite it.
 
-| File              | Contents                                                                            |
-| ----------------- | ----------------------------------------------------------------------------------- |
-| `README.local.md` | build recipe, package contents, differences from upstream, the status line contract |
-| `LEARNINGS.md`    | tool quirks and dead ends — add findings there, not here                            |
-| `CHANGELOG.md`    | upstream's history plus this fork's `1.1.0` entry                                   |
-| `README.md`       | upstream's readme, extended with the features this fork adds                        |
+| File              | Contents                                                                                 |
+| ----------------- | ---------------------------------------------------------------------------------------- |
+| `README.local.md` | build recipe, package contents, differences from upstream, the status line contract      |
+| `LEARNINGS.md`    | stories behind the rules in `.claude/rules/` — those load by path when you read the file |
+| `CHANGELOG.md`    | upstream's history plus this fork's `1.1.0` entry                                        |
+| `README.md`       | upstream's readme, extended with the features this fork adds                             |
 
 ## Commands
 
@@ -183,4 +183,6 @@ to, because one CLI session per tab per reload is a cost nobody asked for. Wakin
 
 ## Learnings
 
-See [LEARNINGS.md](LEARNINGS.md). Add new findings there, not here.
+A new finding goes to two places, always both: the story into [LEARNINGS.md](LEARNINGS.md), a
+one-line rule into the matching file in `.claude/rules/` (path-scoped; `probes.md` loads every
+session). Never here.
