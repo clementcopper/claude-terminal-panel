@@ -22,6 +22,7 @@ eslint.config.mjs
 scripts/**
 *.vsix
 Bildschirmfoto*.png
+Sessions/**
 Screenshot*.png
 Bildschirmaufnahme*.mov
 # vsce matches case-sensitively, unlike git on this filesystem — `screenshot_2.png` slipped past

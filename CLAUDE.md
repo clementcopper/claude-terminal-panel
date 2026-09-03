@@ -34,6 +34,7 @@ export PATH="$HOME/.nvm/versions/node/<a 20–24 version>/bin:$PATH"
 | Full build               | `npm run compile` (extension bundle + `media/main.js` + copies `xterm.css`)   |
 | Extension only, watching | `npm run watch`                                                               |
 | Lint                     | `npm run lint` / `npm run lint:fix`                                           |
+| Type-check both halves   | `npm run typecheck` (runs in `vscode:prepublish` too — esbuild strips types)  |
 | Format                   | `npm run format` / `npm run format:check`                                     |
 | Package `.vsix`          | `npm run package` (no `--target`, `--skip-license`; guarded on both sides)    |
 | Check the payload alone  | `node scripts/verify-package-payload.js --source` / `--vsix`                  |
@@ -58,9 +59,8 @@ Linux has no prebuild in `node-pty` 1.1.0 and would have to be packaged on Linux
 by hand. Never claim a change works without that reload. Reloading also kills the Claude session
 running in the panel, so commit first.
 
-Type-checking happens through esbuild bundling only (`tsc` is not in the build chain); run
-`npx tsc --noEmit -p tsconfig.json` and `npx tsc --noEmit -p media/tsconfig.json` when a change
-touches types.
+esbuild strips types without checking them, so `npm run typecheck` is the only place a type error
+surfaces; run it after every change that touches types. `vscode:prepublish` runs it as well.
 
 ## Git — read before running anything
 

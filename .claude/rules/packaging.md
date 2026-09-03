@@ -12,6 +12,8 @@ paths:
 Distilled from `LEARNINGS.md` § Packaging, § Native module and the icon bullets in § Terminal-Start im Panel. The vsce/`.vscodeignore`/`--target`/Node rules already live in `CLAUDE.md` and are not repeated.
 
 - **`vsce` matches ignore patterns case-sensitively, git does not.** `Screenshot*.png` in `.gitignore` hides `screenshot_2.png`, the same line in `.vscodeignore` shipped it (1.9 MB of a 3 MB package). Check the payload by size, not by what git shows.
+- **`vsce` ignore patterns match one directory level.** `*.ts` in `.vscodeignore` left `media/*.ts` in the package; anchor per directory (`media/**/*.ts`), and `verify-package-payload.js` now fails on any `.ts` inside the `.vsix`.
+- **`vsce` ships `README.md` regardless of `.vscodeignore`.** `*.md` does not remove it; the Marketplace page needs it.
 - **`.git/info/exclude` hides build output from `git status` only.** `vsce` does not read it; `vsce ls` still lists `dist/extension.js`, `media/main.js`, `media/xterm.css`.
 - **`spawn-helper` arrives at 644 and nothing restores the bit.** The symptom is `pty.fork` dying with `Error: posix_spawnp failed`, not a load error; `scripts/verify-package-payload.js` fixes it at packaging time.
 - **The loader looks only in `build/Release`, `build/Debug`, `prebuilds/<platform>-<arch>` and wants `spawn-helper` beside `pty.node`.** `@electron/rebuild`'s `bin/<platform>-<arch>-<abi>/` is never loaded.

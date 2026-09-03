@@ -26,6 +26,20 @@ Non-obvious findings and dead ends. Only add what saves future work.
   cannot go into `.gitignore` by convention here, but sits in the working tree as untracked noise.
   An entry in `.git/info/exclude` hides it locally only; `vsce` does not read that file. Checked:
   `vsce ls` still lists `dist/extension.js`, `media/main.js` and `media/xterm.css` afterwards.
+- **`vsce`'s ignore patterns do not cross directory boundaries.** `.vscodeignore` carried `*.ts`
+  and `tsconfig.json` since the fork began, and both matched only at the top level — so
+  `media/main.ts` (40 KB), `media/types.ts` and `media/tsconfig.json` shipped in every `.vsix`
+  built here, 43 KB of source handed to every user. `src/**` was excluded only because it is
+  written with an explicit `**`. The fix is a path-anchored rule per directory (`media/**/*.ts`).
+  Verified on main before the fix: `vsce ls | grep '\.ts$'` listed all three.
+  `scripts/verify-package-payload.js` now asserts the archive carries no `.ts` at all — it
+  guarded the prebuilds and the `.pdb` symbols, but nothing stopped source from leaving. Found
+  by Julian Krenz in PR #1.
+- **`vsce` packages `README.md` regardless of `.vscodeignore`.** `*.md` is ignored and the readme
+  still ships (`extension/readme.md`) — the Marketplace page needs it. A comment in
+  `.vscodeignore` justified excluding the readme's screenshots with "the readme that shows them is
+  not even there"; the premise was wrong, though the exclusion itself is still worth keeping.
+  Also from PR #1.
 - **`Sessions/` fährt im `.vsix` mit.** `vsce ls` (2026-09-03) listet `Sessions/HANDOFF.md` und die
   Tagesdateien — `.vscodeignore` kennt `.claude/**`, aber kein `Sessions/**`. Das Paket ist deshalb
   ein paar KB Handoff-Text schwerer und trägt interne Notizen. Beim nächsten Packen eine Zeile
