@@ -1,18 +1,16 @@
 {
+  // esbuild bundles; tsc runs only as the type checker (npm run typecheck) and as the base for
+  // the type-aware ESLint rules. Emit options would have no effect here.
   "compilerOptions": {
     "module": "commonjs",
     "target": "ES2022",
     "lib": ["ES2022"],
-    "outDir": "dist",
     "rootDir": "src",
+    "noEmit": true,
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true
+    "forceConsistentCasingInFileNames": true
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
