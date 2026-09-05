@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { getInterAgentDir } from '../ptyManager';
+import { log } from '../log';
 
 const POLLING_INTERVAL_MS = 300;
 const MAX_PRESENCE_AGE_MS = 5 * 60 * 1000;
@@ -46,7 +47,11 @@ export interface RouterHost {
 export class InterAgentRouter {
   private inboxWatcher: fs.FSWatcher | null = null;
   private pollingInterval: NodeJS.Timeout | null = null;
+  /** Byte offset up to which each inbox file has been delivered — bytes, because the file is
+   *  appended in bytes and a non-ASCII character would otherwise move the mark backwards. */
   private readonly filePositions = new Map<string, number>();
+  /** Lines delivered per inbox file since this window opened; feeds the rotation check. */
+  private readonly lineCounts = new Map<string, number>();
   private readonly seenMsgIds = new Map<string, number>(); // msgId -> timestamp
   private disposed = false;
   private readonly inboxDir: string;
@@ -64,7 +69,12 @@ export class InterAgentRouter {
 
   private setupDirectories(): void {
     for (const dir of [this.inboxDir, this.outboxDir]) {
-      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      try {
+        fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      } catch (error) {
+        // Runs inside activate(): a read-only or full tmp dir must not take the panel down.
+        log('interagent', `cannot create ${dir}: ${String(error)}`);
+      }
     }
   }
 
@@ -93,6 +103,13 @@ export class InterAgentRouter {
           this.readNewLines(filename);
         }
       });
+      // Without a listener an error on the watcher (directory removed, descriptor limit) is an
+      // uncaught exception in the extension host. The poll keeps working without it.
+      this.inboxWatcher.on('error', (error) => {
+        log('interagent', `inbox watcher failed, polling only: ${String(error)}`);
+        this.inboxWatcher?.close();
+        this.inboxWatcher = null;
+      });
     } catch {
       // watch may fail on some FS; polling fallback handles it
     }
@@ -110,6 +127,8 @@ export class InterAgentRouter {
         // ignore
       }
     }, POLLING_INTERVAL_MS);
+    // A poll must never be what keeps the host alive.
+    this.pollingInterval.unref();
   }
 
   private readNewLines(filename: string): void {
@@ -127,23 +146,35 @@ export class InterAgentRouter {
     if (!match) return;
     const [, from, to] = match;
 
-    const lastPos = this.filePositions.get(filename) ?? 0;
-    let content: string;
+    let lastPos = this.filePositions.get(filename) ?? 0;
+    if (stat.size < lastPos) {
+      // Rotated or truncated by another window: start over at the top.
+      lastPos = 0;
+    }
+    if (stat.size === lastPos) return;
+
+    // Only the appended bytes, and only up to the last complete line: a writer may be halfway
+    // through a line, and half a message must neither be parsed nor skipped.
+    let chunk: Buffer;
     try {
-      content = fs.readFileSync(filepath, 'utf8');
+      const fd = fs.openSync(filepath, 'r');
+      try {
+        chunk = Buffer.alloc(stat.size - lastPos);
+        const read = fs.readSync(fd, chunk, 0, chunk.length, lastPos);
+        chunk = chunk.subarray(0, read);
+      } finally {
+        fs.closeSync(fd);
+      }
     } catch {
       return;
     }
+    const lastNewline = chunk.lastIndexOf(0x0a);
+    if (lastNewline < 0) return;
+    const complete = chunk.subarray(0, lastNewline + 1);
+    this.filePositions.set(filename, lastPos + complete.length);
 
-    if (content.length <= lastPos) {
-      this.filePositions.set(filename, content.length);
-      return;
-    }
-
-    const newContent = content.slice(lastPos);
-    this.filePositions.set(filename, content.length);
-
-    const lines = newContent.split('\n');
+    const lines = complete.toString('utf8').split('\n');
+    this.lineCounts.set(filename, (this.lineCounts.get(filename) ?? 0) + lines.length - 1);
     for (const line of lines) {
       if (!line.trim()) continue;
       try {
@@ -232,8 +263,13 @@ export class InterAgentRouter {
 
   private writePresence(presence: Record<string, PresenceEntry>): void {
     const tmp = `${this.presenceFile}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(presence), { mode: 0o600 });
-    fs.renameSync(tmp, this.presenceFile);
+    try {
+      fs.writeFileSync(tmp, JSON.stringify(presence), { mode: 0o600 });
+      fs.renameSync(tmp, this.presenceFile);
+    } catch (error) {
+      // Called mid-teardown of a tab: a failed write is a log line, not an aborted close.
+      log('interagent', `cannot write presence: ${String(error)}`);
+    }
   }
 
   /** Called right after a tab's PTY is spawned. */
@@ -254,10 +290,10 @@ export class InterAgentRouter {
   private maybeRotateFile(filename: string, filepath: string): void {
     try {
       const stat = fs.statSync(filepath);
-      if (stat.size < MAX_JSONL_SIZE) {
-        // Count lines approximately
-        const content = fs.readFileSync(filepath, 'utf8');
-        if (content.split('\n').length < MAX_JSONL_LINES) return;
+      // Lines are counted as they are delivered rather than by re-reading the file: this runs
+      // after every poll, 3.3 times a second, for every sender/recipient pair.
+      if (stat.size < MAX_JSONL_SIZE && (this.lineCounts.get(filename) ?? 0) < MAX_JSONL_LINES) {
+        return;
       }
       // Rotate
       for (let i = MAX_ROTATIONS - 1; i >= 1; i--) {
@@ -271,6 +307,7 @@ export class InterAgentRouter {
       }
       fs.renameSync(filepath, `${filepath}.1`);
       this.filePositions.set(filename, 0);
+      this.lineCounts.set(filename, 0);
     } catch {
       // ignore
     }
