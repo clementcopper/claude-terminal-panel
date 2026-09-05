@@ -204,7 +204,8 @@ export class ClaudeTerminalViewProvider
     }
     this.appearanceChanged = false;
     for (const tab of this.stateManager.getAll()) {
-      if (tab.engine === 'opencode') {
+      // Restored tabs are cold until switched to; a poke into one would only be dropped loudly.
+      if (tab.engine === 'opencode' && this.ptyManager.isRunning(tab.id)) {
         this.ptyManager.write(tab.id, '\x1b[?997;1n');
       }
     }
@@ -331,6 +332,7 @@ export class ClaudeTerminalViewProvider
    * model-generated output, so the channel out of it has to stay a command, not a keyboard.
    */
   handleStopTurn(id: string): void {
+    if (!this.ptyManager.isRunning(id)) return;
     this.ptyManager.write(id, '\x1b');
   }
 
@@ -491,6 +493,25 @@ export class ClaudeTerminalViewProvider
     const instance = this.stateManager.get(id);
     const cwd = instance?.cwd;
     void this.openFileInEditor(path, cwd, line, column);
+  }
+
+  /**
+   * A web link clicked in the terminal. The output it came from is model-generated, so the link
+   * is opened by VS Code — which asks once per unknown domain — and only for http(s).
+   */
+  handleOpenExternal(uri: string): void {
+    let parsed: vscode.Uri;
+    try {
+      parsed = vscode.Uri.parse(uri, true);
+    } catch {
+      console.warn(`[Claude Terminal] ignoring unparsable link ${uri}`);
+      return;
+    }
+    if (parsed.scheme !== 'http' && parsed.scheme !== 'https') {
+      console.warn(`[Claude Terminal] ignoring link with scheme ${parsed.scheme}`);
+      return;
+    }
+    void vscode.env.openExternal(parsed);
   }
 
   private async openFileInEditor(
@@ -679,11 +700,15 @@ export class ClaudeTerminalViewProvider
    * `restart`/`resume`/`continue` read the engine back from the active tab instead of
    * assuming the configured engine, so a tab keeps its CLI across respawns.
    */
-  public async createTerminal(engine: Engine = 'claude', cold = false): Promise<string> {
+  public async createTerminal(
+    engine: Engine = 'claude',
+    cold = false
+  ): Promise<string | undefined> {
     // The group owns the directory; the tab inherits it. That is also what keeps
     // `respawnActive` honest — restart/resume/continue reuse the tab's cwd, and session
     // history lives per directory.
     const group = await this.ensureActiveGroup(engine);
+    if (!group) return undefined;
     const cwd = group.cwd;
     const folderIndex = group.workspaceFolderIndex;
 
@@ -755,7 +780,7 @@ export class ClaudeTerminalViewProvider
    * directory exactly the way opening a tab always has, and takes its name and accent from the
    * engine that terminal runs.
    */
-  private async ensureActiveGroup(engine: Engine): Promise<TerminalGroup> {
+  private async ensureActiveGroup(engine: Engine): Promise<TerminalGroup | undefined> {
     const existing = this.stateManager.getActiveGroup();
     if (existing) {
       return existing;
@@ -767,10 +792,15 @@ export class ClaudeTerminalViewProvider
    * Creates a group with its own working directory and makes it active. It has no terminal yet —
    * every caller opens one straight after, which is what gives the group its first tab.
    */
-  private async newGroup(engine: Engine): Promise<TerminalGroup> {
-    const { path: cwd, folderIndex } = await this.ptyManager.selectWorkingDirectory(
+  private async newGroup(engine: Engine): Promise<TerminalGroup | undefined> {
+    const selection = await this.ptyManager.selectWorkingDirectory(
       this.configManager.getConfig().cwd
     );
+    if (!selection) {
+      log('tab', `group creation (${engine}) cancelled at the directory picker`);
+      return undefined;
+    }
+    const { path: cwd, folderIndex } = selection;
     const group = this.stateManager.createGroup(cwd, engine, folderIndex);
     this.stateManager.setActiveGroup(group.id);
     log('tab', `group ${group.id} created (${engine}) in ${cwd}`);
@@ -789,8 +819,9 @@ export class ClaudeTerminalViewProvider
     if (!engine) {
       return;
     }
-    await this.newGroup(engine);
-    await this.createTerminal(engine);
+    if (await this.newGroup(engine)) {
+      await this.createTerminal(engine);
+    }
   }
 
   /**
@@ -913,7 +944,10 @@ export class ClaudeTerminalViewProvider
    * also built for is gone, together with the rule it could break: a group runs one CLI, and a
    * freely typed command was the last way to put the other one inside it.
    */
-  private async createTerminalWithCommand(command: string, args: string[]): Promise<string> {
+  private async createTerminalWithCommand(
+    command: string,
+    args: string[]
+  ): Promise<string | undefined> {
     const id = this.stateManager.generateId();
     // Still derived rather than assumed: the caller passes the configured Claude command, which
     // the user may have pointed somewhere else.
@@ -925,6 +959,7 @@ export class ClaudeTerminalViewProvider
 
     // Same rule as `createTerminal`: the group decides where this runs.
     const group = await this.ensureActiveGroup(engine);
+    if (!group) return undefined;
     const cwd = group.cwd;
 
     const instance: TerminalInstance = {
@@ -953,6 +988,9 @@ export class ClaudeTerminalViewProvider
     this.spawnWhenMeasured(id, customConfig, cwd);
 
     this.postMessage({ type: 'switchTab', id });
+    // Same as createTerminal: without this the tab is missing from the saved layout until the
+    // next structural change happens to save it.
+    this.persistLayout();
 
     return id;
   }
@@ -1329,7 +1367,9 @@ export class ClaudeTerminalViewProvider
         if (choice !== 'Run /clear') return;
         // Straight into the tab that raised it, which is not necessarily the active one.
         // `\r` is Enter, the same way autoRun submits its command.
-        this.ptyManager.write(terminalId, '/clear\r');
+        if (this.ptyManager.isRunning(terminalId)) {
+          this.ptyManager.write(terminalId, '/clear\r');
+        }
         this.promptDetector.onUserInput(terminalId);
       });
   }
@@ -1505,6 +1545,7 @@ export class ClaudeTerminalViewProvider
       let groupActiveId: string | undefined;
       for (let tab = 0; tab < saved.terminalCount; tab++) {
         const id = await this.createTerminal(saved.engine, true);
+        if (!id) continue;
         if (tab === activeTab) {
           groupActiveId = id;
         }

@@ -278,24 +278,30 @@ type MessageHandlers = {
 const messageHandlers: MessageHandlers = {
   output: (message, ctx) => {
     const t = ctx.state.get(message.id);
-    if (t) {
-      // The process has spoken — including when what it says is that it exited. Either way the
-      // waiting is over and the indicator must not sit on top of the answer.
-      ctx.clearStartupIndicator(t);
-      const wasAtBottom = ScrollManager.isAtBottom(t.terminal);
-      t.terminal.write(message.data);
-      if (wasAtBottom) {
-        requestAnimationFrame(() => t.terminal.scrollToBottom());
-      }
+    if (!t) {
+      // Loud on purpose: an output for a tab this webview does not have is a routing mistake,
+      // and a terminal that silently prints nothing is the worst way to find out.
+      console.warn(`[webview] output for unknown terminal ${message.id}`);
+      return;
+    }
+    // The process has spoken — including when what it says is that it exited. Either way the
+    // waiting is over and the indicator must not sit on top of the answer.
+    ctx.clearStartupIndicator(t);
+    const wasAtBottom = ScrollManager.isAtBottom(t.terminal);
+    t.terminal.write(message.data);
+    if (wasAtBottom) {
+      requestAnimationFrame(() => t.terminal.scrollToBottom());
     }
   },
   clear: (message, ctx) => {
     const t = ctx.state.get(message.id);
-    if (t) {
-      t.terminal.clear();
-      t.isAtBottom = true;
-      t.lastScrollTop = 0;
+    if (!t) {
+      console.warn(`[webview] clear for unknown terminal ${message.id}`);
+      return;
     }
+    t.terminal.clear();
+    t.isAtBottom = true;
+    t.lastScrollTop = 0;
   },
   tabsUpdate: (message, ctx) => {
     ctx.renderTabBar(message.tabs);
@@ -370,9 +376,24 @@ class TooltipManager {
     window.addEventListener('blur', () => {
       this.hide();
     });
-    window.addEventListener('scroll', () => {
+    // Element scroll events do not bubble to window; the two bars are the only scrollers.
+    document.addEventListener(
+      'scroll',
+      () => {
+        this.hide();
+      },
+      true
+    );
+  }
+
+  /**
+   * Called by whoever rebuilds a bar: the hovered element is replaced under the pointer, and a
+   * tooltip pinned to a detached node would otherwise stay until the next hover elsewhere.
+   */
+  releaseDetached(): void {
+    if (this.target && !this.target.isConnected) {
       this.hide();
-    });
+    }
   }
 
   private findTarget(node: EventTarget | null): HTMLElement | null {
@@ -1438,7 +1459,8 @@ class WebviewContext {
    * for a narrow panel scrolls under it instead of pushing it out of reach.
    */
   renderGroupBar(groups: GroupInfo[]): void {
-    this.groupBar.innerHTML = '';
+    this.groupBar.replaceChildren();
+    this.tooltips.releaseDetached();
 
     const closable = groups.length > 1;
     groups.forEach((group) => {
@@ -1626,7 +1648,8 @@ class WebviewContext {
   }
 
   renderTabBar(tabsList: TabInfo[]): void {
-    this.tabBar.innerHTML = '';
+    this.tabBar.replaceChildren();
+    this.tooltips.releaseDetached();
 
     tabsList.forEach((tab, index) => {
       const tabElement = this.createTabElement(tab, index);
@@ -1725,7 +1748,11 @@ class WebviewContext {
     });
 
     const fitAddon = new FitAddon();
-    const webLinksAddon = new WebLinksAddon();
+    // The addon's default handler is window.open straight out of the webview. The host opens
+    // links instead, through VS Code and its trusted-domains prompt — the output is untrusted.
+    const webLinksAddon = new WebLinksAddon((_event, uri) => {
+      this.postMessage({ type: 'openExternal', uri });
+    });
 
     terminal.loadAddon(fitAddon);
     terminal.loadAddon(webLinksAddon);
@@ -1783,6 +1810,9 @@ class WebviewContext {
    * why the indicator waits a quarter second before appearing: a fast start must never flash it.
    */
   private startStartupIndicator(entry: TerminalEntry, name: string): void {
+    // A second start for the same entry would leave the first indicator and its interval behind
+    // with no handle to clear them.
+    this.clearStartupIndicator(entry);
     const startedAt = Date.now();
     // "OpenCode 2" is the tab, "OpenCode" is the program — the number says nothing here.
     const label = name.replace(/\s+\d+$/, '') || 'the terminal';
@@ -1956,7 +1986,9 @@ class WebviewContext {
   }
 
   setTabNotification(id: string, show: boolean): void {
-    const tab = this.tabBar.querySelector(`.tab[data-id="${id}"]`);
+    const tab = this.tabBar.querySelector(`.tab[data-id="${CSS.escape(id)}"]`);
+    // Not a warning: a tab in another group has no element in this bar, and that is the
+    // normal case — the group tab carries its pill instead.
     if (!tab) return;
 
     let pill = tab.querySelector('.notification-pill');

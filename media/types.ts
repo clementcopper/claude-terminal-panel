@@ -106,6 +106,7 @@ export type WebviewOutgoingMessage =
   | { type: 'switchGroup'; id: string }
   | { type: 'renameGroup'; id: string; name: string }
   | { type: 'openFile'; id: string; path: string; line?: number; column?: number }
+  | { type: 'openExternal'; uri: string }
   | { type: 'insertEditorReference' }
   | { type: 'stopTurn'; id: string }
   | { type: 'setContextThreshold'; value: number }

@@ -220,6 +220,9 @@ export type WebviewMessage =
   /** Inline rename from the group tab. An empty or unchanged name is dropped by the host. */
   | { type: 'renameGroup'; id: string; name: string }
   | { type: 'openFile'; id: string; path: string; line?: number; column?: number }
+  // A web link in the terminal output. Opened by the host so VS Code's own trusted-domains
+  // prompt applies — the output is model-generated, so no link opens straight from the webview.
+  | { type: 'openExternal'; uri: string }
   // No tab id: the reference goes to whichever tab is active when it is asked for
   | { type: 'insertEditorReference' }
   /**

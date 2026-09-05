@@ -17,6 +17,7 @@ export interface MessageHandlerContext {
   handleSwitchGroup(id: string): void;
   handleRenameGroup(id: string, name: string): void;
   handleOpenFile(id: string, path: string, line?: number, column?: number): void;
+  handleOpenExternal(uri: string): void;
   handleInsertEditorReference(): void;
   handleStopTurn(id: string): void;
   handleSetContextThreshold(value: number): void;
@@ -70,6 +71,9 @@ const messageHandlers: MessageHandlerMap = {
   },
   openFile: (message, ctx) => {
     ctx.handleOpenFile(message.id, message.path, message.line, message.column);
+  },
+  openExternal: (message, ctx) => {
+    ctx.handleOpenExternal(message.uri);
   },
   insertEditorReference: (_message, ctx) => {
     ctx.handleInsertEditorReference();
