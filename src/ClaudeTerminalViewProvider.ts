@@ -1469,7 +1469,10 @@ export class ClaudeTerminalViewProvider
       return false;
     }
 
-    const activeIndex = Math.min(Math.max(layout.activeGroupIndex, 0), wanted.length - 1);
+    // By identity, not by index: once a group's directory is gone the saved index points one
+    // slot too far into the filtered list.
+    const activeSaved = layout.groups[layout.activeGroupIndex] as PersistedGroup | undefined;
+    const activeIndex = Math.max(0, activeSaved ? wanted.indexOf(activeSaved) : 0);
     let activeTerminalId: string | undefined;
 
     for (const [index, saved] of wanted.entries()) {
@@ -1482,10 +1485,19 @@ export class ClaudeTerminalViewProvider
       this.stateManager.setActiveGroup(group.id);
 
       const activeTab = Math.min(Math.max(saved.activeTerminalIndex, 0), saved.terminalCount - 1);
+      let groupActiveId: string | undefined;
       for (let tab = 0; tab < saved.terminalCount; tab++) {
         const id = await this.createTerminal(saved.engine, true);
-        if (index === activeIndex && tab === activeTab) {
-          activeTerminalId = id;
+        if (tab === activeTab) {
+          groupActiveId = id;
+        }
+      }
+      // Each createTerminal activated its tab, so the group would otherwise remember its last
+      // one — and persist that on the next save, degrading the saved index for good.
+      if (groupActiveId) {
+        this.stateManager.setActive(groupActiveId);
+        if (index === activeIndex) {
+          activeTerminalId = groupActiveId;
         }
       }
     }
