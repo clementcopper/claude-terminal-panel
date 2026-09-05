@@ -726,7 +726,8 @@ body.vscode-high-contrast-light {
   width: 0;
   padding: 0;
   margin: 0;
-  background-color: #ff5555;
+  /* The same red the waiting pill uses, so the theme's error colour is the one red in the bar. */
+  background-color: var(--vscode-notificationsErrorIcon-foreground, #f14c4c);
   border: none;
   border-radius: 0;
   cursor: pointer;
@@ -753,7 +754,11 @@ body.vscode-high-contrast-light {
 
 .tab-close:hover {
   width: 10px;
-  background-color: #ff3333;
+  background-color: color-mix(
+    in srgb,
+    var(--vscode-notificationsErrorIcon-foreground, #f14c4c) 80%,
+    var(--vscode-foreground, #cccccc)
+  );
 }
 
 /* Add tab button */
