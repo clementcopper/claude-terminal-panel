@@ -68,20 +68,17 @@
       {
         "command": "claudeTerminal.newTab",
         "title": "New Terminal",
-        "category": "Claude Terminal",
-        "icon": "$(add)"
+        "category": "Claude Terminal"
       },
       {
         "command": "claudeTerminal.newGroup",
         "title": "New Terminal Tab",
-        "category": "Claude Terminal",
-        "icon": "$(add)"
+        "category": "Claude Terminal"
       },
       {
         "command": "claudeTerminal.closeGroup",
         "title": "Close Terminal Tab",
-        "category": "Claude Terminal",
-        "icon": "$(close)"
+        "category": "Claude Terminal"
       },
       {
         "command": "claudeTerminal.nextGroup",
@@ -132,8 +129,7 @@
       {
         "command": "claudeTerminal.closeTab",
         "title": "Close Terminal",
-        "category": "Claude Terminal",
-        "icon": "$(close)"
+        "category": "Claude Terminal"
       },
       {
         "command": "claudeTerminal.nextTab",
@@ -148,8 +144,7 @@
       {
         "command": "claudeTerminal.insertEditorReference",
         "title": "Add Editor Selection to Prompt",
-        "category": "Claude Terminal",
-        "icon": "$(add)"
+        "category": "Claude Terminal"
       }
     ],
     "keybindings": [
@@ -284,8 +279,7 @@
           "default": 60,
           "minimum": 5,
           "maximum": 95,
-          "scope": "resource",
-          "markdownDescription": "Percentage of the context window at which the status line turns red and warns that a `/clear` is due. The bar's fill turns orange ten points before it. Drag the handle on the context bar to change it — that writes the value back here, for this workspace."
+          "markdownDescription": "Percentage of the context window at which the status line turns red and warns that a `/clear` is due. The ring's fill turns orange ten points before it. Click the context ring in the status line to change it — that writes the value back here, for this workspace."
         },
         "claudeTerminal.env": {
           "type": "object",
@@ -333,8 +327,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p media/tsconfig.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "format": "prettier --write \"src/**/*.ts\" \"media/**/*.{ts,css}\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"media/**/*.{ts,css}\"",
+    "format": "prettier --write \"src/**/*.ts\" \"media/**/*.{ts,css}\" \"resources/**/*.js\" \"scripts/**/*.js\" eslint.config.mjs",
+    "format:check": "prettier --check \"src/**/*.ts\" \"media/**/*.{ts,css}\" \"resources/**/*.js\" \"scripts/**/*.js\" eslint.config.mjs",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -347,6 +341,13 @@
       "prettier --write"
     ],
     "media/**/*.css": [
+      "prettier --write"
+    ],
+    "{resources,scripts}/**/*.js": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "eslint.config.mjs": [
       "prettier --write"
     ],
     "*.{json,md}": [

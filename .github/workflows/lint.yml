@@ -28,3 +28,9 @@ jobs:
 
       - name: Check formatting
         run: npm run format:check
+
+      - name: Type-check both halves
+        run: npm run typecheck
+
+      - name: Bundle
+        run: npm run compile

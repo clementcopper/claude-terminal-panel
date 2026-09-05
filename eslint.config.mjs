@@ -6,7 +6,7 @@ import globals from 'globals';
 export default tseslint.config(
   // Global ignores
   {
-    ignores: ['dist/**', 'node_modules/**', '*.vsix', 'media/**/*.js'],
+    ignores: ['dist/**', 'node_modules/**', '*.vsix', 'media/**/*.js']
   },
 
   // Base JS recommended rules
@@ -15,15 +15,12 @@ export default tseslint.config(
   // TypeScript files configuration
   {
     files: ['src/**/*.ts'],
-    extends: [
-      ...tseslint.configs.recommended,
-      ...tseslint.configs.strictTypeChecked,
-    ],
+    extends: [...tseslint.configs.recommended, ...tseslint.configs.strictTypeChecked],
     languageOptions: {
       parserOptions: {
         project: './tsconfig.json',
-        tsconfigRootDir: import.meta.dirname,
-      },
+        tsconfigRootDir: import.meta.dirname
+      }
     },
     rules: {
       // VS Code extension specific rules
@@ -35,34 +32,38 @@ export default tseslint.config(
       '@typescript-eslint/no-require-imports': 'off',
 
       // Relax some strict rules for pragmatic development
-      '@typescript-eslint/no-unused-vars': ['error', {
-        argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_'
-      }],
-    },
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_'
+        }
+      ]
+    }
   },
 
   // Media/webview TypeScript configuration
   {
     files: ['media/**/*.ts'],
-    extends: [
-      ...tseslint.configs.recommended,
-    ],
+    extends: [...tseslint.configs.recommended],
     languageOptions: {
       parserOptions: {
         project: './media/tsconfig.json',
-        tsconfigRootDir: import.meta.dirname,
+        tsconfigRootDir: import.meta.dirname
       },
       globals: {
-        ...globals.browser,
-      },
+        ...globals.browser
+      }
     },
     rules: {
-      '@typescript-eslint/no-unused-vars': ['error', {
-        argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_'
-      }],
-    },
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_'
+        }
+      ]
+    }
   },
 
   // resources/: shipped scripts that Claude Code runs. scripts/: build tooling, not packaged.
@@ -72,9 +73,9 @@ export default tseslint.config(
     languageOptions: {
       sourceType: 'commonjs',
       globals: {
-        ...globals.node,
-      },
-    },
+        ...globals.node
+      }
+    }
   },
 
   // Prettier compatibility (must be last)

@@ -129,9 +129,7 @@ function buildSnapshot(payload) {
   // Computed rather than taken from used_percentage: that field is rounded to whole percent,
   // so on a 1M window it moves in 10,000-token steps and disagrees with the count beside it.
   const usedPercent =
-    totalTokens > 0
-      ? (usedTokens / totalTokens) * 100
-      : (num(contextWindow.used_percentage) ?? 0);
+    totalTokens > 0 ? (usedTokens / totalTokens) * 100 : (num(contextWindow.used_percentage) ?? 0);
 
   const rateLimits = payload.rate_limits || {};
   const fiveHour = rateLimits.five_hour || {};
@@ -172,6 +170,9 @@ function buildSnapshot(payload) {
 
 /** Atomic: the watcher must never read a half-written file. */
 function writeSnapshot(dir, tabId, snapshot) {
+  // The id names a file inside `dir`; the extension mints it as `terminal-<ts>-<rand>`, but the
+  // env contract is public, so a value with a separator in it must not reach path.join.
+  if (!/^[\w.-]+$/.test(tabId)) return;
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const target = path.join(dir, `${tabId}.json`);
   const temp = `${target}.tmp`;
