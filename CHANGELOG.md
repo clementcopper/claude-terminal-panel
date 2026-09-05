@@ -115,6 +115,8 @@ Everything since 1.1.0 — the two-level tabs and the review that followed. The 
   requires both stylesheets.
 - Unbounded maps: `PtyManager.startedAt` kept an entry per closed tab.
 - `fs.watch` handles had no error listener; an error after setup was an uncaught exception.
+- Presence entries of tabs whose window died never expired; every broadcast kept writing them a
+  copy. Entries older than five minutes are dropped, a heartbeat keeps live ones stamped.
 
 ### Changed
 
