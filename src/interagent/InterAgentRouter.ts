@@ -5,7 +5,10 @@ import { getInterAgentDir } from '../ptyManager';
 import { log } from '../log';
 
 const POLLING_INTERVAL_MS = 300;
+/** A presence entry older than this belongs to a tab whose window died without unregistering. */
 const MAX_PRESENCE_AGE_MS = 5 * 60 * 1000;
+/** How often this window re-stamps its own tabs; well inside the age above. */
+const PRESENCE_HEARTBEAT_MS = 60 * 1000;
 const MAX_JSONL_SIZE = 1_048_576;
 const MAX_JSONL_LINES = 10_000;
 const MAX_ROTATIONS = 3;
@@ -47,6 +50,9 @@ export interface RouterHost {
 export class InterAgentRouter {
   private inboxWatcher: fs.FSWatcher | null = null;
   private pollingInterval: NodeJS.Timeout | null = null;
+  private heartbeat: NodeJS.Timeout | null = null;
+  /** Tabs this window announced — the ones its heartbeat keeps alive. */
+  private readonly ownTabs = new Set<string>();
   /** Byte offset up to which each inbox file has been delivered — bytes, because the file is
    *  appended in bytes and a non-ASCII character would otherwise move the mark backwards. */
   private readonly filePositions = new Map<string, number>();
@@ -129,6 +135,23 @@ export class InterAgentRouter {
     }, POLLING_INTERVAL_MS);
     // A poll must never be what keeps the host alive.
     this.pollingInterval.unref();
+
+    // Entries are pruned by age (readPresence), so a live tab has to say so now and then: a
+    // window killed with -9 never unregisters, and until this its dead tabs collected a
+    // broadcast copy each, into files nothing would ever read.
+    this.heartbeat = setInterval(() => {
+      if (this.disposed || this.ownTabs.size === 0) return;
+      const presence = this.readPresence();
+      const now = Date.now();
+      for (const tabId of this.ownTabs) {
+        const entry = presence[tabId] as PresenceEntry | undefined;
+        if (entry) {
+          entry.ts = now;
+        }
+      }
+      this.writePresence(presence);
+    }, PRESENCE_HEARTBEAT_MS);
+    this.heartbeat.unref();
   }
 
   private readNewLines(filename: string): void {
@@ -252,13 +275,23 @@ export class InterAgentRouter {
     }
   }
 
+  /** The file minus every entry nobody has stamped within MAX_PRESENCE_AGE_MS. */
   private readPresence(): Record<string, PresenceEntry> {
+    let presence: Record<string, PresenceEntry>;
     try {
       const content = fs.readFileSync(this.presenceFile, 'utf8');
-      return JSON.parse(content) as Record<string, PresenceEntry>;
+      presence = JSON.parse(content) as Record<string, PresenceEntry>;
     } catch {
       return {};
     }
+    const cutoff = Date.now() - MAX_PRESENCE_AGE_MS;
+    for (const [tabId, entry] of Object.entries(presence)) {
+      if (typeof entry.ts !== 'number' || entry.ts < cutoff) {
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+        delete presence[tabId];
+      }
+    }
+    return presence;
   }
 
   private writePresence(presence: Record<string, PresenceEntry>): void {
@@ -274,6 +307,7 @@ export class InterAgentRouter {
 
   /** Called right after a tab's PTY is spawned. */
   registerPresence(tabId: string, entry: PresenceEntry): void {
+    this.ownTabs.add(tabId);
     const presence = this.readPresence();
     presence[tabId] = { ...entry, ts: Date.now() };
     this.writePresence(presence);
@@ -281,6 +315,7 @@ export class InterAgentRouter {
 
   /** Called when a tab closes. */
   unregisterPresence(tabId: string): void {
+    this.ownTabs.delete(tabId);
     const presence = this.readPresence();
     // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
     delete presence[tabId];
@@ -320,6 +355,10 @@ export class InterAgentRouter {
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
+    }
+    if (this.heartbeat) {
+      clearInterval(this.heartbeat);
+      this.heartbeat = null;
     }
     // Cleanup old files for tabs that no longer exist
     this.cleanupOrphanFiles();
