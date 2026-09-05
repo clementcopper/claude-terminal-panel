@@ -237,6 +237,14 @@ var(--vscode-cornerRadius-large)`; die Webview-Fläche (`.webview-overlay-conten
   entstehen: sie kam so an. Vor der Fehlersuche `status/<tab>.json` ansehen — Alter der Datei und
   `usedTokens` beantworten die Streaming-Frage in einem Blick.
 
+- **Byte-Offsets und String-Längen sind zwei Maße.** Der Inbox-Reader merkte sich die Position
+  aus `statSync().size` (Bytes) und verglich sie mit `content.length` (UTF-16-Einheiten). Jeder
+  Umlaut, jeder Gedankenstrich in einer Nachricht machte die Datei „kürzer als gemerkt“, die Marke
+  sprang zurück und alte Zeilen kamen beim nächsten Fensterstart noch einmal — genau das Backlog,
+  das das Seeding verhindern sollte. Seit 2026-09-05 sind Positionen Bytes, gelesen wird ab Offset
+  mit `fs.readSync`, und nur bis zum letzten `\n`: eine halb geschriebene Zeile wird weder geparst
+  noch übersprungen. Regel: wo ein Offset in eine Datei zeigt, darf nur `Buffer` rechnen.
+
 ## Terminal-Start im Panel
 
 - **xterm in einem `display:none`-Element zu öffnen liefert eine 0 × 0-Messung.** Der Wrapper hat
@@ -315,6 +323,20 @@ code 129]` (128 + SIGHUP, der Kill selbst) in der frisch gestarteten Sitzung —
   (Summe Alpha) gegen `codicon.ttf` aus `out/media/` gerendert; `medium 36` lag drei Pixel Kante
   unter `add`/`close`. Die Glyphengröße im 48px-Quell-PNG sagt darüber nichts.
 
+- **xterm nimmt Tab als Eingabe.** Tabs und Gruppen-Tabs sind seit 2026-09-05 per Tastatur
+  erreichbar (`role="tab"`, `tabindex`, Enter/Space, Fokusring innen), aber aus dem Terminal führt
+  Tab nicht heraus — xterm schreibt das Zeichen in die PTY. Gemessen im Headless-Probe: Fokus auf
+  `.xterm-helper-textarea`, Tab gedrückt, Fokus bleibt. Die Leisten sind erreichbar, sobald der
+  Fokus einmal außerhalb liegt; aus dem Terminal bleiben die Befehle (Cmd+Opt+Pfeile, Cmd+W). Für
+  `:focus-visible` im Probe: programmatisch fokussieren, dann eine leere Taste (`Shift`) drücken —
+  das setzt die Tastatur-Modalität, ohne den Fokus zu bewegen.
+- **Die innere Tab-Leiste hatte denselben Opacity-Fehler wie die Gruppenleiste vorher.**
+  `.tab[data-accent]:not(.active) { opacity: 0.4 }` dimmte den Warte-Pill mit — gemessen 1,74:1
+  gegen #1f1f1f, nach dem Umbau auf `--tab-accent` plus Dimmen von Nummer und Kante einzeln
+  4,61:1. Die Regel stand in CLAUDE.md und im Kommentar über `.group-tab::after`; die Leiste
+  daneben hatte sie nie bekommen. Wo eine Regel für ein Element gilt, das Geschwister hat, die
+  Geschwister mitprüfen.
+
 ## OpenCode-Startzeit
 
 - **OpenCodes Wartezeit steckt im Server, nicht im TUI — aber ein warmer Server holt sie kaum
@@ -392,6 +414,18 @@ code 129]` (128 + SIGHUP, der Kill selbst) in der frisch gestarteten Sitzung —
   Breite. Fünf Messreihen sahen dadurch identisch aus, ohne dass etwas gemeldet wurde. Erst
   `style.flex = '0 0 auto'` machte die Breite wirksam — vor jeder Messreihe die gesetzte Größe
   zurücklesen.
+
+- **Ein Audit-Agent liefert Hypothesen, keine Befunde.** Drei Lesedurchgänge (Host, Webview,
+  Packaging) brachten am 2026-09-05 rund 70 Punkte; jeder wurde an der Quellzeile nachgelesen. Einer
+  war falsch (`retainContextWhenHidden` „fehlt“ — steht in `extension.ts:19`), einer beschrieb die
+  Absicht als Fehler (README-Clone-URL zeigt auf unseren Fork). Die Trefferquote war hoch, aber
+  ohne die Nachlese wäre eine Änderung gegen ein Nicht-Problem gelandet. Vorgehen: pro Behauptung
+  `sed -n` auf die genannten Zeilen, erst dann in den Plan.
+- **Fremde PRs erst simulieren, dann entscheiden.** `git merge-tree --write-tree --name-only main
+<pr>` zeigt die Konfliktdateien ohne den Index anzufassen; `git show <commit> -- . ':!lockfile' |
+git apply --check` sagt pro Commit, ob er noch auf `main` passt (git 2.39 kennt `--merge-base`
+  in `merge-tree` noch nicht). So fielen von zehn Commits vier als hinfällig auf, bevor eine Zeile
+  portiert war.
 
 ## Statuszeile
 
@@ -485,6 +519,16 @@ min-width: 0` wurde die Ringreihe auf den Rest der Zeile zusammengedrückt und j
 ~/figma-cli/src/index.js connect`), danach `get <id>`, `node tree <id> -d 5` und `eval` mit
   `figma.getNodeById` für `itemSpacing`/`primaryAxisAlignItems` — alles lesend. Framelink ist hier
   nicht registriert (`~/.claude.json`: nur Business und designdone.de).
+
+- **Der Produzent las bei jedem Render das ganze Transkript.** `countCompactions` machte
+  `readFileSync` plus `split('\n')` über die JSONL-Datei, und Claude Code ruft die Statuszeile bei
+  jedem Neuzeichnen auf. Gemessen 2026-09-05 gegen das größte Transkript hier (16,8 MB): 440 bis
+  1040 ms pro Render, synchron, bevor die Zeile geschrieben war; 29 Transkripte über 1 MB auf der
+  Maschine. Jetzt liegt pro Transkript `{offset, total, auto}` unter
+  `<tmpdir>/claude-terminal-panel/compactions/<sha1(pfad)>.json`, gelesen wird nur der Zuwachs ab
+  Offset bis zum letzten `\n`, eine geschrumpfte Datei setzt auf null. Warm 110 ms, davon fast
+  alles Node-Start. Der Cache liegt absichtlich neben den Status-Verzeichnissen, nicht darin: der
+  Watcher liest dort jede `.json` als Snapshot.
 
 ## Schriften und Scrollbar im Panel
 

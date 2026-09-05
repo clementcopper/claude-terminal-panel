@@ -9,6 +9,11 @@ paths:
 
 Distilled from `LEARNINGS.md` § Webview, § Terminal-Start im Panel (webview side), § OpenCode theme, § OpenCode-Startzeit and § Schriften und Scrollbar. Stories are there; opacity and `xterm.css` regeneration are in `CLAUDE.md`.
 
+## Keyboard and dimming
+
+- **xterm takes Tab as input; the bars are keyboard-reachable only from outside the terminal.** Tabs carry `role="tab"`/`tabindex`; from inside the terminal the commands remain the way.
+- **Dim the parts, never the tab.** `opacity` on `.tab` took the waiting pill to 1.74:1; `--tab-accent` plus `.tab-name` opacity keeps it at 4.61:1. Same construction as `.group-tab::after`.
+
 ## Measuring and fitting
 
 - **Never open xterm in a `display:none` element.** It measures 0×0, stays 80×24 and reflows everything received before the first `fit()`. `visibility: hidden` on an absolutely positioned wrapper has layout and paints nothing; that is what `measureInitialDimensions` does.

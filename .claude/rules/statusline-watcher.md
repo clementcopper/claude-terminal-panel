@@ -6,6 +6,8 @@ paths:
 
 # Status line data path (watcher and producer)
 
+- **The producer runs on every render; never read the whole transcript there.** 440–1040 ms per render on a 16.8 MB session, measured. Compaction counts live under `<tmpdir>/claude-terminal-panel/compactions/` with a byte offset; only the appended bytes are scanned. Keep that cache outside the status directories — the watcher reads every `.json` there as a snapshot.
+
 Distilled from `LEARNINGS.md` § Statuszeile (file side) and § Claude Code (statusLine trigger). Stories are there.
 
 - **The status folder in `$TMPDIR` is machine-wide.** Every VS Code window of the user shared `claude-terminal-panel/status`; cleanup killed other windows' live tabs. Hence `status/<window token>/`.

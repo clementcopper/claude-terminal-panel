@@ -2,6 +2,8 @@
 
 Distilled from `LEARNINGS.md` § Prüfwerkzeuge für dieses Repo and the measurement bullets in § Webview and § Schriften. Loaded every session because verification here is measurement, not tests.
 
+- **An audit agent's finding is a hypothesis until the line is read.** One of ~70 claims was false (`retainContextWhenHidden` is set); check each with `sed -n` before it enters a plan.
+- **`:focus-visible` in a Playwright probe:** focus programmatically, then press a bare `Shift` — keyboard modality without moving focus. Tab from inside xterm never leaves it.
 - **The webview runs headless without VS Code.** A page with `#terminal-column` / `#terminals-container` / `#status-line` / `#tab-bar`, `media/main.js`, `styles.css`, `xterm.css`, and an inline `window.acquireVsCodeApi` stub **before** `main.js` (collects `postMessage` into `window.__posted`); drive it with `window.dispatchEvent(new MessageEvent('message', {data}))` so the real handlers run, then measure fit sizes, status line, indicator.
 - **`--dump-dom` delivers no `ResizeObserver`, `IntersectionObserver` or `rAF` callbacks.** Anything on those paths needs CDP: `Emulation.setDeviceMetricsOverride`, `Page.captureScreenshot` to force a frame, then `Runtime.evaluate`.
 - **Measure the probe first.** `style.width` on a `flex: 1` item does nothing (`flex-basis: 0`); read the set size back before every series, or five series look identical for the wrong reason.

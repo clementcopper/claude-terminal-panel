@@ -7,6 +7,10 @@ paths:
 
 Distilled from `LEARNINGS.md` § Claude Code, § Prompt input, § Inter-agent channel, § Terminal-Start im Panel (host side), § OpenCode-Startzeit and § OpenCode theme. Stories and measurements are there.
 
+## Files and offsets
+
+- **An offset into a file is bytes; `string.length` is UTF-16.** The inbox reader mixed the two and re-delivered old lines after every non-ASCII character. Track `Buffer` lengths, read from the offset with `fs.readSync`, advance only past the last `\n`.
+
 ## Spawning
 
 - **Resolve commands to absolute paths before `spawn` (`PtyManager.resolveCommand`).** The extension host inherits Finder's PATH, not the login shell's; node-pty reports a missing binary as `[Process exited with code 1]` with no text. Search host PATH plus `~/.local/bin`, `~/.opencode/bin`, `~/bin`.
