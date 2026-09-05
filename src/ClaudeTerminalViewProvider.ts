@@ -139,7 +139,11 @@ export class ClaudeTerminalViewProvider
     );
 
     this.statusLineWatcher = new StatusLineWatcher((terminalId, snapshot) => {
-      this.postMessage({ type: 'statusLine', id: terminalId, data: snapshot });
+      // The threshold warning is independent of the row: it fires whether or not the row is
+      // drawn, because a user who hid the row still asked for the warning.
+      if (this.configManager.getConfig().statusLine) {
+        this.postMessage({ type: 'statusLine', id: terminalId, data: snapshot });
+      }
       this.checkContextThreshold(terminalId, snapshot);
     });
 
@@ -1230,6 +1234,16 @@ export class ClaudeTerminalViewProvider
     // time the user happens to move the cursor
     this.sendEditorContext(this.editorTracker.current);
     this.sendContextThreshold();
+    // `statusLine` may have just been switched. Off: clear every tab's row now, rather than let
+    // it stand until the next snapshot happens not to arrive. On: fill the rows from memory.
+    const showStatusLine = this.configManager.getConfig().statusLine;
+    for (const instance of this.stateManager.getAll()) {
+      if (showStatusLine) {
+        this.sendInitialStatusLine(instance.id, instance.cwd);
+      } else {
+        this.postMessage({ type: 'statusLine', id: instance.id, data: null });
+      }
+    }
   }
 
   public dispose(): void {
@@ -1324,6 +1338,9 @@ export class ClaudeTerminalViewProvider
     // Only Claude tabs have a status line; an OpenCode tab must not inherit a stale
     // remembered snapshot from a previous Claude session in the same directory.
     if (this.stateManager.get(terminalId)?.engine !== 'claude') {
+      return;
+    }
+    if (!this.configManager.getConfig().statusLine) {
       return;
     }
     const snapshot = this.statusLineWatcher.getInitialSnapshot(cwd);
