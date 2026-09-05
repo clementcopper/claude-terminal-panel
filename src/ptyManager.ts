@@ -440,7 +440,8 @@ export class PtyManager {
       const started = this.startedAt.get(terminalId);
       const lived = started !== undefined ? `${String(Date.now() - started)} ms` : 'unknown age';
       const retired = this.ptys.get(terminalId) !== pty;
-      if (!retired) {
+      // A replacement has its own start time; a closed tab has none left to keep.
+      if (!retired || !this.ptys.has(terminalId)) {
         this.startedAt.delete(terminalId);
       }
       log(
@@ -512,5 +513,6 @@ export class PtyManager {
     for (const terminalId of this.ptys.keys()) {
       this.kill(terminalId);
     }
+    this.startedAt.clear();
   }
 }

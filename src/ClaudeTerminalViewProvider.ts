@@ -100,6 +100,8 @@ export class ClaudeTerminalViewProvider
    * was running.
    */
   private readonly exitRecovery = new Map<string, { args: string[]; note: string }[]>();
+  /** The 0 ms hop between a recoverable exit and its respawn, per tab, so dispose can clear it. */
+  private readonly recoveryTimers = new Map<string, NodeJS.Timeout>();
 
   /** Key under which the tab layout is remembered for this workspace. */
   private static readonly LAYOUT_KEY = 'claudeTerminal.layout';
@@ -592,8 +594,10 @@ export class ClaudeTerminalViewProvider
    * the last entry. When the list runs out, the familiar exit line stands.
    */
   private handlePtyExit(terminalId: string, exitCode: number | null): void {
-    if (this.disposed || !this.view) return;
+    if (this.disposed) return;
 
+    // The recovery plan runs whether or not the webview is there to print the note: a webview
+    // being rebuilt (panel moved to the other sidebar) must not cost the tab its restart.
     const plan = exitCode === 1 ? this.exitRecovery.get(terminalId) : undefined;
     const next = plan?.shift();
     if (next) {
@@ -601,14 +605,18 @@ export class ClaudeTerminalViewProvider
         this.exitRecovery.delete(terminalId);
       }
       this.postMessage({ type: 'output', id: terminalId, data: `\r\n${next.note}\r\n` });
-      // Out of node-pty's own exit callback before spawning the replacement.
-      setTimeout(() => {
+      // Out of node-pty's own exit callback before spawning the replacement. Tracked, so a
+      // dispose or a close in that window does not spawn into a tab that is gone.
+      const timer = setTimeout(() => {
+        this.recoveryTimers.delete(terminalId);
         this.respawnTerminal(terminalId, next.args);
       }, 0);
+      this.recoveryTimers.set(terminalId, timer);
       return;
     }
 
     this.exitRecovery.delete(terminalId);
+    if (!this.view) return;
     this.postMessage({
       type: 'output',
       id: terminalId,
@@ -984,11 +992,8 @@ export class ClaudeTerminalViewProvider
    * would only fight the group switch that follows.
    */
   private disposeTerminal(terminalId: string): void {
-    const pending = this.pendingSpawns.get(terminalId);
-    if (pending) {
-      clearTimeout(pending.timer);
-      this.pendingSpawns.delete(terminalId);
-    }
+    this.cancelPendingSpawn(terminalId);
+    this.cancelRecovery(terminalId);
 
     log('tab', `${terminalId} closed`);
     this.ptyManager.kill(terminalId);
@@ -1020,7 +1025,8 @@ export class ClaudeTerminalViewProvider
       } else {
         this.stateManager.clearActive();
         this.sendGroupsUpdate();
-        void this.createTerminal();
+        // The group stays: its replacement tab runs the group's own CLI, not the default one.
+        void this.createTerminal(group.engine);
       }
       return;
     }
@@ -1047,7 +1053,7 @@ export class ClaudeTerminalViewProvider
       return;
     }
     this.stateManager.clearActive();
-    void this.createTerminal();
+    void this.createTerminal(this.stateManager.getActiveGroup()?.engine);
   }
 
   public closeActiveTerminal(): void {
@@ -1141,6 +1147,23 @@ export class ClaudeTerminalViewProvider
    * Without that cwd the new PTY falls back to the first workspace folder, which
    * silently changes which session history applies.
    */
+  private cancelPendingSpawn(terminalId: string): void {
+    const pending = this.pendingSpawns.get(terminalId);
+    if (pending) {
+      clearTimeout(pending.timer);
+      this.pendingSpawns.delete(terminalId);
+    }
+  }
+
+  private cancelRecovery(terminalId: string): void {
+    const timer = this.recoveryTimers.get(terminalId);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.recoveryTimers.delete(terminalId);
+    }
+    this.exitRecovery.delete(terminalId);
+  }
+
   private respawnActive(extraArgs: string[]): void {
     const activeId = this.stateManager.getActiveId();
     if (!activeId) return;
@@ -1154,6 +1177,10 @@ export class ClaudeTerminalViewProvider
   private respawnTerminal(terminalId: string, extraArgs: string[]): void {
     if (!this.stateManager.get(terminalId)) return;
 
+    // A tab still waiting for its first `terminalReady` has a spawn armed with the plain config.
+    // Left in place, that spawn fires after this one and replaces it — the resume/continue flags
+    // and the recovery plan would be gone, and the session would start twice.
+    this.cancelPendingSpawn(terminalId);
     this.thresholdNotified.delete(terminalId);
     // Restart/resume/continue start the process outright, so the tab is no longer cold.
     this.coldTerminals.delete(terminalId);
@@ -1211,6 +1238,10 @@ export class ClaudeTerminalViewProvider
       clearTimeout(pending.timer);
     }
     this.pendingSpawns.clear();
+    for (const timer of this.recoveryTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.recoveryTimers.clear();
     this.themeSubscription.dispose();
     this.ptyManager.killAll();
     this.interAgentRouter?.dispose();
