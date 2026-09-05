@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-05
+
+Everything since 1.1.0 — the two-level tabs and the review that followed. The `.vsix` is
+`claude-terminal-panel-local-1.2.0.vsix`.
+
 ### Added
 
 - **Two levels of tabs.** Claude Terminal tabs (groups) each hold their own terminal tabs. The
@@ -86,6 +91,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Restart/resume/continue on a tab still waiting for its first `terminalReady`** left the
+  measured spawn armed; it fired afterwards with the plain config, dropped the `--resume` /
+  `--continue` flags and started the session twice.
+- Closing the last tab of a lone OpenCode group opened a Claude tab inside it.
+- The inter-agent reader mixed byte offsets with UTF-16 offsets; any non-ASCII character in an
+  inbox file made it re-deliver old lines on the next window start. It now reads only the
+  appended bytes, up to the last complete line.
+- With `directMode: false` the `--settings` JSON went into the shell unquoted.
+- A window reload brought back each group's _last_ tab instead of the one that was on screen, and
+  a saved group whose directory had vanished shifted the active group by one.
+- `claudeTerminal.statusLine: false` did not hide the row when an own producer kept writing it.
+- A process exiting while the webview was being rebuilt lost its recovery plan; the tab stayed
+  dead with no message.
+- Cancelling the working-directory picker still created a group in the first workspace folder.
+- The inactive-tab dimming took the waiting-for-input pill down to 40 % with it; the accent and
+  the number dim, the pill does not.
+- Closing a tab inside its 80 ms ready window reported a size for a disposed terminal.
+- File links were underlined one cell too far.
+- Switching the prompt notification off left pills that were already showing.
+- `media/*.ts` and `media/tsconfig.json` shipped in every `.vsix` (43 KB of source); the payload
+  guard now refuses any TypeScript in the archive, checks a compiled `build/Release` pair and
+  requires both stylesheets.
+- Unbounded maps: `PtyManager.startedAt` kept an entry per closed tab.
+- `fs.watch` handles had no error listener; an error after setup was an uncaught exception.
+
+### Changed
+
+- **Web links in the terminal open through VS Code** (`env.openExternal`, http(s) only), so the
+  trusted-domains prompt applies — the output is model-generated.
+- Tabs and group tabs are reachable by keyboard: `role="tab"`, `Tab` to focus, Enter/Space to
+  activate, a focus ring inside the bar, named close buttons.
+- The status line producer remembers each transcript's compaction count with the byte offset it
+  was taken at (`<tmpdir>/claude-terminal-panel/compactions/`) and scans only what was appended
+  since. Measured on a 17 MB transcript: 440–1040 ms per render before, 110 ms after (of which
+  Node's own start-up is most).
+- A switch the user did not ask for (the webview coming back) no longer takes the caret.
+- `npm run typecheck` covers both halves and runs in `vscode:prepublish` and CI; prettier covers
+  `resources/`, `scripts/` and the ESLint config; `vsce` is pinned.
 - The first row count handed to a new PTY is measured against a real `.terminal-wrapper` in the
   terminals container instead of being reconstructed from the viewport. The old arithmetic
   hardcoded the tab bar's 36px and ignored the wrapper's 10px/6px insets: measured at a 320px ×

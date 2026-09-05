@@ -19,7 +19,7 @@ npm ci
 npm run lint && npm run compile
 npm run package
 "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" \
-  --install-extension claude-terminal-panel-local-1.1.0.vsix --force
+  --install-extension claude-terminal-panel-local-1.2.0.vsix --force
 ```
 
 `--force` matters: without it VS Code skips an install whose version is already present, which is
@@ -201,7 +201,10 @@ train you to ignore the one warning that matters.
 
 A **webview** rebuild is a different thing entirely and needs none of this: moving the panel to the
 other sidebar or running `Developer: Reload Webviews` leaves the extension host and its PTYs alive,
-and `handleReady` finds the tabs still in the state manager and replays them, scrollback included.
+and `handleReady` finds the tabs still in the state manager and recreates their wrappers. The
+scrollback is not replayed — the host forwards PTY output and keeps no copy — so a rebuilt webview
+starts every tab empty while the processes carry on. Collapsing the view does not rebuild it
+(`retainContextWhenHidden`), so the common case keeps its history.
 
 ## Icons
 
