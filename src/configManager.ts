@@ -3,22 +3,13 @@ import type { TerminalConfig } from './types';
 
 /**
  * Manages terminal configuration with caching.
- * Configuration is cached and invalidated when VS Code settings change.
+ *
+ * Invalidation comes from outside: extension.ts listens for `claudeTerminal` changes once and
+ * calls the provider's updateConfig(), whose first line is invalidateCache(). A second listener
+ * here only doubled the work in an unspecified order.
  */
 export class ConfigManager {
   private cachedConfig: TerminalConfig | undefined;
-  private readonly disposables: vscode.Disposable[] = [];
-
-  constructor() {
-    // Listen for configuration changes and invalidate cache
-    this.disposables.push(
-      vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration('claudeTerminal')) {
-          this.invalidateCache();
-        }
-      })
-    );
-  }
 
   /**
    * Gets the current terminal configuration (cached).
@@ -55,13 +46,7 @@ export class ConfigManager {
     this.cachedConfig = undefined;
   }
 
-  /**
-   * Disposes of resources.
-   */
   dispose(): void {
-    this.disposables.forEach((d) => {
-      d.dispose();
-    });
-    this.disposables.length = 0;
+    this.cachedConfig = undefined;
   }
 }

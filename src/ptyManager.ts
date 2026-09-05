@@ -100,7 +100,7 @@ export class PtyManager {
    * Prompts the user to select a workspace folder if multiple are available.
    * Returns the selected folder path and its index for color mapping.
    */
-  async selectWorkingDirectory(configuredCwd = ''): Promise<WorkingDirectorySelection> {
+  async selectWorkingDirectory(configuredCwd = ''): Promise<WorkingDirectorySelection | undefined> {
     // A configured directory wins over the workspace, and skips the folder prompt:
     // session history lives per directory, so this keeps it stable across windows.
     const fixed = this.resolveConfiguredCwd(configuredCwd);
@@ -145,11 +145,9 @@ export class PtyManager {
       };
     }
 
-    // User cancelled - use first folder as default
-    return {
-      path: folders[0].uri.fsPath,
-      folderIndex: 0
-    };
+    // Cancelled: no directory, so the caller opens nothing. Falling back to the first folder
+    // committed a group the user had just backed out of.
+    return undefined;
   }
 
   private ensureNodePtyLoaded(): void {
@@ -470,6 +468,11 @@ export class PtyManager {
    * id it does not know is a routing mistake. Silent optional chaining hid exactly that for three
    * commits, while a second owner held the PTYs — every keystroke dropped, nothing in the log.
    */
+  /** Whether a process is attached — a cold restored tab or one mid-spawn has none. */
+  isRunning(terminalId: string): boolean {
+    return this.ptys.has(terminalId);
+  }
+
   write(terminalId: string, data: string): void {
     const pty = this.ptys.get(terminalId);
     if (!pty) {

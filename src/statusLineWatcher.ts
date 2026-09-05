@@ -335,6 +335,13 @@ export class StatusLineWatcher {
           this.scheduleRead(filename);
         }
       });
+      // An error after the watch is set up (directory removed by a tmp cleaner, descriptor
+      // limit) has no listener otherwise and surfaces as an uncaught exception in the host.
+      this.watcher.on('error', (error) => {
+        console.warn('[Claude Terminal] status line watcher failed', error);
+        this.watcher?.close();
+        this.watcher = undefined;
+      });
     } catch (error) {
       console.warn('[Claude Terminal] cannot watch the status line directory', error);
     }
@@ -357,6 +364,11 @@ export class StatusLineWatcher {
         if (filename === LIMITS_FILE) {
           this.scheduleLimitsBroadcast();
         }
+      });
+      this.limitsWatcher.on('error', (error) => {
+        console.warn('[Claude Terminal] limits watcher failed, polling only', error);
+        this.limitsWatcher?.close();
+        this.limitsWatcher = undefined;
       });
     } catch (error) {
       console.warn('[Claude Terminal] cannot watch the remembered limits', error);

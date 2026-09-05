@@ -101,6 +101,16 @@ export class PromptDetector {
     const newPatterns = this.buildPatterns(config.customPatterns);
     this.patterns.length = 0;
     this.patterns.push(...newPatterns);
+    // Off means off: a pill that is already showing would otherwise stay until the user typed
+    // into that one tab, because onData returns before it can clear anything.
+    if (!config.enabled) {
+      for (const terminalId of this.timers.keys()) {
+        this.clearTimer(terminalId);
+      }
+      for (const terminalId of [...this.waitingState.keys()]) {
+        this.setWaitingState(terminalId, false);
+      }
+    }
   }
 
   onData(terminalId: string, data: string): void {
