@@ -2,3 +2,5 @@ dist/
 node_modules/
 *.vsix
 package-lock.json
+# copied verbatim from node_modules on every build
+media/xterm.css

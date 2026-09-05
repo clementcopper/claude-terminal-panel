@@ -55,8 +55,14 @@ const REQUIRED_PREBUILDS = {
 /** Must be executable, or the fork succeeds and the spawn does not. */
 const MUST_BE_EXECUTABLE = ['darwin-x64/spawn-helper', 'darwin-arm64/spawn-helper'];
 
-/** Without these the extension has no entry point; `vsce` reports it in a misleading way. */
-const REQUIRED_IN_VSIX = ['dist/extension.js', 'media/main.js', 'resources/panel-statusline.js'];
+/** Without these the extension has no entry point, or a webview with no styles. */
+const REQUIRED_IN_VSIX = [
+  'dist/extension.js',
+  'media/main.js',
+  'media/styles.css',
+  'media/xterm.css',
+  'resources/panel-statusline.js'
+];
 
 function fail(headline, details) {
   console.error(`\x1b[31m✗ ${headline}\x1b[0m`);
@@ -185,7 +191,12 @@ function checkVsix(vsixPath) {
     fail('no .vsix to check', [path.relative(ROOT, target)]);
   }
 
-  const entries = readZipEntries(fs.readFileSync(target));
+  let entries;
+  try {
+    entries = readZipEntries(fs.readFileSync(target));
+  } catch (error) {
+    fail(`${path.basename(target)} could not be read as a zip archive`, [String(error)]);
+  }
   const modes = new Map(entries.map((entry) => [entry.name, entry.mode]));
 
   const problems = [];
@@ -210,6 +221,22 @@ function checkVsix(vsixPath) {
     const mode = modes.get(name);
     if (mode !== undefined && (mode & 0o111) === 0) {
       problems.push(`not executable (${mode.toString(8)}): ${relative} — every spawn would fail`);
+    }
+  }
+
+  // node-pty's loader looks in build/Release before the prebuilds. .vscodeignore lets a compiled
+  // pair through on purpose (the Linux case), so a spawn-helper there wins the race and has to
+  // carry the bit too — and must not arrive without its pty.node.
+  const compiled = 'extension/node_modules/node-pty/build/Release';
+  const compiledHelper = modes.get(`${compiled}/spawn-helper`);
+  if (compiledHelper !== undefined) {
+    if ((compiledHelper & 0o111) === 0) {
+      problems.push(
+        `not executable (${compiledHelper.toString(8)}): build/Release/spawn-helper — loaded before the prebuilds`
+      );
+    }
+    if (!modes.has(`${compiled}/pty.node`)) {
+      problems.push('build/Release/spawn-helper packaged without build/Release/pty.node');
     }
   }
 
