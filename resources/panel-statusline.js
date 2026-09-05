@@ -20,7 +20,14 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const { execSync } = require('child_process');
+
+/**
+ * Where the compaction counts are remembered between renders — beside the status directories,
+ * not inside one: the extension watches those and reads every `.json` in them as a snapshot.
+ */
+const COMPACTION_CACHE_DIR = path.join(os.tmpdir(), 'claude-terminal-panel', 'compactions');
 
 function readStdin() {
   try {
@@ -95,14 +102,64 @@ function countCompactions(transcriptPath) {
     return result;
   }
 
-  let content;
+  // The transcript is append-only and this runs on every render — for a 17 MB session that was
+  // half a second of reading and splitting per render, measured. So the count is remembered per
+  // transcript together with the byte offset it was taken at, and a render scans only what
+  // Claude Code appended since. A file that shrank (a new session under the same path) starts
+  // over from zero.
+  let size;
   try {
-    content = fs.readFileSync(transcriptPath, 'utf8');
+    size = fs.statSync(transcriptPath).size;
+  } catch {
+    return result;
+  }
+  const cacheFile = path.join(
+    COMPACTION_CACHE_DIR,
+    `${crypto.createHash('sha1').update(transcriptPath).digest('hex')}.json`
+  );
+  let offset = 0;
+  try {
+    const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+    if (
+      cached &&
+      Number.isInteger(cached.offset) &&
+      cached.offset <= size &&
+      Number.isInteger(cached.total) &&
+      Number.isInteger(cached.auto)
+    ) {
+      offset = cached.offset;
+      result.total = cached.total;
+      result.auto = cached.auto;
+    }
+  } catch {
+    // no cache yet, or an unreadable one — a full scan then
+  }
+  if (size === offset) {
+    return result;
+  }
+
+  let chunk;
+  try {
+    const fd = fs.openSync(transcriptPath, 'r');
+    try {
+      chunk = Buffer.alloc(size - offset);
+      const read = fs.readSync(fd, chunk, 0, chunk.length, offset);
+      chunk = chunk.subarray(0, read);
+    } finally {
+      fs.closeSync(fd);
+    }
   } catch {
     return result;
   }
 
-  for (const line of content.split('\n')) {
+  // Only complete lines count, and the offset advances only past them: Claude Code may be in
+  // the middle of writing the last one.
+  const lastNewline = chunk.lastIndexOf(0x0a);
+  if (lastNewline < 0) {
+    return result;
+  }
+  const complete = chunk.subarray(0, lastNewline + 1);
+  for (const line of complete.toString('utf8').split('\n')) {
     if (!line.includes('compact_boundary')) continue;
     let entry;
     try {
@@ -116,6 +173,19 @@ function countCompactions(transcriptPath) {
         result.auto += 1;
       }
     }
+  }
+
+  try {
+    fs.mkdirSync(COMPACTION_CACHE_DIR, { recursive: true, mode: 0o700 });
+    const temp = `${cacheFile}.${String(process.pid)}.tmp`;
+    fs.writeFileSync(
+      temp,
+      JSON.stringify({ offset: offset + complete.length, total: result.total, auto: result.auto }),
+      { mode: 0o600 }
+    );
+    fs.renameSync(temp, cacheFile);
+  } catch {
+    // Not remembered this time; the next render scans again. Never worth failing the row over.
   }
 
   return result;
