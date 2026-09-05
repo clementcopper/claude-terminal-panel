@@ -175,13 +175,6 @@ export class TerminalStateManager {
   }
 
   /**
-   * Gets all terminal IDs.
-   */
-  getAllIds(): string[] {
-    return Array.from(this.terminals.keys());
-  }
-
-  /**
    * Gets the active terminal ID.
    */
   getActiveId(): string | undefined {

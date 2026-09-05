@@ -112,7 +112,6 @@ export interface EditorContext {
 export interface TerminalInstance {
   id: string;
   name: string;
-  pty: IPty | undefined;
   isActive: boolean;
   workspaceFolderIndex?: number;
   isWaitingForInput?: boolean;
@@ -201,7 +200,7 @@ export interface TabInfo {
 
 // Webview message types (from webview to extension)
 export type WebviewMessage =
-  | { type: 'ready'; cols?: number; rows?: number }
+  | { type: 'ready'; cols: number; rows: number }
   | { type: 'input'; id: string; data: string }
   | { type: 'resize'; id: string; cols: number; rows: number }
   /**
@@ -232,7 +231,6 @@ export type WebviewMessage =
    */
   | { type: 'stopTurn'; id: string }
   // The slider on the context bar; the value is written back to the workspace settings
-  | { type: 'setContextThreshold'; value: number }
   | { type: 'promptContextThreshold' }
   /**
    * The webview just re-applied its xterm theme after a VS Code colour-theme change. This is the
@@ -257,7 +255,6 @@ export type ExtensionMessage =
       type: 'createTab';
       id: string;
       name: string;
-      accentColor?: string;
       awaitingStart: boolean;
     }
   | { type: 'switchTab'; id: string }
@@ -274,45 +271,3 @@ export type ExtensionMessage =
   | { type: 'focusTerminal' }
   // The threshold lives in the settings; the webview only draws and drags it
   | { type: 'contextThreshold'; value: number };
-
-// Command help parsing types
-export interface CommandFlag {
-  flag: string;
-  shortFlag?: string;
-  description: string;
-  takesValue?: boolean;
-  valueHint?: string;
-  repeatable?: boolean;
-}
-
-export interface ParsedHelp {
-  command: string;
-  flags: CommandFlag[];
-  subcommands?: string[];
-  parseErrors?: string[];
-}
-
-// Path autocomplete types
-export type PathFilterMode = 'all' | 'files' | 'directories';
-
-export interface PathSuggestion {
-  /** Display name (e.g., "package.json") */
-  name: string;
-  /** Full path to suggest (relative or absolute) */
-  path: string;
-  /** Whether this is a directory */
-  isDirectory: boolean;
-}
-
-export interface PathContext {
-  /** Whether we're in path completion mode */
-  active: boolean;
-  /** The partial path typed so far (e.g., "src/comp") */
-  partialPath: string;
-  /** Filter mode based on valueHint */
-  filterMode: PathFilterMode;
-  /** Whether to show absolute paths (user typed leading /) */
-  isAbsolute: boolean;
-  /** The flag being completed */
-  flag: CommandFlag;
-}

@@ -228,7 +228,6 @@ class ScrollManager {
 
   static setupScrollTracking(entry: TerminalEntry): void {
     entry.terminal.onScroll(() => {
-      entry.isAtBottom = this.isAtBottom(entry.terminal);
       this.markScrollback(entry);
     });
 
@@ -241,18 +240,6 @@ class ScrollManager {
       this.markScrollback(entry);
     });
     this.markScrollback(entry);
-
-    const viewport = entry.element.querySelector('.xterm-viewport') as HTMLElement;
-    if (viewport) {
-      viewport.addEventListener(
-        'scroll',
-        () => {
-          entry.lastScrollTop = viewport.scrollTop;
-          entry.isAtBottom = this.isAtBottom(entry.terminal);
-        },
-        { passive: true }
-      );
-    }
   }
 
   /** `baseY` is how many rows have scrolled off the top — zero means there is nothing above. */
@@ -300,8 +287,6 @@ const messageHandlers: MessageHandlers = {
       return;
     }
     t.terminal.clear();
-    t.isAtBottom = true;
-    t.lastScrollTop = 0;
   },
   tabsUpdate: (message, ctx) => {
     ctx.renderTabBar(message.tabs);
@@ -433,16 +418,7 @@ class TooltipManager {
     let left: number;
     let top: number;
 
-    if (target.dataset.tooltipPlacement === 'above') {
-      // Centred over the target. The threshold handle asks for this: it travels the width of the
-      // bar, and a tooltip beside it would read as belonging to whatever it happens to sit next
-      // to. Below is the fallback when the target is close to the top edge.
-      left = targetRect.left + targetRect.width / 2 - tip.width / 2;
-      top = targetRect.top - tip.height - gap;
-      if (top < gap) {
-        top = targetRect.bottom + gap;
-      }
-    } else {
+    {
       left = targetRect.left - tip.width - gap;
       top = targetRect.top + targetRect.height / 2 - tip.height / 2;
 
@@ -1126,10 +1102,6 @@ class StatusLineView {
 }
 
 /**
- * Compact token counts the way the statusLine script does: integers from 100k up, one
- * decimal below that, comma as the decimal separator.
- */
-/**
  * Keeps the tail of a path, which is the part that identifies the project.
  * `~/work/clients/acme/api` becomes `…/acme/api`; short paths stay whole.
  */
@@ -1171,6 +1143,10 @@ function formatClock(epochSeconds: number): string {
   }
 }
 
+/**
+ * Compact token counts the way the statusLine script does: integers from 100k up, one
+ * decimal below that, comma as the decimal separator.
+ */
 function formatK(tokens: number): string {
   // A 1M context window would read as "1000k" otherwise
   if (tokens >= 1_000_000) {
@@ -1354,9 +1330,9 @@ class WebviewContext {
       if (activeId) {
         const active = this.state.get(activeId);
         if (active) {
+          // xterm keeps its own viewport offset across a refit; only "was at the bottom" needs
+          // restoring, because a fit that adds rows would otherwise leave the last line hidden.
           const wasAtBottom = ScrollManager.isAtBottom(active.terminal);
-          const viewport = active.element.querySelector('.xterm-viewport') as HTMLElement;
-          const savedScrollTop = viewport?.scrollTop ?? 0;
 
           active.fitAddon.fit();
           this.scheduleReadyReport(activeId, active);
@@ -1364,10 +1340,7 @@ class WebviewContext {
           requestAnimationFrame(() => {
             if (wasAtBottom) {
               active.terminal.scrollToBottom();
-            } else if (viewport && savedScrollTop > 0) {
-              viewport.scrollTop = savedScrollTop;
             }
-            active.isAtBottom = wasAtBottom;
           });
 
           this.postMessage({
@@ -1473,7 +1446,7 @@ class WebviewContext {
     // group. `tabsUpdate` is sent before `groupsUpdate`, so the button already exists here and is
     // relabelled in place rather than waiting for the next tab-bar render.
     const active = groups.find((g) => g.isActive);
-    this.activeGroupEngine = active?.engine ?? 'claude';
+    this.activeGroupEngine = active ? active.engine : 'claude';
     const addButton = this.tabBar.querySelector<HTMLElement>('.tab-add');
     if (addButton) {
       addButton.dataset.tooltip = this.newTerminalTooltip();
@@ -1765,13 +1738,10 @@ class WebviewContext {
     const entry: TerminalEntry = {
       terminal,
       fitAddon,
-      element: container,
-      isAtBottom: true,
-      lastScrollTop: 0
+      element: container
     };
 
     terminal.onData((data) => {
-      entry.isAtBottom = true;
       this.postMessage({ type: 'input', id, data });
     });
 
@@ -1930,8 +1900,8 @@ class WebviewContext {
     this.statusLine.setActive(id);
 
     {
-      const wasAtBottom = active.isAtBottom;
-      const savedScrollTop = active.lastScrollTop;
+      // Read from the buffer, not from a field: the offset lives in xterm and survives the hide.
+      const wasAtBottom = ScrollManager.isAtBottom(active.terminal);
 
       // Double RAF ensures browser has completed layout after display change
       requestAnimationFrame(() => {
@@ -1943,11 +1913,6 @@ class WebviewContext {
           requestAnimationFrame(() => {
             if (wasAtBottom) {
               active.terminal.scrollToBottom();
-            } else {
-              const viewport = active.element.querySelector('.xterm-viewport') as HTMLElement;
-              if (viewport && savedScrollTop > 0) {
-                viewport.scrollTop = savedScrollTop;
-              }
             }
           });
 

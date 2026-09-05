@@ -19,7 +19,7 @@ export interface TabInfo {
   accentColor?: string;
   isWaitingForInput?: boolean;
   cwd?: string;
-  engine?: 'claude' | 'opencode';
+  engine: 'claude' | 'opencode';
 }
 
 /**
@@ -41,6 +41,7 @@ export interface StatusLineSnapshot {
   compacted?: number;
   compactBudget?: number;
   compactAuto?: number;
+  /** Unix seconds, as the producer writes it — multiply by 1000 before comparing with Date.now(). */
   updatedAt: number;
 }
 
@@ -66,7 +67,7 @@ export interface GroupInfo {
   cwd: string;
   terminalCount: number;
   hasWaitingTerminal: boolean;
-  engine?: 'claude' | 'opencode';
+  engine: 'claude' | 'opencode';
   accentColor?: string;
 }
 
@@ -80,7 +81,6 @@ export type WebviewIncomingMessage =
       type: 'createTab';
       id: string;
       name: string;
-      accentColor?: string;
       awaitingStart: boolean;
     }
   | { type: 'switchTab'; id: string }
@@ -109,7 +109,6 @@ export type WebviewOutgoingMessage =
   | { type: 'openExternal'; uri: string }
   | { type: 'insertEditorReference' }
   | { type: 'stopTurn'; id: string }
-  | { type: 'setContextThreshold'; value: number }
   | { type: 'promptContextThreshold' }
   | { type: 'themeApplied' };
 
@@ -118,8 +117,6 @@ export interface TerminalEntry {
   terminal: XTermTerminal;
   fitAddon: XTermFitAddon;
   element: HTMLDivElement;
-  isAtBottom: boolean;
-  lastScrollTop: number;
   /** Set once `terminalReady` has been sent for this tab; the host starts the process on it. */
   readySent?: boolean;
   /** Kept for the startup indicator a restored tab shows when it is finally woken. */

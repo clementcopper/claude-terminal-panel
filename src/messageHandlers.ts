@@ -20,7 +20,6 @@ export interface MessageHandlerContext {
   handleOpenExternal(uri: string): void;
   handleInsertEditorReference(): void;
   handleStopTurn(id: string): void;
-  handleSetContextThreshold(value: number): void;
   handlePromptContextThreshold(): void;
   handleThemeApplied(): void;
 }
@@ -37,7 +36,7 @@ type MessageHandlerMap = {
  */
 const messageHandlers: MessageHandlerMap = {
   ready: (message, ctx) => {
-    ctx.handleReady(message.cols ?? 80, message.rows ?? 24);
+    ctx.handleReady(message.cols, message.rows);
   },
   input: (message, ctx) => {
     ctx.handleInput(message.id, message.data);
@@ -80,9 +79,6 @@ const messageHandlers: MessageHandlerMap = {
   },
   stopTurn: (message, ctx) => {
     ctx.handleStopTurn(message.id);
-  },
-  setContextThreshold: (message, ctx) => {
-    ctx.handleSetContextThreshold(message.value);
   },
   promptContextThreshold: (_message, ctx) => {
     ctx.handlePromptContextThreshold();

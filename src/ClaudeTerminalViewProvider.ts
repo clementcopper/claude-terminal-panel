@@ -55,7 +55,10 @@ export class ClaudeTerminalViewProvider
   private readonly editorTracker: EditorContextTracker;
 
   /** Inter-agent router for message delivery between tabs. */
-  private interAgentRouter: InterAgentRouter | null = null;
+  private readonly interAgentRouter: InterAgentRouter;
+
+  /** How long a tab waits for the webview to report its size before starting anyway. */
+  private static readonly READY_TIMEOUT_MS = 2000;
 
   /**
    * Tabs whose process is waiting for the webview to report the terminal's real size.
@@ -65,9 +68,6 @@ export class ClaudeTerminalViewProvider
    * then paints its opening frame for a window that is up to seven rows taller than the one it
    * lands in, which is where the wrapped boxes and leftover fragments come from.
    */
-  /** How long a tab waits for the webview to report its size before starting anyway. */
-  private static readonly READY_TIMEOUT_MS = 2000;
-
   private readonly pendingSpawns = new Map<
     string,
     { config: TerminalConfig; cwd?: string; timer: ReturnType<typeof setTimeout> }
@@ -245,7 +245,6 @@ export class ClaudeTerminalViewProvider
         type: 'createTab',
         id: tab.id,
         name: tab.name,
-        accentColor: this.getAccentColor(tab.engine),
         awaitingStart: false
       });
       const snapshot = this.statusLineWatcher.get(tab.id);
@@ -718,7 +717,6 @@ export class ClaudeTerminalViewProvider
     const instance: TerminalInstance = {
       id,
       name,
-      pty: undefined,
       isActive: false,
       workspaceFolderIndex: folderIndex,
       cwd,
@@ -730,10 +728,9 @@ export class ClaudeTerminalViewProvider
     this.stateManager.set(id, instance);
     this.stateManager.setActive(id);
 
-    // Notify webview with accent color. A cold tab is not starting anything, so it gets no
-    // "starting…" indicator — that would promise a process nobody asked for yet.
-    const accentColor = this.getAccentColor(engine);
-    this.postMessage({ type: 'createTab', id, name, accentColor, awaitingStart: !cold });
+    // A cold tab is not starting anything, so it gets no "starting…" indicator — that would
+    // promise a process nobody asked for yet. The accent travels with tabsUpdate.
+    this.postMessage({ type: 'createTab', id, name, awaitingStart: !cold });
     this.sendTabsUpdate();
     this.sendGroupsUpdate();
     this.sendInitialStatusLine(id, cwd);
@@ -764,7 +761,7 @@ export class ClaudeTerminalViewProvider
   private registerPresence(terminalId: string): void {
     const instance = this.stateManager.get(terminalId);
     if (!instance) return;
-    this.interAgentRouter?.registerPresence(terminalId, {
+    this.interAgentRouter.registerPresence(terminalId, {
       engine: instance.engine,
       cwd: instance.cwd ?? '',
       cols: this.lastCols,
@@ -965,7 +962,6 @@ export class ClaudeTerminalViewProvider
     const instance: TerminalInstance = {
       id,
       name,
-      pty: undefined,
       isActive: false,
       workspaceFolderIndex: group.workspaceFolderIndex,
       cwd,
@@ -976,8 +972,7 @@ export class ClaudeTerminalViewProvider
     this.stateManager.set(id, instance);
     this.stateManager.setActive(id);
 
-    const accentColor = this.getAccentColor(engine);
-    this.postMessage({ type: 'createTab', id, name, accentColor, awaitingStart: true });
+    this.postMessage({ type: 'createTab', id, name, awaitingStart: true });
     this.sendTabsUpdate();
     this.sendGroupsUpdate();
     this.sendInitialStatusLine(id, cwd);
@@ -1044,7 +1039,7 @@ export class ClaudeTerminalViewProvider
     this.thresholdNotified.delete(terminalId);
     this.coldTerminals.delete(terminalId);
     this.exitRecovery.delete(terminalId);
-    this.interAgentRouter?.unregisterPresence(terminalId);
+    this.interAgentRouter.unregisterPresence(terminalId);
     this.stateManager.delete(terminalId);
     this.postMessage({ type: 'removeTab', id: terminalId });
   }
@@ -1296,7 +1291,7 @@ export class ClaudeTerminalViewProvider
     this.recoveryTimers.clear();
     this.themeSubscription.dispose();
     this.ptyManager.killAll();
-    this.interAgentRouter?.dispose();
+    this.interAgentRouter.dispose();
     this.promptDetector.dispose();
     this.statusLineWatcher.dispose();
     this.editorTracker.dispose();
