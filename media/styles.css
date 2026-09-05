@@ -656,7 +656,7 @@ body.vscode-high-contrast-light {
 }
 
 #tab-bar::-webkit-scrollbar-thumb {
-  background: var(--vscode-scrollbarSlider-background, #424242);
+  background: var(--panel-scrollbar-slider);
 }
 
 /* Individual tab - fills tab-bar width */
@@ -732,10 +732,6 @@ body.vscode-high-contrast-light {
   transition: width 0.1s ease;
   opacity: 0;
   pointer-events: none;
-}
-
-.tab-close svg {
-  display: none;
 }
 
 .tab:hover .tab-close {
@@ -942,8 +938,6 @@ body.vscode-high-contrast-light {
   color: var(--vscode-descriptionForeground, #999);
   font-family: var(--panel-ui-font);
   font-size: 12px;
-  /* The terminal beneath is still empty, so nothing here needs to compete for attention. */
-  opacity: 0.9;
   pointer-events: none;
   z-index: 2;
 }

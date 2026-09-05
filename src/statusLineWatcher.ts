@@ -25,7 +25,7 @@ const WINDOW_TOKEN = `${process.pid.toString(36)}-${Math.random().toString(36).s
 
 /**
  * Directory the statusLine script writes this window's per-tab snapshots into. The script
- * additionally writes with `umask 077`.
+ * creates it 0700 and writes its files 0600.
  */
 export function getStatusLineDir(): string {
   return path.join(getStatusLineRoot(), WINDOW_TOKEN);

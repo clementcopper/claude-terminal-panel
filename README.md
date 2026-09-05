@@ -27,8 +27,8 @@ tabs that remember which engine they belong to.
 - **Multi-tab sessions** — several terminals at once, with keyboard shortcuts to hop between them.
 - **Native status line** (Claude tabs) — model, effort, context usage, rate limits and working
   directory rendered at the bottom edge as a real row instead of text in the scrollback.
-- **Context threshold** — the status bar's context track carries a draggable handle; past the
-  threshold it turns red and warns once, offering `/clear` in that tab.
+- **Context threshold** — click the context ring in the status line to set the percentage; past
+  it the ring turns red and warns once, offering `/clear` in that tab.
 - **Resume and continue in place** — restart the active tab with `--resume` / `--continue` without
   piling up new tabs, in the tab's own directory.
 - **Editor context** — the open file sits above the status line; one click (or a shortcut) puts
@@ -71,31 +71,37 @@ light/dark theme switching instead.
 
 ### Commands
 
-| Command                                                     | Description                                              |
-| ----------------------------------------------------------- | -------------------------------------------------------- |
-| `Claude Terminal: Restart Terminal`                         | Restart the session in the tab's own directory           |
-| `Claude Terminal: New Terminal Tab`                         | Ask which engine, then spawn a tab                       |
-| `Claude Terminal: Resume Session in Current Tab…`           | Restart tab with `--resume`, pick a session (Claude)     |
-| `Claude Terminal: Continue Last Session in Current Tab`     | Restart tab with `--continue` (Claude)                   |
-| `Claude Terminal: New Terminal Tab (Resume Session…)`       | Open extra tab with `--resume` (Claude)                  |
-| `Claude Terminal: New Terminal Tab (Continue Last Session)` | Open extra tab with `--continue` (Claude)                |
-| `Claude Terminal: Close Terminal Tab`                       | Close the current tab                                    |
-| `Claude Terminal: Next Terminal Tab`                        | Switch to the next tab                                   |
-| `Claude Terminal: Previous Terminal Tab`                    | Switch to the previous tab                               |
-| `Claude Terminal: Add Editor Selection to Prompt`           | Put the selected code, or the open file, into the prompt |
+| Command                                                 | Description                                              |
+| ------------------------------------------------------- | -------------------------------------------------------- |
+| `Claude Terminal: Restart Terminal`                     | Restart the session in the tab's own directory           |
+| `Claude Terminal: New Terminal`                         | Open a terminal in the current tab group                 |
+| `Claude Terminal: New Terminal Tab`                     | Ask which engine and directory, then open a tab group    |
+| `Claude Terminal: Close Terminal Tab`                   | Close the current tab group with all its terminals       |
+| `Claude Terminal: Resume Session in Current Tab…`       | Restart tab with `--resume`, pick a session (Claude)     |
+| `Claude Terminal: Continue Last Session in Current Tab` | Restart tab with `--continue` (Claude)                   |
+| `Claude Terminal: New Terminal (Resume Session…)`       | Open extra terminal with `--resume` (Claude)             |
+| `Claude Terminal: New Terminal (Continue Last Session)` | Open extra terminal with `--continue` (Claude)           |
+| `Claude Terminal: Close Terminal`                       | Close the current terminal                               |
+| `Claude Terminal: Next Terminal`                        | Switch to the next terminal in the group                 |
+| `Claude Terminal: Previous Terminal`                    | Switch to the previous terminal in the group             |
+| `Claude Terminal: Next Terminal Tab`                    | Switch to the next tab group                             |
+| `Claude Terminal: Previous Terminal Tab`                | Switch to the previous tab group                         |
+| `Claude Terminal: Add Editor Selection to Prompt`       | Put the selected code, or the open file, into the prompt |
 
 The four session commands are Claude Code only. Claude stores its history per working directory, so
 which sessions a tab offers depends on the tab's directory — shown in the tab tooltip.
 
 ### Keyboard Shortcuts
 
-| Action                  | Windows/Linux     | macOS            |
-| ----------------------- | ----------------- | ---------------- |
-| New Tab                 | ``Ctrl+Shift+` `` | ``Cmd+Shift+` `` |
-| Close Tab               | `Ctrl+W`          | `Cmd+W`          |
-| Next Tab                | `Ctrl+PageDown`   | `Cmd+Opt+Right`  |
-| Previous Tab            | `Ctrl+PageUp`     | `Cmd+Opt+Left`   |
-| Add Selection to Prompt | `Ctrl+Alt+K`      | `Cmd+Opt+K`      |
+| Action                  | Windows/Linux       | macOS            |
+| ----------------------- | ------------------- | ---------------- |
+| New Tab                 | ``Ctrl+Shift+` ``   | ``Cmd+Shift+` `` |
+| Close Tab               | `Ctrl+W`            | `Cmd+W`          |
+| Next Tab                | `Ctrl+PageDown`     | `Cmd+Opt+Right`  |
+| Previous Tab            | `Ctrl+PageUp`       | `Cmd+Opt+Left`   |
+| Next Tab Group          | `Ctrl+Alt+PageDown` | `Cmd+Opt+Down`   |
+| Previous Tab Group      | `Ctrl+Alt+PageUp`   | `Cmd+Opt+Up`     |
+| Add Selection to Prompt | `Ctrl+Alt+K`        | `Cmd+Opt+K`      |
 
 ## Configuration
 
