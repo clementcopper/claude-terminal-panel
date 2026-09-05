@@ -455,7 +455,9 @@ export class PtyManager {
 
   private handleAutoRun(pty: IPty, config: TerminalConfig): void {
     if (!config.directMode && config.autoRun && config.command) {
-      const fullCommand = [config.command, ...config.args].join(' ');
+      // Every argument goes through the shell here, and the injected `--settings` value is a
+      // JSON document with spaces, braces and quotes in it — unquoted, the shell would split it.
+      const fullCommand = [config.command, ...config.args.map(shellQuote)].join(' ');
       // Clear screen and run command
       pty.write('clear && ' + fullCommand + '\r');
     }
