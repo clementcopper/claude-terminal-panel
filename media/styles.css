@@ -692,14 +692,16 @@ body.vscode-high-contrast-light {
   border-left-color: var(--vscode-focusBorder, #007acc);
 }
 
-/* Inactive tabs with accent color show it at reduced opacity */
-.tab[data-accent]:not(.active) {
-  opacity: 0.4;
+/* The engine accent on the left edge, from `--tab-accent` set inline per tab. Inactive tabs
+   dim the bar and the number separately rather than the whole tab: `opacity` on the tab would
+   take the waiting-for-input pill with it, and that pill exists for tabs that are not on screen.
+   Same reasoning as `.group-tab::after` above. */
+.tab[data-accent] {
+  border-left-color: var(--tab-accent);
 }
 
-/* Active tabs with accent color use full opacity (border color set inline) */
-.tab[data-accent].active {
-  opacity: 1;
+.tab[data-accent]:not(.active) {
+  border-left-color: color-mix(in srgb, var(--tab-accent) 40%, transparent);
 }
 
 .tab-name {
@@ -708,6 +710,10 @@ body.vscode-high-contrast-light {
   line-height: 1;
   flex-shrink: 0;
   margin-left: 8px;
+}
+
+.tab:not(.active) .tab-name {
+  opacity: 0.4;
 }
 
 /* Tab close button - red block on right side */

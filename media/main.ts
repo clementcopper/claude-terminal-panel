@@ -85,7 +85,8 @@ class FileLinkProvider implements ILinkProvider {
       links.push({
         range: {
           start: { x: pathStart + 1, y: bufferLineNumber },
-          end: { x: pathEnd + 1, y: bufferLineNumber }
+          // `end.x` is inclusive and 1-based; `pathEnd` is already the exclusive 0-based end.
+          end: { x: pathEnd, y: bufferLineNumber }
         },
         text: path,
         activate: () => {
@@ -1647,10 +1648,11 @@ class WebviewContext {
       ? `${tab.name} — ${engineLabel} — ${tab.cwd}`
       : `${tab.name} — ${engineLabel}`;
 
-    // Apply accent color if provided (for multi-workspace folder coloring)
+    // The engine accent goes in as a custom property: the stylesheet dims it for inactive tabs
+    // together with the number, while the waiting-for-input pill keeps its full contrast.
     if (tab.accentColor) {
       tabElement.dataset.accent = 'true';
-      tabElement.style.borderLeftColor = tab.accentColor;
+      tabElement.style.setProperty('--tab-accent', tab.accentColor);
     }
 
     const nameSpan = document.createElement('span');
@@ -1878,6 +1880,14 @@ class WebviewContext {
   }
 
   switchToTerminal(id: string): void {
+    const active = this.state.get(id);
+    if (!active) {
+      // Hiding every wrapper for an id nobody has would blank the panel with no way back but
+      // the next switchTab. A stale id — a switch racing a close — costs a warning, nothing else.
+      console.warn(`[webview] switchTab to unknown terminal ${id}`);
+      return;
+    }
+
     this.state.forEach((t, tid) => {
       t.element.style.display = tid === id ? 'block' : 'none';
       // A tab can still be in its measuring pass, where the wrapper is hidden but laid out.
@@ -1889,8 +1899,7 @@ class WebviewContext {
     this.state.setActiveId(id);
     this.statusLine.setActive(id);
 
-    const active = this.state.get(id);
-    if (active) {
+    {
       const wasAtBottom = active.isAtBottom;
       const savedScrollTop = active.lastScrollTop;
 
@@ -1927,11 +1936,21 @@ class WebviewContext {
     const t = this.state.get(id);
     if (t) {
       // A tab can be closed while it is still starting; its timers would otherwise keep ticking
-      // against an element that is already gone.
+      // against an element that is already gone — and a pending ready report would tell the host
+      // the size of a terminal it has already torn down.
       this.clearStartupIndicator(t);
+      if (t.readyTimer !== undefined) {
+        window.clearTimeout(t.readyTimer);
+        t.readyTimer = undefined;
+      }
       t.terminal.dispose();
       t.element.remove();
       this.state.delete(id);
+    } else {
+      console.warn(`[webview] removeTab for unknown terminal ${id}`);
+    }
+    if (this.state.getActiveId() === id) {
+      this.state.setActiveId(null);
     }
     this.statusLine.remove(id);
   }
