@@ -246,6 +246,7 @@ body {
 }
 
 .group-tab:hover .group-tab-close,
+.group-tab:focus-within .group-tab-close,
 .group-tab.active .group-tab-close {
   opacity: 0.7;
 }
@@ -734,10 +735,20 @@ body.vscode-high-contrast-light {
   pointer-events: none;
 }
 
-.tab:hover .tab-close {
+.tab:hover .tab-close,
+.tab:focus-within .tab-close {
   width: 8px;
   opacity: 1;
   pointer-events: auto;
+}
+
+/* Keyboard focus on a tab or a group tab: the ring sits inside the box, since both bars clip
+   their overflow. Pointer clicks show nothing — `:focus-visible` keeps that distinction. */
+.tab:focus-visible,
+.group-tab:focus-visible,
+.tab-close:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007acc);
+  outline-offset: -1px;
 }
 
 .tab-close:hover {

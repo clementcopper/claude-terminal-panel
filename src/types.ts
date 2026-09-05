@@ -257,7 +257,9 @@ export type ExtensionMessage =
       name: string;
       awaitingStart: boolean;
     }
-  | { type: 'switchTab'; id: string }
+  // `focus: false` for switches the user did not ask for (a webview rebuild), so the caret is
+  // not pulled out of the editor.
+  | { type: 'switchTab'; id: string; focus?: boolean }
   /**
    * Wake a restored tab that has never run: re-measure it and report `terminalReady` again, which
    * is what starts its process. The webview reports ready only once per tab, so without this a

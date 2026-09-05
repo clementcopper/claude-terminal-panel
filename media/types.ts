@@ -83,7 +83,7 @@ export type WebviewIncomingMessage =
       name: string;
       awaitingStart: boolean;
     }
-  | { type: 'switchTab'; id: string }
+  | { type: 'switchTab'; id: string; focus?: boolean }
   | { type: 'startTerminal'; id: string }
   | { type: 'removeTab'; id: string }
   | { type: 'setNotification'; id: string; show: boolean }

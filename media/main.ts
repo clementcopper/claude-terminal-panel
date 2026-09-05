@@ -301,7 +301,7 @@ const messageHandlers: MessageHandlers = {
     ctx.startRestoredTerminal(message.id);
   },
   switchTab: (message, ctx) => {
-    ctx.switchToTerminal(message.id);
+    ctx.switchToTerminal(message.id, message.focus ?? true);
   },
   removeTab: (message, ctx) => {
     ctx.removeTerminal(message.id);
@@ -1255,17 +1255,41 @@ class WebviewContext {
 
   private refitActive(): void {
     const activeId = this.state.getActiveId();
-    const active = activeId ? this.state.get(activeId) : undefined;
-    if (!active || !activeId) return;
-
+    if (!activeId) return;
     requestAnimationFrame(() => {
-      active.fitAddon.fit();
-      this.postMessage({
-        type: 'resize',
-        id: activeId,
-        cols: active.terminal.cols,
-        rows: active.terminal.rows
-      });
+      this.fitTerminal(activeId, { report: false, focus: false });
+    });
+  }
+
+  /**
+   * Fits one terminal to its box and tells the host the new size. Resolves the entry by id at
+   * call time — the callers defer through requestAnimationFrame, and a tab can close in between.
+   *
+   * xterm keeps its own viewport offset across a refit; only "was at the bottom" needs
+   * restoring, because a fit that adds rows would otherwise leave the last line hidden.
+   */
+  private fitTerminal(id: string, options: { report: boolean; focus: boolean }): void {
+    const entry = this.state.get(id);
+    if (!entry) return;
+
+    const wasAtBottom = ScrollManager.isAtBottom(entry.terminal);
+    entry.fitAddon.fit();
+    if (options.report) {
+      this.scheduleReadyReport(id, entry);
+    }
+    if (options.focus) {
+      entry.terminal.focus();
+    }
+    requestAnimationFrame(() => {
+      if (wasAtBottom) {
+        entry.terminal.scrollToBottom();
+      }
+    });
+    this.postMessage({
+      type: 'resize',
+      id,
+      cols: entry.terminal.cols,
+      rows: entry.terminal.rows
     });
   }
 
@@ -1328,28 +1352,7 @@ class WebviewContext {
     this.resizeObserver = new ResizeObserver(() => {
       const activeId = this.state.getActiveId();
       if (activeId) {
-        const active = this.state.get(activeId);
-        if (active) {
-          // xterm keeps its own viewport offset across a refit; only "was at the bottom" needs
-          // restoring, because a fit that adds rows would otherwise leave the last line hidden.
-          const wasAtBottom = ScrollManager.isAtBottom(active.terminal);
-
-          active.fitAddon.fit();
-          this.scheduleReadyReport(activeId, active);
-
-          requestAnimationFrame(() => {
-            if (wasAtBottom) {
-              active.terminal.scrollToBottom();
-            }
-          });
-
-          this.postMessage({
-            type: 'resize',
-            id: activeId,
-            cols: active.terminal.cols,
-            rows: active.terminal.rows
-          });
-        }
+        this.fitTerminal(activeId, { report: true, focus: false });
       }
     });
     this.resizeObserver.observe(this.terminalsContainer);
@@ -1561,6 +1564,16 @@ class WebviewContext {
     const element = document.createElement('div');
     element.className = `group-tab ${group.isActive ? 'active' : ''}`;
     element.dataset.id = group.id;
+    element.setAttribute('role', 'tab');
+    element.setAttribute('aria-selected', String(group.isActive));
+    element.setAttribute('aria-label', group.name);
+    element.tabIndex = 0;
+    element.onkeydown = (e): void => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        element.click();
+      }
+    };
     // The directory is the point of a group, so it belongs in the tooltip.
     const engineLabel = group.engine === 'opencode' ? 'OpenCode' : 'Claude';
     const count = `${String(group.terminalCount)} terminal${group.terminalCount === 1 ? '' : 's'}`;
@@ -1637,6 +1650,17 @@ class WebviewContext {
     const tabElement = document.createElement('div');
     tabElement.className = `tab ${tab.isActive ? 'active' : ''}`;
     tabElement.dataset.id = tab.id;
+    // Reachable by keyboard: a tab is a button in all but name.
+    tabElement.setAttribute('role', 'tab');
+    tabElement.setAttribute('aria-selected', String(tab.isActive));
+    tabElement.setAttribute('aria-label', tab.name);
+    tabElement.tabIndex = 0;
+    tabElement.onkeydown = (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        tabElement.click();
+      }
+    };
     // Show the engine and the working directory: Claude Code keeps its session history per
     // directory, so a tab in an unexpected folder shows an unexpected /resume list.
     const engineLabel = tab.engine === 'opencode' ? 'OpenCode' : 'Claude';
@@ -1658,6 +1682,7 @@ class WebviewContext {
     const closeButton = document.createElement('button');
     closeButton.className = 'tab-close';
     closeButton.dataset.tooltip = 'Close Tab (Cmd+W)';
+    closeButton.setAttribute('aria-label', `Close ${tab.name}`);
     closeButton.onclick = (e) => {
       e.stopPropagation();
       this.postMessage({ type: 'closeTab', id: tab.id });
@@ -1879,7 +1904,7 @@ class WebviewContext {
     this.scheduleReadyReport(id, entry);
   }
 
-  switchToTerminal(id: string): void {
+  switchToTerminal(id: string, focus = true): void {
     const active = this.state.get(id);
     if (!active) {
       // Hiding every wrapper for an id nobody has would blank the panel with no way back but
@@ -1899,32 +1924,12 @@ class WebviewContext {
     this.state.setActiveId(id);
     this.statusLine.setActive(id);
 
-    {
-      // Read from the buffer, not from a field: the offset lives in xterm and survives the hide.
-      const wasAtBottom = ScrollManager.isAtBottom(active.terminal);
-
-      // Double RAF ensures browser has completed layout after display change
+    // Double RAF ensures browser has completed layout after display change
+    requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          active.fitAddon.fit();
-          this.scheduleReadyReport(id, active);
-          active.terminal.focus();
-
-          requestAnimationFrame(() => {
-            if (wasAtBottom) {
-              active.terminal.scrollToBottom();
-            }
-          });
-
-          this.postMessage({
-            type: 'resize',
-            id,
-            cols: active.terminal.cols,
-            rows: active.terminal.rows
-          });
-        });
+        this.fitTerminal(id, { report: true, focus });
       });
-    }
+    });
   }
 
   removeTerminal(id: string): void {

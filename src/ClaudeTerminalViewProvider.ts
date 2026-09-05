@@ -259,7 +259,8 @@ export class ClaudeTerminalViewProvider
 
     const activeId = this.stateManager.getActiveId() ?? existing[existing.length - 1].id;
     this.stateManager.setActive(activeId);
-    this.postMessage({ type: 'switchTab', id: activeId });
+    // Not a user action: the webview came back, the caret stays wherever the user has it.
+    this.postMessage({ type: 'switchTab', id: activeId, focus: false });
     // `setActive` may have moved the active group along with the tab; the bar has to follow.
     this.sendGroupsUpdate();
     this.sendTabsUpdate();
@@ -703,13 +704,24 @@ export class ClaudeTerminalViewProvider
     engine: Engine = 'claude',
     cold = false
   ): Promise<string | undefined> {
+    return this.openTerminal(engine, cold);
+  }
+
+  /**
+   * The one body behind `createTerminal` and `createTerminalWithCommand`: they differed in a
+   * config override and a log line, and the copy had already lost its `persistLayout()`.
+   */
+  private async openTerminal(
+    engine: Engine,
+    cold: boolean,
+    override?: { command: string; args: string[] }
+  ): Promise<string | undefined> {
     // The group owns the directory; the tab inherits it. That is also what keeps
     // `respawnActive` honest — restart/resume/continue reuse the tab's cwd, and session
     // history lives per directory.
     const group = await this.ensureActiveGroup(engine);
     if (!group) return undefined;
     const cwd = group.cwd;
-    const folderIndex = group.workspaceFolderIndex;
 
     const id = this.stateManager.generateId();
     const name = this.stateManager.generateName(engine);
@@ -718,7 +730,7 @@ export class ClaudeTerminalViewProvider
       id,
       name,
       isActive: false,
-      workspaceFolderIndex: folderIndex,
+      workspaceFolderIndex: group.workspaceFolderIndex,
       cwd,
       engine,
       groupId: group.id
@@ -741,8 +753,11 @@ export class ClaudeTerminalViewProvider
       return id;
     }
 
-    const config = this.engineConfig(engine);
-    log('tab', `${id} created (${engine}) in ${cwd}, group ${group.id}`);
+    const config = override
+      ? { ...this.engineConfig(engine), ...override }
+      : this.engineConfig(engine);
+    const what = override ? ` — ${[override.command, ...override.args].join(' ')}` : '';
+    log('tab', `${id} created (${engine}) in ${cwd}, group ${group.id}${what}`);
     this.spawnWhenMeasured(id, config, cwd);
 
     // Switch to the new tab
@@ -945,49 +960,13 @@ export class ClaudeTerminalViewProvider
     command: string,
     args: string[]
   ): Promise<string | undefined> {
-    const id = this.stateManager.generateId();
     // Still derived rather than assumed: the caller passes the configured Claude command, which
     // the user may have pointed somewhere else.
     const engine: Engine =
       nodePath.basename(command).replace(/\.(exe|cmd|bat)$/i, '') === 'claude'
         ? 'claude'
         : 'opencode';
-    const name = this.stateManager.generateName(engine);
-
-    // Same rule as `createTerminal`: the group decides where this runs.
-    const group = await this.ensureActiveGroup(engine);
-    if (!group) return undefined;
-    const cwd = group.cwd;
-
-    const instance: TerminalInstance = {
-      id,
-      name,
-      isActive: false,
-      workspaceFolderIndex: group.workspaceFolderIndex,
-      cwd,
-      engine,
-      groupId: group.id
-    };
-
-    this.stateManager.set(id, instance);
-    this.stateManager.setActive(id);
-
-    this.postMessage({ type: 'createTab', id, name, awaitingStart: true });
-    this.sendTabsUpdate();
-    this.sendGroupsUpdate();
-    this.sendInitialStatusLine(id, cwd);
-
-    // Use provided command/args instead of config
-    const customConfig = { ...this.engineConfig(engine), command, args };
-    log('tab', `${id} created (${engine}) in ${cwd} — ${[command, ...args].join(' ')}`);
-    this.spawnWhenMeasured(id, customConfig, cwd);
-
-    this.postMessage({ type: 'switchTab', id });
-    // Same as createTerminal: without this the tab is missing from the saved layout until the
-    // next structural change happens to save it.
-    this.persistLayout();
-
-    return id;
+    return this.openTerminal(engine, false, { command, args });
   }
 
   /**
