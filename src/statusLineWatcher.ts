@@ -274,7 +274,9 @@ export class StatusLineWatcher {
     try {
       fs.mkdirSync(this.lastDir, { recursive: true, mode: 0o700 });
       const target = path.join(this.lastDir, fileName);
-      const temp = `${target}.tmp`;
+      // Per process: every window writes the same target, and a shared temp name would let two
+      // of them rename each other's half-written file into place.
+      const temp = `${target}.${String(process.pid)}.tmp`;
       fs.writeFileSync(temp, JSON.stringify(payload), { mode: 0o600 });
       fs.renameSync(temp, target);
     } catch {

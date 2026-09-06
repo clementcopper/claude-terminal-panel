@@ -68,6 +68,9 @@ export class ClaudeTerminalViewProvider
    * then paints its opening frame for a window that is up to seven rows taller than the one it
    * lands in, which is where the wrapped boxes and leftover fragments come from.
    */
+  /** The group creation in flight, if any — see ensureActiveGroup. */
+  private pendingGroup: Promise<TerminalGroup | undefined> | undefined;
+
   private readonly pendingSpawns = new Map<
     string,
     { config: TerminalConfig; cwd?: string; timer: ReturnType<typeof setTimeout> }
@@ -108,6 +111,8 @@ export class ClaudeTerminalViewProvider
 
   /** Ceiling on tabs restored per group, so a corrupt entry cannot open hundreds. */
   private static readonly MAX_RESTORED_TABS = 16;
+  /** Same reasoning one level up: hundreds of groups are a corrupt record, not a layout. */
+  private static readonly MAX_RESTORED_GROUPS = 16;
 
   /**
    * Tracks the last known terminal appearance. OpenCode's TUI only re-resolves its static theme
@@ -590,8 +595,9 @@ export class ClaudeTerminalViewProvider
       ...(terminalCwd ? [terminalCwd] : [])
     ];
 
+    // Nothing to be inside of: not "allow", but "ask" — the link came out of model output.
     if (roots.length === 0) {
-      return true;
+      return false;
     }
 
     const target = nodePath.resolve(candidate);
@@ -797,7 +803,14 @@ export class ClaudeTerminalViewProvider
     if (existing) {
       return existing;
     }
-    return this.newGroup(engine);
+    // The picker is async, and a second `+` before it closes must join the first, not open a
+    // second picker and a second group.
+    if (!this.pendingGroup) {
+      this.pendingGroup = this.newGroup(engine).finally(() => {
+        this.pendingGroup = undefined;
+      });
+    }
+    return this.pendingGroup;
   }
 
   /**
@@ -1441,6 +1454,7 @@ export class ClaudeTerminalViewProvider
 
     const groups: PersistedGroup[] = [];
     for (const entry of record.groups as unknown[]) {
+      if (groups.length >= ClaudeTerminalViewProvider.MAX_RESTORED_GROUPS) break;
       if (typeof entry !== 'object' || entry === null) continue;
       const g = entry as Record<string, unknown>;
       if (

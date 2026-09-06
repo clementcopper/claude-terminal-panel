@@ -1,4 +1,4 @@
-import { Terminal, type ILinkProvider, type ILink } from '@xterm/xterm';
+import { Terminal, type ILinkProvider, type ILink, type ITerminalOptions } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import type {
@@ -1179,6 +1179,8 @@ class WebviewContext {
   /** The group whose tab is currently being renamed inline, and the text typed so far. */
   private renamingGroupId: string | null = null;
   private renameDraft: string | null = null;
+  /** Caret of the draft, so a restored field continues where the typing was, not selected whole. */
+  private renameSelection: [number, number] | null = null;
   /** The active group's CLI, so the inner `+` can say which one it will open. */
   private activeGroupEngine: 'claude' | 'opencode' = 'claude';
   private readonly terminalsContainer: HTMLElement;
@@ -1251,6 +1253,24 @@ class WebviewContext {
     requestAnimationFrame(() => {
       active.terminal.focus();
     });
+  }
+
+  /**
+   * The one option set for every terminal — the measuring one in `measureInitialDimensions` and
+   * the real ones. The first size report is only as good as the match: any option that changes
+   * the cell metrics (font, size, line height, letter spacing) added to one and not the other
+   * would make the reported `ready` size wrong, silently.
+   */
+  private terminalOptions(): ITerminalOptions {
+    return {
+      cursorBlink: true,
+      fontSize: 12,
+      fontFamily: this.themeBuilder.getFontFamily(),
+      lineHeight: 1.2,
+      letterSpacing: 0,
+      theme: this.themeBuilder.getTheme(),
+      allowProposedApi: true
+    };
   }
 
   private refitActive(): void {
@@ -1405,12 +1425,7 @@ class WebviewContext {
     tempContainer.style.visibility = 'hidden';
     this.terminalsContainer.appendChild(tempContainer);
 
-    const tempTerminal = new Terminal({
-      cursorBlink: true,
-      fontSize: 12,
-      fontFamily: this.themeBuilder.getFontFamily(),
-      lineHeight: 1.2
-    });
+    const tempTerminal = new Terminal(this.terminalOptions());
     const tempFitAddon = new FitAddon();
     tempTerminal.loadAddon(tempFitAddon);
     tempTerminal.open(tempContainer);
@@ -1471,6 +1486,7 @@ class WebviewContext {
         // for something that no longer exists.
         this.renamingGroupId = null;
         this.renameDraft = null;
+        this.renameSelection = null;
       }
     }
   }
@@ -1508,6 +1524,7 @@ class WebviewContext {
       const value = input.value;
       this.renamingGroupId = null;
       this.renameDraft = null;
+      this.renameSelection = null;
       input.replaceWith(nameElement);
       if (commit) {
         // The host refuses an empty or unchanged name and answers with `groupsUpdate` either
@@ -1516,10 +1533,16 @@ class WebviewContext {
       }
     };
 
+    const rememberCaret = (): void => {
+      this.renameSelection = [input.selectionStart ?? 0, input.selectionEnd ?? 0];
+    };
     input.oninput = (): void => {
       this.renameDraft = input.value;
+      rememberCaret();
       fitToValue();
     };
+    input.onkeyup = rememberCaret;
+    input.onmouseup = rememberCaret;
     // Keystrokes must not reach the tab bar or the terminal behind it.
     input.onkeydown = (event): void => {
       event.stopPropagation();
@@ -1546,7 +1569,13 @@ class WebviewContext {
     };
 
     input.focus();
-    input.select();
+    // A fresh rename selects the whole name; a field restored after a redraw of the bar keeps
+    // the caret where it was — selecting everything made the next keystroke eat the draft.
+    if (this.renameDraft !== null && this.renameSelection) {
+      input.setSelectionRange(this.renameSelection[0], this.renameSelection[1]);
+    } else {
+      input.select();
+    }
   }
 
   private createGroupAddButton(): HTMLButtonElement {
@@ -1566,7 +1595,10 @@ class WebviewContext {
     element.dataset.id = group.id;
     element.setAttribute('role', 'tab');
     element.setAttribute('aria-selected', String(group.isActive));
-    element.setAttribute('aria-label', group.name);
+    element.setAttribute(
+      'aria-label',
+      group.hasWaitingTerminal ? `${group.name} — a terminal is waiting for input` : group.name
+    );
     element.tabIndex = 0;
     element.onkeydown = (e): void => {
       if (e.key === 'Enter' || e.key === ' ') {
@@ -1653,7 +1685,10 @@ class WebviewContext {
     // Reachable by keyboard: a tab is a button in all but name.
     tabElement.setAttribute('role', 'tab');
     tabElement.setAttribute('aria-selected', String(tab.isActive));
-    tabElement.setAttribute('aria-label', tab.name);
+    tabElement.setAttribute(
+      'aria-label',
+      tab.isWaitingForInput ? `${tab.name} — waiting for input` : tab.name
+    );
     tabElement.tabIndex = 0;
     tabElement.onkeydown = (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
@@ -1735,15 +1770,7 @@ class WebviewContext {
     container.style.visibility = 'hidden';
     this.terminalsContainer.appendChild(container);
 
-    const terminal = new Terminal({
-      cursorBlink: true,
-      fontSize: 12,
-      fontFamily: this.themeBuilder.getFontFamily(),
-      lineHeight: 1.2,
-      letterSpacing: 0,
-      theme: this.themeBuilder.getTheme(),
-      allowProposedApi: true
-    });
+    const terminal = new Terminal(this.terminalOptions());
 
     const fitAddon = new FitAddon();
     // The addon's default handler is window.open straight out of the webview. The host opens

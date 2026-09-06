@@ -245,7 +245,7 @@ function writeSnapshot(dir, tabId, snapshot) {
   if (!/^[\w.-]+$/.test(tabId)) return;
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const target = path.join(dir, `${tabId}.json`);
-  const temp = `${target}.tmp`;
+  const temp = `${target}.${String(process.pid)}.tmp`;
   fs.writeFileSync(temp, JSON.stringify(snapshot), { mode: 0o600 });
   fs.renameSync(temp, target);
 }

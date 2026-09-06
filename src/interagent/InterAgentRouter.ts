@@ -295,7 +295,8 @@ export class InterAgentRouter {
   }
 
   private writePresence(presence: Record<string, PresenceEntry>): void {
-    const tmp = `${this.presenceFile}.tmp`;
+    // Per process — every window writes this file, a shared temp name would race.
+    const tmp = `${this.presenceFile}.${String(process.pid)}.tmp`;
     try {
       fs.writeFileSync(tmp, JSON.stringify(presence), { mode: 0o600 });
       fs.renameSync(tmp, this.presenceFile);
