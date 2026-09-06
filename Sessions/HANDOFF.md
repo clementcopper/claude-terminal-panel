@@ -1,46 +1,43 @@
-# Handoff — 2026-09-03 12:10
+# Handoff — 2026-09-06 11:02
 
 Arbeitsverzeichnis: /Users/danielmartin/claude-terminal-panel
 
 ## Stand
 
-Alles liegt auf **`main`**, HEAD `4a09108`, gepusht nach `origin` (clementcopper); `feat/context-threshold`
-ist lokal und remote gelöscht (2026-09-03, per Fast-Forward gemergt). Arbeitsbaum sauber. Gebaut und
-installiert ist der Stand von `e71d73b`; Daniel hat alles bis auf die Resume-Rettung im Panel gesehen
-und abgenommen.
-
-Drin seit 2026-09-01: Statuszeile zentriert, sobald sie einzeilig ist und Panel > 400px
-(`updateCentering`, gemessen, kein Breakpoint); Icons `semibold` mit Deckel pro Symbol, `+` 11px;
-Gruppenleiste über der Tab-Leiste (`#body-row`), nur Linie unten, keine eigenen Radien;
-Resume-Abbruch startet den Tab mit `--continue`, dann ohne Flags, dann Exit-Zeile.
+Drei Review-Runden (05./06.09.) sind auf `origin/main` bis `0aab09f`: Julians PR #1 portiert und
+geschlossen, ~40 Befunde aus Host, Webview und Packaging behoben, Version 1.2.0, drei Probes unter
+`scripts/probes/` (`npm run probe`, `npm run probe:ui`). Build 1.2.0 ist installiert; der letzte
+Reload war vor Runde 3 (`fb430e4..0aab09f` noch ungesehen im Panel). Arbeitsbaum sauber.
 
 ## Mitten drin
 
-- `Sessions/**` fehlt in `.vscodeignore` — `vsce ls` listet die Handoff-Dateien im `.vsix`.
+- Nichts halb. Runde-3-Handtests stehen aus (Rename nach Pill-Flackern, zwei schnelle `+`, Link
+  ohne Workspace-Ordner).
 
 ## Nächster Schritt
 
-`Sessions/**` in `.vscodeignore` eintragen, dann `npx vsce ls | grep Sessions` — muss leer sein.
-Reload steht noch aus für `e71d73b`: `Resume` → ESC muss in dieselbe Sitzung zurückführen.
+Fenster neu laden, dann:
+
+```sh
+cd ~/claude-terminal-panel && npm run probe && npm run probe:ui
+```
+
+Danach die drei Handtests aus CHANGELOG.md § 1.2.0 Fixed (letzte Zeilen).
 
 ## Schon probiert, geht nicht
 
-- `chrome-headless-shell --dump-dom` stellt keine `ResizeObserver`/`rAF`-Rückrufe zu; Resize-Pfade nur über CDP (`Emulation.setDeviceMetricsOverride` + `Page.captureScreenshot`). Rezept in `LEARNINGS.md` § Prüfwerkzeuge.
-- Haarlinie links/rechts/oben an `#group-bar` und eigener 8px-Radius: doppelt VS Codes eigenen Rahmen. Verworfen, nur Linie unten.
-- `semibold 44` in 48px beschneidet resume/continue/restart; größerer Rahmen schrumpft die Glyphe. Deckel pro Symbol im Skript.
-- Shift+Pfeil im Prompt: Claude Code selbst kennt keine Auswahl (gemessen: Shift+← = ←, Shift+↑ = nichts). Nicht Panel-Sache.
-- Framelink-MCP gibt es in diesem Projekt nicht; figma-cli braucht Daniels `connect`.
+- Tab aus xterm heraus führt nie in die Tab-Leiste; xterm nimmt die Taste. Befehle bleiben der Weg.
+- `git merge-tree --merge-base` gibt es in git 2.39 nicht; Cherry-Picks per `git apply --check`.
+- `git checkout <datei>` nach einem sed-Probe-Edit nimmt uncommittete Arbeit mit (ist mir passiert).
 
 ## Was Daniel entschieden hat
 
-- Zentrieren erst, wenn alles in eine Zeile passt — nicht wörtlich ab 400px.
-- Icons `semibold`; `+` in beiden Leisten 11px (Mitte zwischen 13 und 9); `plus.png` 36pt, `xmark.png` 44pt.
-- Gruppenleiste: Linie **oben und unten**, Seiten und Radien weg — VS Code zeichnet Rahmen und Ecken selbst.
-- Resume-Abbruch: aktiver Tab → `--continue` → frisch; neuer Tab → frisch. Kein Karussell.
-- Maus-Markierung reicht; `macOptionClickForcesSelection` bleibt aus.
+- Upstream vernachlässigen, Refactors nach Nutzen (Memory `upstream-vernachlaessigen`).
+- Web-Links über `vscode.env.openExternal`; Version 1.2.0; alle Findings umsetzen, auch die UI.
+- Nicht gemacht, bewusst: Linux-`/tmp`, `release.yml`, CSS-Fallback-Vereinheitlichung,
+  Major-Updates (eslint 10, typescript 7).
 
 ## Erledigt und vom Tisch
 
-- Icon-Vergleichsbogen als Artifact (`claude.ai/code/artifact/9163bca2-…`) — Entscheidung gefallen, Watch beendet.
-- Node-Pfad in `CLAUDE.md` korrigiert (v22.14.0 Standard, kein nvm-v20).
-- Merge nach `main` erledigt, Feature-Branch weg.
+- PR #1 geschlossen mit Kommentar; Branch `pr-1` liegt lokal noch, `git branch -D pr-1` räumt ihn.
+- Artifact mit Bildern: https://claude.ai/code/artifact/98aac7b7-314b-4c93-bf4f-aebdf5deb34a
