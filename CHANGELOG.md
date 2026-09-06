@@ -117,6 +117,18 @@ Everything since 1.1.0 — the two-level tabs and the review that followed. The 
 - `fs.watch` handles had no error listener; an error after setup was an uncaught exception.
 - Presence entries of tabs whose window died never expired; every broadcast kept writing them a
   copy. Entries older than five minutes are dropped, a heartbeat keeps live ones stamped.
+- Files shared across windows (`last/limits.json`, `presence.json`) used one temp name for every
+  window; the name carries the pid now.
+- A group rename restored after a redraw of the bar selected the whole draft, so the next
+  keystroke replaced it. The caret is kept.
+- Two `+` presses before the first group existed opened two pickers and two groups.
+- A `path:line` link in a window with no folder and no tab directory opened without asking.
+- A corrupt saved layout could restore hundreds of groups; capped at 16, like tabs per group.
+- The measuring terminal and the real one share one options object, so the first size report
+  cannot drift from the terminal it is for.
+- The waiting pill has a text alternative on the tab's and the group's `aria-label`.
+- `npm run probe` / `npm run probe:ui`: three checked-in probes (presence prune, producer cache,
+  tab bar) that were red on the builds before their fixes.
 
 ### Changed
 

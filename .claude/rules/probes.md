@@ -2,6 +2,7 @@
 
 Distilled from `LEARNINGS.md` § Prüfwerkzeuge für dieses Repo and the measurement bullets in § Webview and § Schriften. Loaded every session because verification here is measurement, not tests.
 
+- **`scripts/probes/` holds the probes that stay.** `npm run probe` (presence prune, producer cache) and `npm run probe:ui` (tab bar: pill contrast, keyboard). Each was red on the build before its fix; a new probe earns its place the same way. `vscode-stub.js` there is the alias target.
 - **An audit agent's finding is a hypothesis until the line is read.** One of ~70 claims was false (`retainContextWhenHidden` is set); check each with `sed -n` before it enters a plan.
 - **`:focus-visible` in a Playwright probe:** focus programmatically, then press a bare `Shift` — keyboard modality without moving focus. Tab from inside xterm never leaves it.
 - **The webview runs headless without VS Code.** A page with `#terminal-column` / `#terminals-container` / `#status-line` / `#tab-bar`, `media/main.js`, `styles.css`, `xterm.css`, and an inline `window.acquireVsCodeApi` stub **before** `main.js` (collects `postMessage` into `window.__posted`); drive it with `window.dispatchEvent(new MessageEvent('message', {data}))` so the real handlers run, then measure fit sizes, status line, indicator.

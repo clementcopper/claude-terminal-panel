@@ -427,6 +427,13 @@ git apply --check` sagt pro Commit, ob er noch auf `main` passt (git 2.39 kennt 
   in `merge-tree` noch nicht). So fielen von zehn Commits vier als hinfällig auf, bevor eine Zeile
   portiert war.
 
+- **Die Probes von 2026-09-05 sind eingecheckt.** `scripts/probes/presence-prune.js`,
+  `statusline-cache.js` (Node) und `tab-bar.py` (Playwright) — jede war auf dem Build vor ihrem
+  Fix rot (Presence: `dead,fresh,mine` statt `fresh,mine`; Prune per Konstante abgeschaltet macht
+  sie wieder rot). Sie laufen in Sekunden, brauchen kein Framework und keinen Extension-Host, und
+  ersetzen den Nachbau im Scratchpad, der bisher nach jeder Session weg war. Kein Ersatz für den
+  Reload — sie messen den Host-Code und die Tab-Leiste, nicht VS Code.
+
 ## Statuszeile
 
 - **Der Statusordner in `$TMPDIR` ist maschinenweit, nicht fensterweit.** Alle VS-Code-Fenster
