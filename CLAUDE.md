@@ -57,8 +57,9 @@ Linux has no prebuild in `node-pty` 1.1.0 and would have to be packaged on Linux
 **There is no test suite** — no framework, no `.vscode-test`. Verification is
 `npm run lint && npm run compile`, then package, install, reload the window and exercise the panel
 by hand. `npm run probe` (Node) and `npm run probe:ui` (Playwright) run the few measurements in
-`scripts/probes/` that were red on a broken build once; they are the closest thing to tests here. Never claim a change works without that reload. Reloading also kills the Claude session
-running in the panel, so commit first.
+`scripts/probes/` that were red on a broken build once; they are the closest thing to tests here.
+Never claim a change works without that reload. Reloading also kills the Claude session running in
+the panel, so commit first.
 
 esbuild strips types without checking them, so `npm run typecheck` is the only place a type error
 surfaces; run it after every change that touches types. `vscode:prepublish` runs it as well.
