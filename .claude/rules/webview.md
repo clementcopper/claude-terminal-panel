@@ -39,6 +39,7 @@ Distilled from `LEARNINGS.md` § Webview, § Terminal-Start im Panel (webview si
 ## Misc
 
 - **VS Code runs its own paste command into a focused webview; `preventDefault` on Cmd+V's keydown does not stop it.** It arrives as a `paste` event (empty for a Finder copy). Capture `paste` on the terminal as well and fold requests per gesture (`requestPaste`, 300 ms).
+- **A drop reaches the webview only with Shift held.** VS Code blocks iframe pointer events during every drag (`windowDidDragStart` on `dragover`) and unblocks on `shiftKey`; nothing in the extension can change that.
 
 - **`xterm.css` paints `.xterm-viewport` `#000`.** The leftover strip below the last row shows black once the wrapper loses padding; override in `styles.css`.
 - **A CSS mask is an image fetch.** `mask-image: url(...)` fails silently under `default-src 'none'` without `img-src`; the tell is a button painting a full `currentColor` rectangle (~25 % coverage instead of ~4 %).

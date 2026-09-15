@@ -143,6 +143,11 @@ Non-obvious findings and dead ends. Only add what saves future work.
   Code answers with a clipboard-image read. The old build's headless probe had shown that empty
   paste all along (`input` with `data: ''`) — it was VS Code's paste command, not Chromium's.
   Capture `paste` on the terminal too, fold requests within 300 ms per tab.
+- **A drop reaches a webview only with Shift held.** (15.09.2026) Daniel dragged a file from
+  Finder onto the panel and nothing happened. `workbench.desktop.main.js` (VS Code 1.136.1): a
+  class registered on the workbench calls `windowDidDragStart()` on `dragstart`, `drag` and
+  `dragover`, which sets `pointer-events: none` on the webview iframe, and `windowDidDragEnd()`
+  when `shiftKey` is down. Not the extension's to fix; the README says "hold Shift".
 - **A quoted snippet needs a fence longer than anything inside it.** Selected code containing a
   markdown fence or a template literal would otherwise close the block early. Longest run of
   backticks plus one, minimum three. (Written out rather than shown: prettier reformats an inline

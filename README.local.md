@@ -594,9 +594,15 @@ for the same tab fold into one. A paste from the context menu takes this route t
 **Drag and drop** onto the terminal area: the iframe gets the bytes of a dropped file but not its
 path (that left Electron's `File` with version 32), so the webview sends them as `dropFiles`, the
 host writes them under `<tmpdir>/claude-terminal-panel/drops/<tab id>/` and pastes the paths. A
-drop that carries only text is pasted as it is. One `console.info` line in the webview dev tools
-(`[webview] drop: types=… files=…`) shows what VS Code lets through to the iframe; if that line
-never appears, VS Code claimed the drop before the iframe saw it and the extension cannot help.
+drop that carries only text is pasted as it is.
+
+**Hold Shift while dropping.** VS Code sets `pointer-events: none` on every webview iframe for
+the duration of a drag — on `dragstart`, `drag` and `dragover` over the workbench — so that its
+own drop targets (editor groups, the explorer) win; a drop without Shift never reaches the panel,
+it opens the file in an editor instead. The one exception is built in: with Shift held the
+workbench unblocks the iframe (`n.shiftKey ? unblock : block` in `workbench.desktop.main.js`,
+VS Code 1.136.1, read 2026-09-15). One `console.info` line in the webview dev tools
+(`[webview] drop: types=… files=…`) shows what arrives.
 
 `node scripts/probes/clipboard-paste.js` runs the reader against whatever is on the pasteboard:
 with a Finder copy it must answer the absolute path where `pbpaste` shows only the name.
