@@ -326,7 +326,7 @@
     "postpackage": "node scripts/verify-package-payload.js --vsix",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p media/tsconfig.json",
     "probe": "node scripts/probes/presence-prune.js && node scripts/probes/statusline-cache.js && node scripts/probes/clipboard-paste.js",
-    "probe:ui": "/usr/local/opt/python@3.9/bin/python3.9 scripts/probes/tab-bar.py",
+    "probe:ui": "/usr/local/opt/python@3.9/bin/python3.9 scripts/probes/tab-bar.py && /usr/local/opt/python@3.9/bin/python3.9 scripts/probes/paste-webview.py",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.ts\" \"media/**/*.{ts,css}\" \"resources/**/*.js\" \"scripts/**/*.js\" eslint.config.mjs",

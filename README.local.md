@@ -592,6 +592,10 @@ never appears, VS Code claimed the drop before the iframe saw it and the extensi
 
 `node scripts/probes/clipboard-paste.js` runs the reader against whatever is on the pasteboard:
 with a Finder copy it must answer the absolute path where `pbpaste` shows only the name.
+`scripts/probes/paste-webview.py` (in `npm run probe:ui`) drives the webview headless: Cmd+V and
+Ctrl+V post `pasteRequest` and nothing into the PTY, `pasteText` is bracketed only once the CLI
+sent `CSI ?2004h`, and a dropped file arrives as `dropFiles` byte for byte. Against the build
+before this change it fails seven of eight checks.
 
 ## Gotchas
 
