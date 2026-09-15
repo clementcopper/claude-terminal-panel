@@ -127,6 +127,16 @@ Non-obvious findings and dead ends. Only add what saves future work.
   wrapped in the bracketed paste markers `\x1b[200~` … `\x1b[201~`, which is what a real paste
   sends; Claude Code turns the mode on (`CSI ?2004h`). Without them a five-line snippet fires five
   half-written prompts.
+- **A file copied in Finder is an icon on the pasteboard, and Claude Code's Ctrl+V takes the
+  icon.** (15.09.2026) Daniel pasted screenshots copied as files in Finder and Claude received the
+  generic 1024×1024 PNG document icon, twice byte-identical. `osascript -e 'clipboard info'` showed
+  `«class furl»`, `«class icns»` and `«class PNGf»` side by side; `the clipboard as «class PNGf»`
+  was the icon, `pbpaste` the bare name. Claude Code 2.1.272 reads `PNGf` on Ctrl+V (after
+  `Bun.Image.fromClipboard()`), but a pasted _path_ with an image extension it reads from disk —
+  a node-pty probe that pasted the bare name got the real 390×172 screenshot back. Hence the host
+  reads the pasteboard and pastes the absolute path (`src/clipboardPaste.ts`). Every `osascript`
+  call costs 0.4–0.8 s here (baseline 0.06 s), so the file URL is looked up only when the text
+  looks like a file name.
 - **A quoted snippet needs a fence longer than anything inside it.** Selected code containing a
   markdown fence or a template literal would otherwise close the block early. Longest run of
   backticks plus one, minimum three. (Written out rather than shown: prettier reformats an inline

@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import * as nodePath from 'path';
 import { randomBytes } from 'crypto';
-import { existsSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import * as os from 'os';
 import { PtyManager, type PtyEventCallbacks } from './ptyManager';
 import { ConfigManager } from './configManager';
 import { TerminalStateManager } from './terminalStateManager';
@@ -16,9 +17,11 @@ import type {
   StatusLineSnapshot,
   Engine,
   PersistedGroup,
-  PersistedLayout
+  PersistedLayout,
+  DroppedFile
 } from './types';
 import { ENGINE_ACCENT_COLORS } from './types';
+import { readPasteboard } from './clipboardPaste';
 import { PromptDetector, type PromptDetectorConfig } from './promptDetector';
 import { StatusLineWatcher } from './statusLineWatcher';
 import { EditorContextTracker } from './editorContextTracker';
@@ -339,6 +342,59 @@ export class ClaudeTerminalViewProvider
   handleStopTurn(id: string): void {
     if (!this.ptyManager.isRunning(id)) return;
     this.ptyManager.write(id, '\x1b');
+  }
+
+  /**
+   * Cmd+V or Ctrl+V in a tab. The pasteboard is read here, not in the webview, because the
+   * webview only ever sees what a browser exposes: for a file copied in Finder that is its bare
+   * name, and Claude Code's own Ctrl+V reads the file's icon (see `clipboardPaste.ts`). Text and
+   * paths go back to xterm's `paste()`, so bracketed paste follows the CLI's mode like any real
+   * paste; pixels-only becomes the Ctrl+V Claude Code expects.
+   *
+   * The answer can arrive half a second later (`osascript`); the tab id travels with it, so a tab
+   * switched away from in the meantime still receives its own paste.
+   */
+  handlePasteRequest(id: string): void {
+    if (!this.ptyManager.isRunning(id)) return;
+    void readPasteboard().then((content) => {
+      if (!this.ptyManager.isRunning(id)) return;
+      switch (content.kind) {
+        case 'path':
+        case 'text':
+          this.postMessage({ type: 'pasteText', id, text: content.text });
+          break;
+        case 'image':
+          this.ptyManager.write(id, '\x16');
+          break;
+        case 'none':
+          break;
+      }
+    });
+  }
+
+  /**
+   * Files dropped on the terminal. Electron no longer hands a webview the path of a dropped
+   * file, only its bytes — so they are written under the panel's temp root and the paths are
+   * pasted, which is what a terminal does with a drop. Claude Code reads an image path itself.
+   */
+  handleDropFiles(id: string, files: DroppedFile[]): void {
+    if (!this.ptyManager.isRunning(id) || files.length === 0) return;
+    const dir = nodePath.join(os.tmpdir(), 'claude-terminal-panel', 'drops', id);
+    const paths: string[] = [];
+    try {
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+      for (const file of files) {
+        // Only the base name survives; a name with separators must not escape the directory.
+        const name = nodePath.basename(file.name).replace(/^\.+/, '') || 'dropped';
+        const target = nodePath.join(dir, name);
+        writeFileSync(target, Buffer.from(file.data, 'base64'), { mode: 0o600 });
+        paths.push(target);
+      }
+    } catch (error) {
+      log('drop', `could not write files to ${dir}: ${String(error)}`);
+      return;
+    }
+    this.postMessage({ type: 'pasteText', id, text: paths.join(' ') });
   }
 
   /**

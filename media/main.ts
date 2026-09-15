@@ -10,7 +10,8 @@ import type {
   TerminalEntry,
   XTermTheme,
   StatusLineSnapshot,
-  EditorContext
+  EditorContext,
+  DroppedFile
 } from './types';
 
 // File path link provider for terminal
@@ -317,6 +318,9 @@ const messageHandlers: MessageHandlers = {
   },
   focusTerminal: (_message, ctx) => {
     ctx.focusActiveTerminal();
+  },
+  pasteText: (message, ctx) => {
+    ctx.pasteIntoTerminal(message.id, message.text);
   },
   contextThreshold: (message, ctx) => {
     ctx.setContextThreshold(message.value);
@@ -1184,6 +1188,7 @@ class WebviewContext {
   /** The active group's CLI, so the inner `+` can say which one it will open. */
   private activeGroupEngine: 'claude' | 'opencode' = 'claude';
   private readonly terminalsContainer: HTMLElement;
+  private static readonly IS_MAC = navigator.userAgent.includes('Mac');
   private readonly statusLine: StatusLineView;
   private readonly tooltips = new TooltipManager();
   private resizeObserver: ResizeObserver | null = null;
@@ -1315,6 +1320,7 @@ class WebviewContext {
 
   initialize(): void {
     this.setupResizeObserver();
+    this.setupDropTarget();
     this.setupThemeObserver();
     this.setupMessageHandler();
     this.setupCleanup();
@@ -1376,6 +1382,73 @@ class WebviewContext {
       }
     });
     this.resizeObserver.observe(this.terminalsContainer);
+  }
+
+  /**
+   * Files dropped on the terminal area go to the host as bytes (`dropFiles`); it writes them to a
+   * temp directory and pastes the paths. The webview never learns a dropped file's path — that
+   * left Electron's `File` with version 32 — and VS Code opens an OS drop in an editor unless
+   * something inside the iframe claims it, which is what `preventDefault` on `dragover` does.
+   * A drop that carries only text (a path dragged from a shell, a URL) is pasted as it is.
+   */
+  private setupDropTarget(): void {
+    this.terminalsContainer.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'copy';
+      }
+    });
+    this.terminalsContainer.addEventListener('drop', (event) => {
+      event.preventDefault();
+      const transfer = event.dataTransfer;
+      const activeId = this.state.getActiveId();
+      if (!transfer || !activeId) return;
+      // Kept: the one line that shows what VS Code lets through to the iframe (webview dev tools).
+      console.info(
+        `[webview] drop: types=${transfer.types.join(',')} files=${String(transfer.files.length)}`
+      );
+      const files = Array.from(transfer.files);
+      if (files.length === 0) {
+        const text = transfer.getData('text/uri-list') || transfer.getData('text/plain');
+        if (text) {
+          this.pasteIntoTerminal(activeId, text.trim());
+        }
+        return;
+      }
+      void Promise.all(
+        files.map(async (file): Promise<DroppedFile> => {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          return { name: file.name, data: WebviewContext.toBase64(bytes) };
+        })
+      ).then((dropped) => {
+        this.postMessage({ type: 'dropFiles', id: activeId, files: dropped });
+      });
+    });
+  }
+
+  /** `btoa` wants a binary string; built in slices so a large file does not blow the call stack. */
+  private static toBase64(bytes: Uint8Array): string {
+    let binary = '';
+    const SLICE = 0x8000;
+    for (let i = 0; i < bytes.length; i += SLICE) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + SLICE));
+    }
+    return btoa(binary);
+  }
+
+  /**
+   * The host's answer to `pasteRequest` (and to `dropFiles`). Through xterm's own `paste()`, so
+   * the bracketed-paste markers are added exactly when the CLI has asked for them, and the bytes
+   * take the same `onData` → `input` route as typing.
+   */
+  pasteIntoTerminal(id: string, text: string): void {
+    const entry = this.state.get(id);
+    if (!entry) {
+      console.warn(`[webview] pasteText for unknown terminal ${id}`);
+      return;
+    }
+    entry.terminal.paste(text);
+    entry.terminal.focus();
   }
 
   private setupMessageHandler(): void {
@@ -1796,6 +1869,22 @@ class WebviewContext {
     terminal.onData((data) => {
       this.postMessage({ type: 'input', id, data });
     });
+
+    // Cmd+V and Ctrl+V are the host's: it reads the pasteboard and answers with `pasteText` or a
+    // Ctrl+V into the PTY (see `handlePasteRequest`). `preventDefault` on the keydown is what
+    // stops Chromium's own paste, which would insert the browser's text a second time. macOS
+    // only — elsewhere the pasteboard has no file URL to prefer, and xterm's paste stays as is.
+    if (WebviewContext.IS_MAC) {
+      terminal.attachCustomKeyEventHandler((event) => {
+        const isPasteKey = (event.metaKey || event.ctrlKey) && !event.altKey && event.key === 'v';
+        if (!isPasteKey) return true;
+        if (event.type === 'keydown') {
+          event.preventDefault();
+          this.postMessage({ type: 'pasteRequest', id });
+        }
+        return false;
+      });
+    }
 
     ScrollManager.setupScrollTracking(entry);
     entry.name = name;

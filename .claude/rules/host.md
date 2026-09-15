@@ -26,6 +26,7 @@ Distilled from `LEARNINGS.md` § Claude Code, § Prompt input, § Inter-agent ch
 ## Prompt and paste
 
 - **An at-mention pulls the whole file; a line range in it is prose.** `@src/foo.ts (lines 264-268)` sends 7422 bytes for 120 bytes of selection; to send the selection, put the text in the prompt.
+- **A file copied in Finder is an icon on the pasteboard; Claude Code's Ctrl+V takes `PNGf` before `furl`.** Paste the absolute path as text instead, Claude Code reads it from disk (`clipboardPaste.ts`). `osascript` costs 0.4–0.8 s per call, so ask for the file URL only when the text looks like a file name.
 - **A quoted snippet needs a fence longer than any backtick run inside it** (longest run + 1, minimum three), or a template literal closes the block early.
 
 ## Inter-agent channel

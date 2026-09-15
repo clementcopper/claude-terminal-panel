@@ -10,6 +10,20 @@ module.exports = {
     }
   },
   workspace: { workspaceFolders: [] },
+  env: {
+    clipboard: {
+      // The text a browser paste would deliver — `pbpaste` reads the same pasteboard string.
+      readText() {
+        try {
+          return Promise.resolve(
+            require('child_process').execFileSync('pbpaste', { encoding: 'utf8' })
+          );
+        } catch {
+          return Promise.resolve('');
+        }
+      }
+    }
+  },
   Uri: {
     joinPath() {
       return {};

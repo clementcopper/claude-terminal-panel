@@ -90,7 +90,14 @@ export type WebviewIncomingMessage =
   | { type: 'statusLine'; id: string; data: StatusLineSnapshot | null }
   | { type: 'editorContext'; data: EditorContext | null }
   | { type: 'focusTerminal' }
+  | { type: 'pasteText'; id: string; text: string }
   | { type: 'contextThreshold'; value: number };
+
+/** One dropped file: its name and its bytes as base64. Mirror of `DroppedFile` in `src/types.ts`. */
+export interface DroppedFile {
+  name: string;
+  data: string;
+}
 
 // Message types from webview to extension
 export type WebviewOutgoingMessage =
@@ -109,6 +116,8 @@ export type WebviewOutgoingMessage =
   | { type: 'openExternal'; uri: string }
   | { type: 'insertEditorReference' }
   | { type: 'stopTurn'; id: string }
+  | { type: 'pasteRequest'; id: string }
+  | { type: 'dropFiles'; id: string; files: DroppedFile[] }
   | { type: 'promptContextThreshold' }
   | { type: 'themeApplied' };
 

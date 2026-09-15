@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A file copied in Finder pastes as the file, not as its icon.** Cmd+V and Ctrl+V go through the
+  host (`src/clipboardPaste.ts`), which prefers the pasteboard's file URL and pastes the absolute
+  path; Claude Code reads the image from it. Before, Ctrl+V handed Claude Code the generic
+  1024×1024 PNG document icon and Cmd+V the bare name. Plain text pastes are unchanged and still
+  wait for nothing; an image-only pasteboard becomes the Ctrl+V Claude Code expects. macOS only.
+- Files dropped on the terminal are written to a temp directory and their paths pasted, since the
+  webview never sees a dropped file's path. `npm run probe` gains `clipboard-paste.js`.
+
 ## [1.2.0] - 2026-09-05
 
 Everything since 1.1.0 — the two-level tabs and the review that followed. The `.vsix` is

@@ -549,6 +549,50 @@ was deliberately not done: it makes the panel depend on another extension's undo
 and it would hand Claude the file and selection on every turn, for context it can read on request.
 Do not "fix" this by wiring it up without asking.
 
+## Paste
+
+Cmd+V and Ctrl+V in a tab are the host's, not the browser's (macOS only; elsewhere xterm pastes
+as before). The webview sends `pasteRequest`, `src/clipboardPaste.ts` reads the pasteboard and the
+answer comes back as `pasteText` into xterm's own `paste()` — so the bracketed-paste markers are
+added exactly when the CLI has switched them on, and the bytes take the same route as typing.
+
+The reason is a file copied in Finder. On the pasteboard it is three things at once: the file
+URL, the file's icon as an image, and the bare file name as text. A browser paste delivers the
+name; Claude Code's Ctrl+V takes the image — and that is the generic 1024×1024 PNG document icon,
+not the screenshot. Measured 2026-09-15 with Claude Code 2.1.272: `osascript -e 'the clipboard
+as «class PNGf»'` on a copied `.png` returns the icon, and the two images that reached Claude
+that way were that icon, byte for byte. The representation that leads to the real file is the
+URL, and Claude Code reads a pasted image path itself (it even resolves a bare name against the
+pasteboard's file URL) — the same node-pty probe that pasted the name as text received the real
+390×172 screenshot.
+
+What a paste becomes, in order:
+
+| Pasteboard                                                     | Result                                    |
+| -------------------------------------------------------------- | ----------------------------------------- |
+| text that looks like a file name, and a file URL that resolves | the absolute path (Finder copy)           |
+| any other text                                                 | the text, unchanged                       |
+| no text, but an image                                          | Ctrl+V into the PTY; Claude Code reads it |
+| nothing                                                        | nothing                                   |
+
+Latency: `readText` is in-process; every `osascript` call is 0.4–0.8 s here (the pasteboard
+access, not the interpreter — `osascript -e 1` takes 0.06 s). So the file URL is looked up only
+when the text has the shape of a file name, and the image check runs only when there is no text.
+A plain text paste never waits. Several files copied at once yield the first one only.
+
+Deliberate change: Ctrl+V with text on the pasteboard now pastes the text instead of sending a
+bare Ctrl+V. Ctrl+V with an image stays what it was.
+
+**Drag and drop** onto the terminal area: the iframe gets the bytes of a dropped file but not its
+path (that left Electron's `File` with version 32), so the webview sends them as `dropFiles`, the
+host writes them under `<tmpdir>/claude-terminal-panel/drops/<tab id>/` and pastes the paths. A
+drop that carries only text is pasted as it is. One `console.info` line in the webview dev tools
+(`[webview] drop: types=… files=…`) shows what VS Code lets through to the iframe; if that line
+never appears, VS Code claimed the drop before the iframe saw it and the extension cannot help.
+
+`node scripts/probes/clipboard-paste.js` runs the reader against whatever is on the pasteboard:
+with a Finder copy it must answer the absolute path where `pbpaste` shows only the name.
+
 ## Gotchas
 
 - **Avoid Node 25.** `vsce` 3.9.2 collects zero files there and then reports

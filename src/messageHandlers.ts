@@ -1,4 +1,4 @@
-import type { WebviewMessage } from './types';
+import type { DroppedFile, WebviewMessage } from './types';
 
 /**
  * Context interface that message handlers use to perform actions.
@@ -20,6 +20,8 @@ export interface MessageHandlerContext {
   handleOpenExternal(uri: string): void;
   handleInsertEditorReference(): void;
   handleStopTurn(id: string): void;
+  handlePasteRequest(id: string): void;
+  handleDropFiles(id: string, files: DroppedFile[]): void;
   handlePromptContextThreshold(): void;
   handleThemeApplied(): void;
 }
@@ -79,6 +81,12 @@ const messageHandlers: MessageHandlerMap = {
   },
   stopTurn: (message, ctx) => {
     ctx.handleStopTurn(message.id);
+  },
+  pasteRequest: (message, ctx) => {
+    ctx.handlePasteRequest(message.id);
+  },
+  dropFiles: (message, ctx) => {
+    ctx.handleDropFiles(message.id, message.files);
   },
   promptContextThreshold: (_message, ctx) => {
     ctx.handlePromptContextThreshold();

@@ -198,6 +198,12 @@ export interface TabInfo {
   engine: Engine;
 }
 
+/** One dropped file: its name and its bytes as base64. */
+export interface DroppedFile {
+  name: string;
+  data: string;
+}
+
 // Webview message types (from webview to extension)
 export type WebviewMessage =
   | { type: 'ready'; cols: number; rows: number }
@@ -230,6 +236,17 @@ export type WebviewMessage =
    * not a keyboard.
    */
   | { type: 'stopTurn'; id: string }
+  /**
+   * Cmd+V / Ctrl+V in the terminal. The webview sends no clipboard content — the host reads the
+   * pasteboard (`clipboardPaste.ts`) and answers with `pasteText`, or writes Ctrl+V into the PTY
+   * when the pasteboard holds pixels and no text.
+   */
+  | { type: 'pasteRequest'; id: string }
+  /**
+   * Files dropped on the terminal. The webview can read their bytes but never learns their paths,
+   * so the host writes them to a temp directory and pastes those paths.
+   */
+  | { type: 'dropFiles'; id: string; files: DroppedFile[] }
   // The slider on the context bar; the value is written back to the workspace settings
   | { type: 'promptContextThreshold' }
   /**
@@ -271,5 +288,7 @@ export type ExtensionMessage =
   | { type: 'statusLine'; id: string; data: StatusLineSnapshot | null }
   | { type: 'editorContext'; data: EditorContext | null }
   | { type: 'focusTerminal' }
+  /** Text for xterm's `paste()`, which adds the bracketed-paste markers when the CLI wants them. */
+  | { type: 'pasteText'; id: string; text: string }
   // The threshold lives in the settings; the webview only draws and drags it
   | { type: 'contextThreshold'; value: number };
