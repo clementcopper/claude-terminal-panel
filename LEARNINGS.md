@@ -137,6 +137,12 @@ Non-obvious findings and dead ends. Only add what saves future work.
   reads the pasteboard and pastes the absolute path (`src/clipboardPaste.ts`). Every `osascript`
   call costs 0.4–0.8 s here (baseline 0.06 s), so the file URL is looked up only when the text
   looks like a file name.
+- **VS Code pastes into a focused webview on its own, past `preventDefault` on the keydown.**
+  (15.09.2026) The first build routed Cmd+V through the host and still delivered two images per
+  press: the real screenshot from `pasteRequest` and the icon from an empty `paste` event Claude
+  Code answers with a clipboard-image read. The old build's headless probe had shown that empty
+  paste all along (`input` with `data: ''`) — it was VS Code's paste command, not Chromium's.
+  Capture `paste` on the terminal too, fold requests within 300 ms per tab.
 - **A quoted snippet needs a fence longer than anything inside it.** Selected code containing a
   markdown fence or a template literal would otherwise close the block early. Longest run of
   backticks plus one, minimum three. (Written out rather than shown: prettier reformats an inline

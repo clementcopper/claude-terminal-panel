@@ -61,10 +61,29 @@ with sync_playwright() as p:
     check('Cmd+V posts pasteRequest for the tab', [m for m in got if m['type'] == 'pasteRequest'], [{'type': 'pasteRequest', 'id': 't1'}])
     check('Cmd+V writes nothing into the PTY', [m for m in got if m['type'] == 'input'], [])
 
+    page.wait_for_timeout(300)
     page.keyboard.press('Control+v')
     page.wait_for_timeout(100)
     got = posted()
     check('Ctrl+V posts pasteRequest', [m['type'] for m in got], ['pasteRequest'])
+
+    # VS Code fires its own paste command into the webview on top of the keydown: one gesture
+    # must stay one request, and a paste event on its own (context menu) must still become one.
+    page.evaluate('''() => {
+      const dt = new DataTransfer(); dt.setData('text/plain', 'shot.png');
+      document.querySelector('.xterm-helper-textarea').dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true}));
+    }''')
+    page.wait_for_timeout(100)
+    got = posted()
+    check('a paste event right after the key is folded into it', got, [])
+    page.wait_for_timeout(300)
+    page.evaluate('''() => {
+      const dt = new DataTransfer(); dt.setData('text/plain', 'shot.png');
+      document.querySelector('.xterm-helper-textarea').dispatchEvent(new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true}));
+    }''')
+    page.wait_for_timeout(100)
+    got = posted()
+    check('a paste event on its own posts pasteRequest, no PTY text', [m['type'] for m in got], ['pasteRequest'])
 
     page.keyboard.type('a')
     page.wait_for_timeout(100)

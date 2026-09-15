@@ -583,6 +583,14 @@ A plain text paste never waits. Several files copied at once yield the first one
 Deliberate change: Ctrl+V with text on the pasteboard now pastes the text instead of sending a
 bare Ctrl+V. Ctrl+V with an image stays what it was.
 
+One gesture, one request. `preventDefault` on the keydown stops Chromium's paste, but VS Code
+runs its own paste command against a focused webview, and that one arrives as a `paste` event
+regardless — with a Finder copy on the pasteboard, an _empty_ one, which Claude Code answers by
+reading the clipboard image. Measured 2026-09-15 on the first build of this change: one Cmd+V
+delivered the icon and the real screenshot in the same message. So the webview also captures
+every `paste` event on the terminal and turns it into the same request; requests within 300 ms
+for the same tab fold into one. A paste from the context menu takes this route too.
+
 **Drag and drop** onto the terminal area: the iframe gets the bytes of a dropped file but not its
 path (that left Electron's `File` with version 32), so the webview sends them as `dropFiles`, the
 host writes them under `<tmpdir>/claude-terminal-panel/drops/<tab id>/` and pastes the paths. A

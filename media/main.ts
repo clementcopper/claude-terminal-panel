@@ -1426,6 +1426,18 @@ class WebviewContext {
     });
   }
 
+  /** One `pasteRequest` per gesture: a keydown and the paste event it still triggers are one. */
+  private readonly lastPasteRequest = new Map<string, number>();
+  private static readonly PASTE_DEDUPE_MS = 300;
+
+  private requestPaste(id: string): void {
+    const now = Date.now();
+    const last = this.lastPasteRequest.get(id) ?? 0;
+    if (now - last < WebviewContext.PASTE_DEDUPE_MS) return;
+    this.lastPasteRequest.set(id, now);
+    this.postMessage({ type: 'pasteRequest', id });
+  }
+
   /** `btoa` wants a binary string; built in slices so a large file does not blow the call stack. */
   private static toBase64(bytes: Uint8Array): string {
     let binary = '';
@@ -1880,10 +1892,23 @@ class WebviewContext {
         if (!isPasteKey) return true;
         if (event.type === 'keydown') {
           event.preventDefault();
-          this.postMessage({ type: 'pasteRequest', id });
+          this.requestPaste(id);
         }
         return false;
       });
+      // A paste that still reaches the DOM — VS Code's own paste command on the webview, the
+      // context menu — is the host's too, and never xterm's: one Cmd+V in VS Code arrived at
+      // Claude Code as two pastes on the previous build (an icon and the real image in one
+      // message), so every route ends in the same request and `requestPaste` folds the doubles.
+      container.addEventListener(
+        'paste',
+        (event) => {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          this.requestPaste(id);
+        },
+        true
+      );
     }
 
     ScrollManager.setupScrollTracking(entry);
