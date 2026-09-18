@@ -457,6 +457,15 @@ git apply --check` sagt pro Commit, ob er noch auf `main` passt (git 2.39 kennt 
 
 ## Statuszeile
 
+- **Fables Wochenlimit steht nicht in der Statuszeilen-Payload.** (18.09.2026) Daniel nutzt seit
+  einer Woche Fable auf Max; der Week-Ring zeigte 54 %, während `/api/oauth/usage` für Fable
+  **100 %** meldete (`weekly_scoped`, `severity: critical`) und für alle Modelle 55 %. Claude
+  Code 2.1.277 füllt `rate_limits` der Payload nur aus den Headern
+  `anthropic-ratelimit-unified-5h-*`/`-7d-*`, und kein Header nennt ein Modell. Der Endpoint
+  antwortet mit dem Token aus dem Schlüsselbund und `anthropic-beta: oauth-2025-04-20` in
+  0,45 s. Der Tausch darf nur beim Ausliefern passieren: `limits.json` ist kontoweit, und ein
+  Fable-Tab hätte dort 100 % für jeden Opus-Tab hinterlegt.
+
 - **Der Statusordner in `$TMPDIR` ist maschinenweit, nicht fensterweit.** Alle VS-Code-Fenster
   desselben Nutzers teilten `claude-terminal-panel/status`; der Startaufräumer löschte dort jede
   Datei und der Aufräumer beim Schließen lief über alles, was der Watcher _gesehen_ hatte — beides

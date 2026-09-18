@@ -38,6 +38,13 @@ export interface StatusLineSnapshot {
   sessionResetsInMin?: number;
   weekPercent?: number;
   weekResetsAt?: string;
+  /**
+   * Set when the week ring shows a model's own weekly window instead of the account-wide one —
+   * the server's label, e.g. `Fable`. Absent for every model without its own window.
+   */
+  weekScope?: string;
+  /** The account-wide weekly percentage `weekPercent` replaced; only set with `weekScope`. */
+  weekAllPercent?: number;
   compacted?: number;
   compactBudget?: number;
   compactAuto?: number;

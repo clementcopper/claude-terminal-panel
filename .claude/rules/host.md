@@ -35,6 +35,10 @@ Distilled from `LEARNINGS.md` § Claude Code, § Prompt input, § Inter-agent ch
 - **Broadcast fan-out needs its own msgId per recipient, and only the sender's window fans out.** Copies return through the same reader; with the original's msgId the dedup map eats them, and every window watches the same tmp directory.
 - **An append-only JSONL watcher starts at the current file size.** Otherwise the whole history is "new" at window start and gets pasted into fresh tabs.
 
+## Rate limits
+
+- **Per-model weekly limits exist only in `/api/oauth/usage` (`limits[].kind === 'weekly_scoped'`).** The status line payload and the rate-limit headers carry the account-wide week only. Swap the model's week in at emit time (`withModelWeek`), never into `limits.json`.
+
 ## Agents and themes
 
 - **Claude's own colours ignore the terminal theme.** Diff blocks arrive as absolute truecolor from Claude's `theme` setting; the extension supplies only background, foreground and 16 ANSI slots, and there is no `COLORFGBG`. Remedy is `/theme`, not the extension.

@@ -22,6 +22,7 @@ import type {
 } from './types';
 import { ENGINE_ACCENT_COLORS } from './types';
 import { readPasteboard } from './clipboardPaste';
+import { startModelLimitsPoll } from './usageLimits';
 import { PromptDetector, type PromptDetectorConfig } from './promptDetector';
 import { StatusLineWatcher } from './statusLineWatcher';
 import { EditorContextTracker } from './editorContextTracker';
@@ -55,6 +56,8 @@ export class ClaudeTerminalViewProvider
   private readonly ptyManager: PtyManager;
   private readonly promptDetector: PromptDetector;
   private readonly statusLineWatcher: StatusLineWatcher;
+  /** Fable's own weekly window and any other per-model one; see `usageLimits.ts`. */
+  private readonly modelLimitsPoll: { dispose(): void };
   private readonly editorTracker: EditorContextTracker;
 
   /** Inter-agent router for message delivery between tabs. */
@@ -154,6 +157,14 @@ export class ClaudeTerminalViewProvider
       }
       this.checkContextThreshold(terminalId, snapshot);
     });
+
+    // Only while a CLI is running: a window of cold restored tabs has no ring worth updating.
+    this.modelLimitsPoll = startModelLimitsPoll(
+      () => this.stateManager.getAll().some((tab) => this.ptyManager.isRunning(tab.id)),
+      () => {
+        this.statusLineWatcher.refreshModelLimits();
+      }
+    );
 
     // The tracker runs whatever the setting says: `editorContext` only decides whether the row
     // is drawn, while the reference command stays useful either way — and toggling the setting
@@ -1341,6 +1352,7 @@ export class ClaudeTerminalViewProvider
     this.ptyManager.killAll();
     this.interAgentRouter.dispose();
     this.promptDetector.dispose();
+    this.modelLimitsPoll.dispose();
     this.statusLineWatcher.dispose();
     this.editorTracker.dispose();
     this.configManager.dispose();

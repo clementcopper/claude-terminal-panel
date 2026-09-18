@@ -45,7 +45,8 @@ VS Code moves between **`/Applications`** and **`~/Applications`** on this machi
 `code` on PATH. Measured 2026-09-15: `/Applications/Visual Studio Code.app` (the CLI is
 `"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"`), and `~/Applications` had
 none; on 2026-08-28 it was the other way round. Never trust this line — take the path from the
-running app: `ps -eo command | grep -o "^/.*Visual Studio Code.app" | head -1`.
+running app: `ps -eo comm | grep -o '^/.*Visual Studio Code\.app' | sort -u | head -1` (`comm`, not
+`command`: with the arguments in the line, the greedy match ran into a helper's argument list).
 
 The `.vsix` carries no platform tag and ships the prebuilds for `darwin-x64`, `darwin-arm64`,
 `win32-x64` and `win32-arm64`, so one build installs on Intel and ARM alike. `scripts/verify-package-payload.js`

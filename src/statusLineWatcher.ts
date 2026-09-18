@@ -33,6 +33,8 @@ export function getStatusLineDir(): string {
 
 /** Shared file holding the account's rate limits, written by whichever tab last saw them. */
 const LIMITS_FILE = 'limits.json';
+/** Per-model weekly windows from the usage endpoint, written by `usageLimits.ts`. */
+const MODEL_LIMITS_FILE = 'model-limits.json';
 /** Upper bound on how long a tab shows a limit another tab has already superseded. */
 const LIMITS_POLL_MS = 30_000;
 /**
@@ -43,6 +45,13 @@ const LIMITS_POLL_MS = 30_000;
 const ORPHAN_AFTER_MS = 24 * 60 * 60 * 1000;
 
 export type StatusLineCallback = (terminalId: string, snapshot: StatusLineSnapshot | null) => void;
+
+/** `Sun 12:59 AM` — the shape the producer's `formatResetTime` writes for the account-wide week. */
+function formatResetTime(epochSeconds: number): string {
+  return new Date(epochSeconds * 1000)
+    .toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true })
+    .replace(',', '');
+}
 
 /** `~` for the home directory, matching what the producers write. */
 function collapseHome(dir: string): string {
@@ -103,7 +112,64 @@ export class StatusLineWatcher {
 
   /** The last snapshot seen for a tab, so a webview reload can be filled in again. */
   get(terminalId: string): StatusLineSnapshot | undefined {
-    return this.latest.get(terminalId);
+    const snapshot = this.latest.get(terminalId);
+    return snapshot ? this.withModelWeek(snapshot) : undefined;
+  }
+
+  /**
+   * Re-sends every tab after `model-limits.json` changed. `updatedAt` stays: the stale dimming
+   * reads it, and the tab's model and context really are as old as they were.
+   */
+  refreshModelLimits(): void {
+    if (this.disposed) return;
+    for (const [terminalId, snapshot] of this.latest) {
+      this.onSnapshot(terminalId, this.withModelWeek(snapshot));
+    }
+  }
+
+  /**
+   * Shows a model's own weekly window in place of the account-wide one when the tab runs that
+   * model — Fable has one, and Claude Code's payload carries only the account-wide week.
+   *
+   * Applied on the way out only. `latest`, `limits.json` and the broadcast keep the account-wide
+   * value; a Fable tab writing its 100 % there would hand it to every Opus tab.
+   */
+  private withModelWeek(snapshot: StatusLineSnapshot): StatusLineSnapshot {
+    const model = snapshot.model.toLowerCase();
+    if (model.length === 0) return snapshot;
+    const row = this.readModelLimits().find((candidate) =>
+      model.startsWith(candidate.name.toLowerCase())
+    );
+    if (!row) return snapshot;
+    return {
+      ...snapshot,
+      weekPercent: row.percent,
+      weekResetsAt: formatResetTime(row.resetsAt),
+      weekScope: row.name,
+      weekAllPercent: snapshot.weekPercent
+    };
+  }
+
+  /** Rows whose window has already reset say nothing about the new one, so they are dropped. */
+  private readModelLimits(): { name: string; percent: number; resetsAt: number }[] {
+    try {
+      const parsed = JSON.parse(
+        fs.readFileSync(path.join(this.lastDir, MODEL_LIMITS_FILE), 'utf8')
+      ) as { rows?: unknown };
+      if (!Array.isArray(parsed.rows)) return [];
+      const now = Date.now() / 1000;
+      return (parsed.rows as unknown[]).flatMap((entry) => {
+        if (typeof entry !== 'object' || entry === null) return [];
+        const row = entry as Record<string, unknown>;
+        const name = row.name;
+        const percent = numberOrUndefined(row.percent);
+        const resetsAt = numberOrUndefined(row.resetsAt);
+        if (typeof name !== 'string' || percent === undefined || resetsAt === undefined) return [];
+        return resetsAt > now ? [{ name, percent, resetsAt }] : [];
+      });
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -126,7 +192,7 @@ export class StatusLineWatcher {
       updatedAt: 0
     };
 
-    return this.withRememberedLimits(base);
+    return this.withModelWeek(this.withRememberedLimits(base));
   }
 
   /**
@@ -440,7 +506,7 @@ export class StatusLineWatcher {
       }
 
       this.latest.set(terminalId, merged);
-      this.onSnapshot(terminalId, merged);
+      this.onSnapshot(terminalId, this.withModelWeek(merged));
     }
   }
 
@@ -550,7 +616,7 @@ export class StatusLineWatcher {
 
     const complete = this.withRememberedLimits(this.withRememberedWindowSize(snapshot));
     this.latest.set(terminalId, complete);
-    this.onSnapshot(terminalId, complete);
+    this.onSnapshot(terminalId, this.withModelWeek(complete));
   }
 
   private clearTimer(terminalId: string): void {

@@ -492,6 +492,38 @@ silently, because the watch follows the inode rather than the path.
   background, foreground and the 16 ANSI slots. On a light VS Code theme with Claude's dark
   default the result is unreadable; fix it with `/theme` inside the session.
 
+### Per-model weekly limit (Fable)
+
+Fable has its own weekly window next to the account-wide one. In a tab running Fable the week
+ring shows Fable's window and is labelled **Fable**; in every other tab it shows the account-wide
+week, labelled **Week**. The tooltip names the bucket, its reset, and the account-wide
+percentage for comparison.
+
+Claude Code does not hand this number to the status line. Measured 2026-09-18 with 2.1.277: the
+payload carries `rate_limits.five_hour` and `rate_limits.seven_day` only, both from the
+`anthropic-ratelimit-unified-5h-*` / `-7d-*` response headers, and no header names a model. The
+per-model window exists only in `GET https://api.anthropic.com/api/oauth/usage`, the endpoint
+`/usage` calls, as a `limits[]` row with `kind: "weekly_scoped"` and
+`scope.model.display_name: "Fable"`.
+
+So the host asks it itself (`src/usageLimits.ts`):
+
+- The OAuth access token is read from Claude Code's keychain item `Claude Code-credentials`,
+  read only. It is never refreshed, written or logged; an expired token means no fetch until
+  Claude Code has refreshed it.
+- Every five minutes (`MODEL_LIMITS_POLL_MS`) while a tab is running, and a window skips its
+  turn when another one fetched in the last four. Rows go to `status/last/model-limits.json`,
+  shared by every window.
+- The watcher swaps the week in on the way out only, when the tab's model starts with the row's
+  name (`Fable 5.1` matches `Fable`). `limits.json` and the broadcast to idle tabs keep the
+  account-wide value, so an Opus tab never shows Fable's number.
+- Any failure — no token, a non-200, an unknown shape — is one line in the Claude Terminal
+  output channel and leaves the ring on the account-wide week. The endpoint is undocumented and
+  can change with any Claude Code update.
+
+`node scripts/probes/model-week.js` (in `npm run probe`) checks the swap against a scratch status
+directory; against the watcher before this change it fails three of seven checks.
+
 ### Troubleshooting
 
 ```sh
