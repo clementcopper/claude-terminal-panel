@@ -19,13 +19,14 @@ is uninstalled. Renamed on purpose so a Marketplace update cannot overwrite it.
 ## Commands
 
 `vsce` needs Node 20 or newer, but **not** Node 25 — it collects zero files there, see
-`LEARNINGS.md`. Measured 2026-09-01: the default here is **v22.14.0** at `/usr/local/bin/node`, so
-`npm run package` runs as it stands, no PATH prefix. Check with `node -v` rather than trusting this
-line. nvm holds only v18.17.1, which is too old for `vsce` — the v20.19.0 path this file used to
-prescribe does not exist. If a future default is 25 again, put a 20–24 in front of it first:
+`LEARNINGS.md`. Measured 2026-09-16: `node -v` in a login shell gives **v22.23.2**, because the
+nvm default alias is `22`; nvm holds v20.19.0, v22.23.2 and v25.8.1, and `/usr/local/bin/node`
+is a separate v20.10.0 from 2023. So `npm run package` runs as it stands, no PATH prefix. Check
+with `node -v` rather than trusting this line — three versions of it have been wrong. If a future
+default is 25 again, put a 20–24 in front of it first:
 
 ```sh
-export PATH="$HOME/.nvm/versions/node/<a 20–24 version>/bin:$PATH"
+export PATH="$HOME/.nvm/versions/node/v22.23.2/bin:$PATH"
 ```
 
 | Task                     | Command                                                                       |
