@@ -921,7 +921,7 @@ class StatusLineView {
     if (snapshot.weekPercent !== undefined) {
       const percent = Math.round(snapshot.weekPercent);
       const level = StatusLineView.ringLevel(snapshot.weekPercent / 100);
-      // A model with its own weekly window (Fable) shows that one; the label says whose it is.
+      // A model with its own weekly window (Fable) shows that one; the tooltip says whose it is.
       const bucket = snapshot.weekScope ? `${snapshot.weekScope} weekly limit` : 'Weekly limit';
       const tooltip = [
         snapshot.weekResetsAt ? `${bucket} resets on ${snapshot.weekResetsAt}` : '',
@@ -936,7 +936,8 @@ class StatusLineView {
         this.buildRingGroup(
           'week',
           this.buildRing(snapshot.weekPercent / 100, `${String(percent)}%`, level),
-          snapshot.weekScope ?? 'Week',
+          // Always "Week": the model name sits in the same row, so the label need not repeat it.
+          'Week',
           snapshot.weekResetsAt ?? '',
           tooltip.length > 0 ? tooltip : undefined
         )

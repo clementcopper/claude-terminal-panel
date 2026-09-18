@@ -495,9 +495,9 @@ silently, because the watch follows the inode rather than the path.
 ### Per-model weekly limit (Fable)
 
 Fable has its own weekly window next to the account-wide one. In a tab running Fable the week
-ring shows Fable's window and is labelled **Fable**; in every other tab it shows the account-wide
-week, labelled **Week**. The tooltip names the bucket, its reset, and the account-wide
-percentage for comparison.
+ring shows Fable's window; in every other tab it shows the account-wide week. The label stays
+**Week** either way, because the model name sits in the same row (Daniel's call, 2026-09-18). The
+tooltip names the bucket, its reset, and the account-wide percentage for comparison.
 
 Claude Code does not hand this number to the status line. Measured 2026-09-18 with 2.1.277: the
 payload carries `rate_limits.five_hour` and `rate_limits.seven_day` only, both from the

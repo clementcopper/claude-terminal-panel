@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **The week ring shows Fable's own weekly limit in a Fable tab**, labelled `Fable`; other models
-  keep the account-wide week. Claude Code's status line payload carries no per-model window, so
+- **The week ring shows Fable's own weekly limit in a Fable tab**; other models keep the
+  account-wide week. The label stays `Week`, the tooltip names the bucket. Claude Code's status line payload carries no per-model window, so
   the host reads it from `/api/oauth/usage` every five minutes with the OAuth token from the
   keychain, read only (`src/usageLimits.ts`). Failure falls back to the account-wide week.
 
