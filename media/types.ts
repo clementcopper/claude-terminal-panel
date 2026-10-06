@@ -168,6 +168,12 @@ export interface TerminalEntry {
   startupTickTimer?: number;
   /** Pending report, restarted by every fit until the size stops moving. */
   readyTimer?: number;
+  /** Pending `resize` to the host, restarted by every fit; one SIGWINCH per gesture, not per frame. */
+  resizeTimer?: number;
+  /** The size last reported to the host, so a settled size equal to it is not sent again. */
+  reportedSize?: { cols: number; rows: number };
+  /** Whether the viewport sat at the bottom when the current resize gesture began. */
+  atBottomBeforeResize?: boolean;
 }
 
 // xterm.js theme type (re-export for convenience)

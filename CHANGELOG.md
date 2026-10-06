@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The terminal no longer "scrolls wildly" on a sidebar drag or maximize.** Every layout frame
+  used to reach the PTY as its own resize — 45 in 7 s for a drag, four within 107 ms for a
+  maximize with another part open, among them a `71x10` and a `308x68` — and Claude Code redraws
+  its whole UI on each (about 2 KB and twelve new lines of scrollback, measured against 2.1.291,
+  which runs on the main screen). The webview now reports the size 150 ms after it stopped
+  moving, snaps the viewport to the bottom once at that moment instead of once per frame, and
+  the host passes only a changed size on. `npm run probe` gains `resize-settle.js`.
+
 - **A file copied in Finder pastes as the file, not as its icon.** Cmd+V and Ctrl+V go through the
   host (`src/clipboardPaste.ts`), which prefers the pasteboard's file URL and pastes the absolute
   path; Claude Code reads the image from it. Before, Ctrl+V handed Claude Code the generic

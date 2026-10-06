@@ -211,6 +211,28 @@ var(--vscode-cornerRadius-large)`; die Webview-Fläche (`.webview-overlay-conten
   Trennlinie 2. Daniel sah „eine eigene Linie" am Button. Pixelscan entlang einer Zeile
   (`getpixel` je x, Übergänge > 8 melden) findet das in Sekunden.
 
+- **Jeder Layout-Frame war ein SIGWINCH, und Claude druckt pro SIGWINCH seine ganze UI neu — auf
+  dem Hauptschirm.** Claude Code 2.1.291 schaltet keinen Alternate Screen mehr ein (0× `?1049h` in
+  2343 Start-Bytes, roh per node-pty mitgeschnitten; die Regel von 2.1.251 ist damit überholt),
+  und eine Antwort auf SIGWINCH misst ~2 KB: 1× Cursor hoch, 40× Zeile löschen, 12 Newlines — zwölf
+  neue Scrollback-Zeilen pro Resize, bei 45 Resizes im Drag 540. Daniel sah richtig „es scrollt
+  automatisch nach unten“: `fitTerminal` schnappte zusätzlich pro Frame per `scrollToBottom`,
+  jetzt einmal am Settle, wenn der Viewport vor der Geste unten war. Daniel: „das Terminal scrollt wie wild“ nach Maximize der Secondary Side Bar, beim
+  Öffnen eines anderen Panels und beim Schmalerziehen. Im Output-Channel „Claude Terminal“
+  (seit `0317d57` loggt `handleResize` jede echte Größenänderung mit Millisekunden; die Datei liegt
+  unter `~/Library/Application Support/Code/logs/<session>/window<N>/exthost/output_logging_*/1-Claude Terminal.log`)
+  stand es: ein Drag 45 `resize`-Zeilen in 7 s (85→39→71 Spalten, einzeln), Maximize mit Panel
+  `308x68 → 151x29 → 71x10 → 150x29` in 107 ms. Kein A/B-Wechsel, also Sturm, keine Oszillation.
+  Headless per CDP nachgestellt (`scripts/probes/resize-settle.js`, chrome-headless-shell aus dem
+  Playwright-Cache, `Emulation.setDeviceMetricsOverride` plus `Page.captureScreenshot` als
+  Frame-Zwang): 12 Breiten → 12 Posts, eine 8-px-Box → `172x1`. FitAddon macht aus einer
+  gelayouteten 0-px-Box `max(2,…)×max(1,…)`, kein No-op. Fix: `fitTerminal` fittet xterm sofort,
+  meldet `resize` aber erst 150 ms nach der letzten Änderung (länger als die 107-ms-Sequenz) und
+  nur, wenn sich die Größe gegenüber der letzten Meldung geändert hat; der Host dedupliziert
+  zusätzlich pro Tab (`ptySizes`, gesetzt bei jedem Spawn). Danach 1 Post pro Drag, 1 pro
+  Maximize-Sequenz, kein Splitter. Das bisherige `READY_SETTLE_MS = 80` galt nur für den ersten
+  Report.
+
 ## OpenCode theme in the panel
 
 - **OpenCode derives its terminal theme mode from one colour only: `defaultBackground`.** Its

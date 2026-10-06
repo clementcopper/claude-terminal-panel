@@ -1219,6 +1219,14 @@ function formatK(tokens: number): string {
 class WebviewContext {
   /** How long a fresh tab's size has to hold still before it is reported to the host. */
   private static readonly READY_SETTLE_MS = 80;
+  /**
+   * How long the size has to hold still before the PTY hears about it. Measured in the output
+   * channel (2026-10-06): a sidebar drag produced 45 resize lines in 7 s, and maximizing the
+   * secondary sidebar with another part open produced `308x68 → 151x29 → 71x10 → 150x29` within
+   * 107 ms — four full redraws of Claude Code's UI, the "scrolls wildly" report.
+   * Longer than that sequence, short enough that a drag's end still feels immediate.
+   */
+  private static readonly RESIZE_SETTLE_MS = 150;
 
   /** Grace period before a starting tab admits that it is starting. */
   private static readonly STARTUP_INDICATOR_DELAY_MS = 250;
@@ -1345,7 +1353,11 @@ class WebviewContext {
     const entry = this.state.get(id);
     if (!entry) return;
 
-    const wasAtBottom = ScrollManager.isAtBottom(entry.terminal);
+    // Read once per gesture, before the first fit moves anything: a drag is many fits, and
+    // whether the person was reading the bottom is decided by where they were when it began.
+    if (entry.resizeTimer === undefined) {
+      entry.atBottomBeforeResize = ScrollManager.isAtBottom(entry.terminal);
+    }
     entry.fitAddon.fit();
     if (options.report) {
       this.scheduleReadyReport(id, entry);
@@ -1353,17 +1365,35 @@ class WebviewContext {
     if (options.focus) {
       entry.terminal.focus();
     }
-    requestAnimationFrame(() => {
-      if (wasAtBottom) {
+    this.scheduleResizeReport(id, entry);
+  }
+
+  /**
+   * xterm is fitted at once — the webview has to look right in every frame — but the PTY learns
+   * the size only once it has stopped moving, and only when it differs from what it was last
+   * told. Every `pty.resize` is a SIGWINCH, and Claude Code redraws its whole UI on each (on the
+   * main screen since at least 2.1.291, so each redraw is new scrollback too), so a drag or a
+   * maximize animation must end in one, not in one per frame. The viewport is left to xterm's
+   * reflow while the gesture runs and snapped to the bottom once, at the end, if that is where
+   * the person was — a snap per frame read as "the terminal scrolls wildly".
+   */
+  private scheduleResizeReport(id: string, entry: TerminalEntry): void {
+    if (entry.resizeTimer !== undefined) {
+      window.clearTimeout(entry.resizeTimer);
+    }
+    entry.resizeTimer = window.setTimeout(() => {
+      entry.resizeTimer = undefined;
+      if (entry.atBottomBeforeResize) {
         entry.terminal.scrollToBottom();
       }
-    });
-    this.postMessage({
-      type: 'resize',
-      id,
-      cols: entry.terminal.cols,
-      rows: entry.terminal.rows
-    });
+      const cols = entry.terminal.cols;
+      const rows = entry.terminal.rows;
+      if (entry.reportedSize?.cols === cols && entry.reportedSize.rows === rows) {
+        return;
+      }
+      entry.reportedSize = { cols, rows };
+      this.postMessage({ type: 'resize', id, cols, rows });
+    }, WebviewContext.RESIZE_SETTLE_MS);
   }
 
   initialize(): void {
@@ -2131,6 +2161,10 @@ class WebviewContext {
       if (t.readyTimer !== undefined) {
         window.clearTimeout(t.readyTimer);
         t.readyTimer = undefined;
+      }
+      if (t.resizeTimer !== undefined) {
+        window.clearTimeout(t.resizeTimer);
+        t.resizeTimer = undefined;
       }
       t.terminal.dispose();
       t.element.remove();

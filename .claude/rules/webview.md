@@ -28,7 +28,7 @@ Distilled from `LEARNINGS.md` § Webview, § Terminal-Start im Panel (webview si
 
 - **xterm 6 uses VS Code's scrollbar widget, not a natively scrolling viewport.** `::-webkit-scrollbar` rules on `.xterm-viewport` hit nothing; visibility is fixed to `Auto` in the bundle. DOM: `.xterm > .xterm-viewport` (vestigial) and `.xterm > .xterm-scrollable-element > (.xterm-screen, .scrollbar.*)`.
 - **A permanently shown scrollbar needs `buffer.active.baseY > 0` as a wrapper class.** Without scrollback the slider fills the whole track.
-- **Claude Code 2.1.251 uses the alternate screen, so there is no terminal scrollbar and that is not a bug.** `baseY` stays 0, Claude scrolls itself; `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` brings scrollback back but kills Claude's mouse. Daniel decided against it on 2026-08-30. Measure the version, do not trust old notes.
+- **Claude Code 2.1.291 runs on the main screen; 2.1.251 used the alternate one.** Measured 2026-10-06: no `?1049h` in the startup bytes, a SIGWINCH answers with ~2 KB (`40× \e[K`, 12 newlines), so there is scrollback, `baseY` grows, and `scrollToBottom` is no longer a no-op. Measure the version (`grep -c '\[?1049h'` on a raw node-pty capture), do not trust old notes.
 
 ## Theme
 
@@ -48,3 +48,5 @@ Distilled from `LEARNINGS.md` § Webview, § Terminal-Start im Panel (webview si
 - **"X stays first, the rest flows" means no container between X and the rest.** A wrapper is one flex item and wraps as a whole; direct siblings wrap individually and the first child holds the line start.
 - **Removing a focus ring means writing `outline: none`, not deleting the rule.** Chromium paints its own ring on a focused `<button>`; verify with `focus()` plus `getComputedStyle(el).outlineStyle`, and cover `:focus` as well as `:focus-visible`.
 - **VS Code frames and rounds the secondary sidebar itself** (`.part.auxiliarybar` border, `.webview-overlay-content` 8px clip). A hairline on the bar's top or sides doubles that frame, an own corner radius doubles the corner; only the bottom line is ours. The group bar's `+` is `sticky` and pins right only when the groups overflow, so any edge detail goes on the bar, not the button; two adjacent hairlines read as one 2px line.
+- **Report a size to the PTY once it has settled (150 ms), never per frame, and only when it changed.** Every `pty.resize` is a SIGWINCH, and Claude redraws its whole UI on each (~2 KB, 12 new lines of scrollback); a drag made 45, a maximize four in 107 ms (`308x68 → 71x10`), read as "scrolls wildly". The viewport is snapped to the bottom once at the settle, never per frame. `resize-settle.js` holds the line.
+- **The output channel is on disk.** `~/Library/Application Support/Code/logs/<session>/window<N>/exthost/output_logging_*/1-Claude Terminal.log` — read a user's repro from there instead of asking for a paste.

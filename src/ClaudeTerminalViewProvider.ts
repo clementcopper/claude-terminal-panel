@@ -50,6 +50,12 @@ export class ClaudeTerminalViewProvider
   private disposed = false;
   private lastCols = 80;
   private lastRows = 24;
+  /**
+   * The size each tab's PTY was last given. `lastCols/lastRows` is the window's latest report for
+   * spawning; this is per tab, so a repeated size never reaches `pty.resize` — every one would
+   * be a SIGWINCH and a full repaint of the alternate screen.
+   */
+  private readonly ptySizes = new Map<string, { cols: number; rows: number }>();
 
   private readonly configManager = new ConfigManager();
   private readonly stateManager = new TerminalStateManager();
@@ -315,6 +321,7 @@ export class ClaudeTerminalViewProvider
       // A restored tab, or one whose safety net already fired: the process exists, so this is a
       // resize and nothing more.
       log('tab', `${id} ready ${String(cols)}x${String(rows)} (already running)`);
+      this.ptySizes.set(id, { cols, rows });
       this.ptyManager.resize(id, cols, rows);
       return;
     }
@@ -323,6 +330,7 @@ export class ClaudeTerminalViewProvider
     this.pendingSpawns.delete(id);
     log('tab', `${id} ready ${String(cols)}x${String(rows)}, starting process`);
     this.ptyManager.spawn(id, pending.config, cols, rows, pending.cwd);
+    this.ptySizes.set(id, { cols, rows });
     this.registerPresence(id);
   }
 
@@ -340,6 +348,7 @@ export class ClaudeTerminalViewProvider
         `${id} no terminalReady within ${String(ClaudeTerminalViewProvider.READY_TIMEOUT_MS)} ms, starting at ${String(this.lastCols)}x${String(this.lastRows)}`
       );
       this.ptyManager.spawn(id, config, this.lastCols, this.lastRows, cwd);
+      this.ptySizes.set(id, { cols: this.lastCols, rows: this.lastRows });
       this.registerPresence(id);
     }, ClaudeTerminalViewProvider.READY_TIMEOUT_MS);
 
@@ -471,10 +480,6 @@ export class ClaudeTerminalViewProvider
   }
 
   handleResize(id: string, cols: number, rows: number): void {
-    // Only a real change is worth a line — the observer fires on every panel drag frame.
-    if (cols !== this.lastCols || rows !== this.lastRows) {
-      log('tab', `${id} resize ${String(cols)}x${String(rows)}`);
-    }
     // Worth keeping even for a tab that has not started: this is the size its process will be
     // spawned at once it is woken.
     this.lastCols = cols;
@@ -482,6 +487,12 @@ export class ClaudeTerminalViewProvider
     if (this.coldTerminals.has(id)) {
       return;
     }
+    const known = this.ptySizes.get(id);
+    if (known?.cols === cols && known.rows === rows) {
+      return;
+    }
+    this.ptySizes.set(id, { cols, rows });
+    log('tab', `${id} resize ${String(cols)}x${String(rows)}`);
     this.ptyManager.resize(id, cols, rows);
   }
 
@@ -1141,6 +1152,7 @@ export class ClaudeTerminalViewProvider
 
     log('tab', `${terminalId} closed`);
     this.ptyManager.kill(terminalId);
+    this.ptySizes.delete(terminalId);
     this.liveTabs.delete(terminalId);
     this.lastInputAt.delete(terminalId);
     this.promptDetector.removeTerminal(terminalId);
@@ -1348,6 +1360,7 @@ export class ClaudeTerminalViewProvider
         ? { ...config, args: [...config.args, ...extraArgs] }
         : config;
     this.ptyManager.spawn(terminalId, spawnConfig, this.lastCols, this.lastRows, cwd);
+    this.ptySizes.set(terminalId, { cols: this.lastCols, rows: this.lastRows });
     this.registerPresence(terminalId);
   }
 

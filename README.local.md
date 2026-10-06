@@ -754,6 +754,16 @@ before this change it fails seven of eight checks.
 
 ## Gotchas
 
+- **The PTY hears a size once it has settled, never per frame.** xterm is fitted in every frame
+  (the webview has to look right), but `resize` goes to the host 150 ms after the last change,
+  and the host passes it to `pty.resize` only when it differs from the tab's last size. Every
+  SIGWINCH makes Claude Code redraw its whole UI — on the main screen since at least 2.1.291
+  (no `?1049h` at startup, measured), about 2 KB with twelve new lines of scrollback per redraw.
+  Measured 2026-10-06 in the output channel, a sidebar drag produced 45 of them in 7 s and
+  maximizing the secondary sidebar with another part open `308x68 → 151x29 → 71x10 → 150x29`
+  within 107 ms — the "terminal scrolls wildly" report. The viewport snaps to the bottom once,
+  at the settle, if that is where it was when the gesture began; never per frame. `scripts/probes/resize-settle.js` (in `npm run probe`) drives the headless webview
+  over CDP through both sequences and expects one report each.
 - **Avoid Node 25.** `vsce` 3.9.2 collects zero files there and then reports
   `Extension entrypoint(s) missing`, which points at the wrong cause. `vsce ls` printing nothing
   is the tell. Node 20 and 22 both work; the earlier instruction to pin exactly 20 was too narrow,
