@@ -567,6 +567,58 @@ min-width: 0` wurde die Ringreihe auf den Rest der Zeile zusammengedrückt und j
   alles Node-Start. Der Cache liegt absichtlich neben den Status-Verzeichnissen, nicht darin: der
   Watcher liest dort jede `.json` als Snapshot.
 
+## Live-Brücke: ein Claude-Code-Mod als zweiter Produzent (2026-10-06)
+
+- **Die Statuszeile hinkte, weil Claude Code das statusLine-Kommando nur am Turn-Ende aufruft.**
+  Innerhalb eines Turns wächst der Kontext mit jedem Model-Request (jede Tool-Runde), und nichts
+  meldete das. Claude Code 2.1.291 hat Function-Hook-Plugins („Mods“): `turn.step` liefert pro
+  Request die `usage` (input + cache_read + cache_creation = `total_input_tokens` der Statuszeile),
+  `session.measure` Rate-Limits und Kosten, `session.compact` den Trigger, `tool.call` jedes Tool,
+  `classic.PermissionRequest` den Dialog. Der Mod `resources/mods/panel-bridge/` schreibt daraus
+  `<tab>.live.json` neben die Producer-Datei; der Watcher merged (`mergeLive`). Gemessen end-to-end
+  in einer PTY (`scratchpad/e2e/run.js`, Claude 2.1.291): idle → busy → `Bash · List files in
+current directory` → 59 790 / 59 933 / 60 038 Tokens für Step 0/1/2 → Kosten 0,72 $ → idle.
+- **`claude plugin validate` verweigert jedes Speichern oder Weiterreichen von `$`.** Fehlertext:
+  `$ itself is assigned (bound, passed, spread, returned or read); $ is always spelled $.noun.event(...)
+at the call site`. Ein Modul-weites `S.$ = $` für einen Schreib-Timer fällt durch, ebenso ein
+  Helfer `schedule($)`. Was geht: Lambdas, die `$.clock.after(...)` und `$.fs.write(...)` im Hook
+  selbst buchstabieren, an den Helfer übergeben (`bump(fn => $.clock.after(100, fn), () => $.fs.write(p, t))`).
+- **Die Typen schreibt die Engine beim ersten Laden in den Mod-Ordner — auch headless.**
+  `claude --plugin-dir <mod> -p ok` legt `.claude-plugin/types/{claude-code,claude-code-tools,claude-code-mcp}/index.d.ts`
+  plus eine `tsconfig.json` an, deren `include` auf `../../hooks` zeigt. Eine Mod-eigene
+  `tsconfig.json` mit `extends` darauf genügt für `tsc -p <mod>`; ein einzelnes `claude-code.d.ts`
+  reicht nicht, weil `BuiltinToolCallInput` (für `e.command`) in der Tools-Datei liegt. Darum ist
+  `typecheck:mod` ein eigenes Skript und nicht Teil von `vscode:prepublish`: ein frischer Clone
+  hat die Typen nicht. Der Ordner ist git-ignoriert und in `.vscodeignore`, und
+  `verify-package-payload.js` lehnt ihn im `.vsix` ab.
+- **Ein Mod-Test braucht Böden für alles, was die Engine sonst beantwortet:** `fs.write`,
+  `env.set`, `session.usage` (als `{ value }`), `session.start/end`, `turn.start/complete`,
+  `session.measure`, `classic.PermissionRequest` (`{}`) und `turn.step` als `async function*`,
+  das nur ein Result zurückgibt (`answer`, nicht `text`; ESLint will dafür
+  `// eslint-disable-next-line require-yield`). Zweimal `on('env.set')` registrieren lässt das
+  Modul nicht laden (`registered twice`). Das Test-`$` hat keinen `plugin`-Noun, `$.plugin.root`
+  ist dort `undefined`. `SessionResume` ist `{ id }`, nicht `{ kind }`.
+- **Ein echter `claude` in einer Probe-PTY bleibt im Workspace-Trust-Dialog hängen**, wenn das
+  cwd ein neues Verzeichnis ist (Scratchpad). `\x1b[B` + `\r` nach ~7 s wählt „Yes, I trust this
+  folder“; danach läuft der Prompt. `CLAUDECODE` und `CLAUDE_CODE_ENTRYPOINT` vorher aus der Env
+  löschen, sonst hält sich der Kind-Claude für verschachtelt.
+- **Ein verschachtelter `claude -p` aus einem Bash-Tool erbt die PTY-Env mitsamt `CLAUDE_PANEL_TAB_ID`**
+  und hätte den Mod auch geladen und die Tab-Datei überschrieben. Der Mod nimmt sich bei
+  `session.start` per `$.env.set` selbst aus `CLAUDE_CODE_PLUGIN_DIRS` („for this process and
+  everything it starts after“); `! echo $CLAUDE_CODE_PLUGIN_DIRS` im Tab ergibt dann leer, der
+  Prozess selbst hat die Variable noch (`ps -Eo command=`).
+- **Env-Variable statt `--plugin-dir`:** ein älteres Claude Code ignoriert eine unbekannte
+  Variable, stirbt aber an einem unbekannten Flag. Der Mod hängt nicht am Producer, also für
+  Provider `bundled` und `own` gleich.
+- **`merged` darf nicht ins `last/<hash>.json`:** ein frischer Tab hätte sonst mit `state: 'busy'`
+  und einem Tool-Text gestartet. `rememberForCwd(stripLive(merged))`. Die Produzentendatei trägt
+  den Anzeigenamen (`Fable 5.1`), `turn.step` nur die ID (`claude-fable-5-1`); `withModelWeek`
+  matcht auf den Namen, darum `modelId` als eigenes Feld und `model` nie aus dem Mod.
+- **`/usr/local/opt/python@3.9/bin/python3.9` gibt es nicht mehr** (geprüft 2026-10-06), kein
+  `python3` auf der Maschine hat `playwright`; `npm run probe:ui` ist damit tot. Chromium liegt
+  aber als `~/Library/Caches/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-mac-arm64/chrome-headless-shell`
+  und macht `--headless --screenshot=… --window-size=… file://…` ohne Python.
+
 ## Schriften und Scrollbar im Panel
 
 - **„SF Pro Compact" gibt es nicht.** Apples Familien heißen `SF Pro` und `SF Compact` — Geschwister,
