@@ -608,9 +608,10 @@ a live file and keep the regex.
 
 **In the row.** While `busy` and a tool or subagent is at work, the cwd row reads
 `Bash · npm run compile · 2 agents` in the foreground colour; idle, the path returns. The same
-row, so the height does not move. `costUsd` is a text label after the Comp ring (`$1.27`, whole
-dollars from 100). The Ctx tooltip says `Live · request 8 of this turn` or `As of the last turn
-end`.
+row, so the height does not move. `costUsd` stands at the right end of that same row (`$1.27`,
+whole dollars from 100): a label after the Comp ring moved the main row's one-line threshold by
+about 50px (headless measurement, 470 → 520px) and cost a line in between; the directory row
+never wraps. The Ctx tooltip says `Live · request 8 of this turn` or `As of the last turn end`.
 
 **Checking the mod itself.** `npm run test:mod` runs `claude plugin validate` (it lists what the
 module hooks, calls and reads from the environment, and refuses, among other things, storing or

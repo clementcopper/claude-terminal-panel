@@ -618,9 +618,11 @@ class StatusLineView {
 
     // Directory last: least urgent, and the only part that can get long. While a turn runs the
     // same row names the tool at work instead — the one line of the panel that changes with the
-    // work, in the place that is otherwise static. Same row, same height: nothing refits.
+    // work, in the place that is otherwise static. The session's cost sits at its right end: a
+    // figure beside the rings moved the one-line threshold of the main row by ~50px (measured
+    // headless, 470 → 520px) and cost a line in between; here it never changes the height.
     const activity = StatusLineView.activityText(snapshot);
-    if (snapshot.cwd || activity) {
+    if (snapshot.cwd || activity || snapshot.costUsd !== undefined) {
       const cwdRow = document.createElement('div');
       cwdRow.className = 'status-row cwd';
       const cwd = document.createElement('span');
@@ -630,6 +632,13 @@ class StatusLineView {
       cwd.textContent = activity ?? shortenPath(snapshot.cwd ?? '');
       cwd.dataset.tooltip = [activity, snapshot.cwd].filter((line) => line).join('\n');
       cwdRow.appendChild(cwd);
+      if (snapshot.costUsd !== undefined) {
+        const cost = document.createElement('span');
+        cost.className = 'status-cost';
+        cost.textContent = formatUsd(snapshot.costUsd);
+        cost.dataset.tooltip = 'Session cost, as /cost totals it';
+        cwdRow.appendChild(cost);
+      }
       this.element.appendChild(cwdRow);
     }
 
@@ -976,16 +985,6 @@ class StatusLineView {
           `Compacted ${String(snapshot.compacted)} of ${String(budget)} · ${String(auto)} automatic`
         )
       );
-    }
-
-    // A text, not a ring: cost has no ceiling to fill against. A direct child of the row like the
-    // rings, so it wraps on its own rather than dragging a group along.
-    if (snapshot.costUsd !== undefined) {
-      const cost = document.createElement('div');
-      cost.className = 'status-cost';
-      cost.textContent = formatUsd(snapshot.costUsd);
-      cost.dataset.tooltip = 'Session cost, as /cost totals it';
-      groups.push(cost);
     }
 
     return groups;
