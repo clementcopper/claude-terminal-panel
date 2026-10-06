@@ -15,7 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per request instead of per turn, the waiting pill follows the session's real state (idle, or a
   permission dialog or question waiting) instead of a regex over PTY bytes, the cwd row names the
   tool at work (`Bash · npm run compile · 2 agents`) while a turn runs, compactions are counted
-  from the event, and the session's cost stands at the right end of the cwd row. Everything the mod adds is
+  from the event. The session's cost rides along in the file but is not drawn: at API list
+  prices it says nothing to a subscription. Everything the mod adds is
   optional: an older Claude Code, OpenCode or a tab whose session has not written yet keeps
   today's behaviour. `npm run probe` gains `live-merge.js`; `npm run test:mod` and
   `npm run typecheck:mod` check the mod itself. README.local.md § Live bridge has the contract.

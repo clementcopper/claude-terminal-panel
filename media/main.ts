@@ -618,11 +618,9 @@ class StatusLineView {
 
     // Directory last: least urgent, and the only part that can get long. While a turn runs the
     // same row names the tool at work instead — the one line of the panel that changes with the
-    // work, in the place that is otherwise static. The session's cost sits at its right end: a
-    // figure beside the rings moved the one-line threshold of the main row by ~50px (measured
-    // headless, 470 → 520px) and cost a line in between; here it never changes the height.
+    // work, in the place that is otherwise static. Same row, same height: nothing refits.
     const activity = StatusLineView.activityText(snapshot);
-    if (snapshot.cwd || activity || snapshot.costUsd !== undefined) {
+    if (snapshot.cwd || activity) {
       const cwdRow = document.createElement('div');
       cwdRow.className = 'status-row cwd';
       const cwd = document.createElement('span');
@@ -632,13 +630,6 @@ class StatusLineView {
       cwd.textContent = activity ?? shortenPath(snapshot.cwd ?? '');
       cwd.dataset.tooltip = [activity, snapshot.cwd].filter((line) => line).join('\n');
       cwdRow.appendChild(cwd);
-      if (snapshot.costUsd !== undefined) {
-        const cost = document.createElement('span');
-        cost.className = 'status-cost';
-        cost.textContent = formatUsd(snapshot.costUsd);
-        cost.dataset.tooltip = 'Session cost, as /cost totals it';
-        cwdRow.appendChild(cost);
-      }
       this.element.appendChild(cwdRow);
     }
 
@@ -1192,11 +1183,6 @@ function formatClock(epochSeconds: number): string {
  * Compact token counts the way the statusLine script does: integers from 100k up, one
  * decimal below that, comma as the decimal separator.
  */
-/** `$1.27`; whole dollars from 100 up, where cents say nothing. */
-function formatUsd(usd: number): string {
-  return usd >= 100 ? `$${String(Math.round(usd))}` : `$${usd.toFixed(2)}`;
-}
-
 function formatK(tokens: number): string {
   // A 1M context window would read as "1000k" otherwise
   if (tokens >= 1_000_000) {

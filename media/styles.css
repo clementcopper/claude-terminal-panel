@@ -644,19 +644,6 @@ body.vscode-high-contrast-light {
   color: var(--vscode-foreground);
 }
 
-/* The directory row does not wrap: the path shortens, the cost keeps the right edge. */
-.status-row.cwd {
-  flex-wrap: nowrap;
-  column-gap: 12px;
-}
-
-/* Session cost at the row's right end, never on a line of its own. */
-.status-cost {
-  margin-left: auto;
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-}
-
 /* Vertical tab bar on the right */
 #tab-bar {
   display: flex;

@@ -62,7 +62,10 @@ export interface StatusLineSnapshot {
   tool?: { name: string; summary: string };
   /** Subagents running at the moment. */
   agents?: number;
-  /** Session cost as `/cost` totals it. */
+  /**
+   * Session cost as `/cost` totals it — API list prices, so on a subscription it is what the
+   * tokens would have cost, not a bill. Carried, not drawn (Daniel's call, 2026-10-06).
+   */
   costUsd?: number;
   /** Which model request of the turn the token figures came from (0-based). */
   stepIndex?: number;
