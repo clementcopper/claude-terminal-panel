@@ -97,6 +97,28 @@ export interface StatusLineSnapshot {
   compacted?: number;
   compactBudget?: number;
   compactAuto?: number;
+  /**
+   * Live fields, written by the `panel-bridge` mod inside the Claude process and merged over the
+   * producer's snapshot by the watcher. All optional: an older Claude Code, another CLI or a tab
+   * whose session has not written yet carries none of them, and the row falls back to the
+   * producer's values.
+   */
+  /** `busy` while a turn runs, `asking` while a permission dialog or question waits, else `idle`. */
+  state?: 'idle' | 'busy' | 'asking';
+  /** Unix milliseconds the state last changed — compared with the last user input to decide the pill. */
+  stateAt?: number;
+  /** The main-thread tool running right now, with a few words from its arguments. */
+  tool?: { name: string; summary: string };
+  /** Subagents running at the moment. */
+  agents?: number;
+  /** Session cost as `/cost` totals it. */
+  costUsd?: number;
+  /** Which model request of the turn the token figures came from (0-based). */
+  stepIndex?: number;
+  /** The model id the last request named (`claude-fable-5-1`); `model` keeps the display name. */
+  modelId?: string;
+  /** Unix milliseconds of the live write the token figures came from; absent when they are the producer's. */
+  liveAt?: number;
   /** Unix seconds, so the webview can grey out a stale line. */
   updatedAt: number;
 }

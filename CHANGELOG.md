@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The status row is live inside a turn.** A Claude Code mod (`resources/mods/panel-bridge/`,
+  loaded through `CLAUDE_CODE_PLUGIN_DIRS`) writes `<tab id>.live.json` on every model request,
+  tool call and state change; the watcher merges it over the producer's file. The Ctx ring moves
+  per request instead of per turn, the waiting pill follows the session's real state (idle, or a
+  permission dialog or question waiting) instead of a regex over PTY bytes, the cwd row names the
+  tool at work (`Bash · npm run compile · 2 agents`) while a turn runs, compactions are counted
+  from the event, and the session's cost stands after the Comp ring. Everything the mod adds is
+  optional: an older Claude Code, OpenCode or a tab whose session has not written yet keeps
+  today's behaviour. `npm run probe` gains `live-merge.js`; `npm run test:mod` and
+  `npm run typecheck:mod` check the mod itself. README.local.md § Live bridge has the contract.
 - **The week ring shows Fable's own weekly limit in a Fable tab**; other models keep the
   account-wide week. The label stays `Week`, the tooltip names the bucket. Claude Code's status line payload carries no per-model window, so
   the host reads it from `/api/oauth/usage` every five minutes with the OAuth token from the

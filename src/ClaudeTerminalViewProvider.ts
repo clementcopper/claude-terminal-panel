@@ -55,6 +55,13 @@ export class ClaudeTerminalViewProvider
   private readonly stateManager = new TerminalStateManager();
   private readonly ptyManager: PtyManager;
   private readonly promptDetector: PromptDetector;
+  /**
+   * Tabs whose session reports its own state through the live file. The regex prompt detection
+   * is muted for them: the mod knows when a turn ends or a dialog waits, the regex only guesses.
+   */
+  private readonly liveTabs = new Set<string>();
+  /** Last keystroke per tab, so a state older than the user's own input does not raise the pill. */
+  private readonly lastInputAt = new Map<string, number>();
   private readonly statusLineWatcher: StatusLineWatcher;
   /** Fable's own weekly window and any other per-model one; see `usageLimits.ts`. */
   private readonly modelLimitsPoll: { dispose(): void };
@@ -150,6 +157,7 @@ export class ClaudeTerminalViewProvider
     );
 
     this.statusLineWatcher = new StatusLineWatcher((terminalId, snapshot) => {
+      this.applyLiveState(terminalId, snapshot);
       // The threshold warning is independent of the row: it fires whether or not the row is
       // drawn, because a user who hid the row still asked for the warning.
       if (this.configManager.getConfig().statusLine) {
@@ -340,7 +348,11 @@ export class ClaudeTerminalViewProvider
 
   handleInput(id: string, data: string): void {
     this.ptyManager.write(id, data);
+    this.lastInputAt.set(id, Date.now());
     this.promptDetector.onUserInput(id);
+    if (this.liveTabs.has(id) && this.stateManager.get(id)?.isWaitingForInput) {
+      this.handleNotificationChange(id, false);
+    }
   }
 
   /**
@@ -679,8 +691,43 @@ export class ClaudeTerminalViewProvider
   private handlePtyData(terminalId: string, data: string): void {
     if (!this.disposed && this.view) {
       this.postMessage({ type: 'output', id: terminalId, data });
-      this.promptDetector.onData(terminalId, data);
+      if (!this.liveTabs.has(terminalId)) {
+        this.promptDetector.onData(terminalId, data);
+      }
     }
+  }
+
+  /**
+   * The live state of a Claude tab decides the waiting pill. `idle` after a turn and `asking`
+   * during a permission dialog or a question both mean the person is needed; a state older than
+   * their last keystroke is answered already. A snapshot without a state hands the tab back to
+   * the regex path — the live file is gone (restart, exit) or was never there.
+   */
+  private applyLiveState(terminalId: string, snapshot: StatusLineSnapshot | null): void {
+    if (!snapshot || snapshot.state === undefined) {
+      this.liveTabs.delete(terminalId);
+      return;
+    }
+    if (!this.liveTabs.has(terminalId)) {
+      this.liveTabs.add(terminalId);
+      // Whatever the regex was showing is a guess the mod now replaces
+      this.promptDetector.onUserInput(terminalId);
+    }
+    const wantsPill = this.getPromptDetectorConfig().enabled;
+    const needsPerson = snapshot.state === 'idle' || snapshot.state === 'asking';
+    const sinceInput = (snapshot.stateAt ?? 0) > (this.lastInputAt.get(terminalId) ?? 0);
+    const waiting = wantsPill && needsPerson && sinceInput;
+    const current = this.stateManager.get(terminalId)?.isWaitingForInput ?? false;
+    if (waiting !== current) {
+      this.handleNotificationChange(terminalId, waiting);
+    }
+  }
+
+  /** The process behind a tab is gone or being replaced: its live file says nothing anymore. */
+  private forgetLive(terminalId: string): void {
+    this.statusLineWatcher.removeLive(terminalId);
+    this.liveTabs.delete(terminalId);
+    this.lastInputAt.delete(terminalId);
   }
 
   /**
@@ -693,6 +740,7 @@ export class ClaudeTerminalViewProvider
    */
   private handlePtyExit(terminalId: string, exitCode: number | null): void {
     if (this.disposed) return;
+    this.forgetLive(terminalId);
 
     // The recovery plan runs whether or not the webview is there to print the note: a webview
     // being rebuilt (panel moved to the other sidebar) must not cost the tab its restart.
@@ -1093,6 +1141,8 @@ export class ClaudeTerminalViewProvider
 
     log('tab', `${terminalId} closed`);
     this.ptyManager.kill(terminalId);
+    this.liveTabs.delete(terminalId);
+    this.lastInputAt.delete(terminalId);
     this.promptDetector.removeTerminal(terminalId);
     this.statusLineWatcher.removeTerminal(terminalId);
     this.thresholdNotified.delete(terminalId);
@@ -1284,6 +1334,7 @@ export class ClaudeTerminalViewProvider
     // No guard flag needed for the old process: `PtyManager` drops it from its map here, and
     // both its handlers check that identity before reporting anything.
     this.ptyManager.kill(terminalId);
+    this.forgetLive(terminalId);
 
     // The tab keeps its own engine: a restart on an OpenCode tab must come back as
     // OpenCode, not silently fall back to the configured Claude command. Resume/continue

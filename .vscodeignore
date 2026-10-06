@@ -10,6 +10,13 @@ tsconfig.json
 # user. The bundle media/main.js is what the webview loads; the sources have no business here.
 media/**/*.ts
 media/**/tsconfig.json
+# The panel-bridge mod ships as TypeScript on purpose — Claude Code loads the module as written.
+# Its tests, its own tsconfig and the type declarations the engine lays into `.claude-plugin/types/`
+# at every load do not: the types are per Claude Code version and written again by whichever one
+# runs the mod.
+resources/mods/**/*.test.ts
+resources/mods/**/tsconfig.json
+resources/mods/**/.claude-plugin/types/**
 *.md
 .husky/**
 .editorconfig

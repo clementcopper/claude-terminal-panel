@@ -325,12 +325,14 @@
     "package": "vsce package --skip-license",
     "postpackage": "node scripts/verify-package-payload.js --vsix",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p media/tsconfig.json",
-    "probe": "node scripts/probes/presence-prune.js && node scripts/probes/statusline-cache.js && node scripts/probes/clipboard-paste.js && node scripts/probes/model-week.js",
+    "typecheck:mod": "node scripts/typecheck-mod.js",
+    "test:mod": "claude plugin validate resources/mods/panel-bridge && claude plugin test resources/mods/panel-bridge",
+    "probe": "node scripts/probes/presence-prune.js && node scripts/probes/statusline-cache.js && node scripts/probes/clipboard-paste.js && node scripts/probes/model-week.js && node scripts/probes/live-merge.js",
     "probe:ui": "/usr/local/opt/python@3.9/bin/python3.9 scripts/probes/tab-bar.py && /usr/local/opt/python@3.9/bin/python3.9 scripts/probes/paste-webview.py",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "format": "prettier --write \"src/**/*.ts\" \"media/**/*.{ts,css}\" \"resources/**/*.js\" \"scripts/**/*.js\" eslint.config.mjs",
-    "format:check": "prettier --check \"src/**/*.ts\" \"media/**/*.{ts,css}\" \"resources/**/*.js\" \"scripts/**/*.js\" eslint.config.mjs",
+    "format": "prettier --write \"src/**/*.ts\" \"media/**/*.{ts,css}\" \"resources/**/*.js\" \"scripts/**/*.js\" eslint.config.mjs && prettier --write --no-semi --single-quote --print-width 100 \"resources/mods/**/hooks/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"media/**/*.{ts,css}\" \"resources/**/*.js\" \"scripts/**/*.js\" eslint.config.mjs && prettier --check --no-semi --single-quote --print-width 100 \"resources/mods/**/hooks/*.ts\"",
     "prepare": "husky"
   },
   "lint-staged": {

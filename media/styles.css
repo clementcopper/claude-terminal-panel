@@ -638,6 +638,20 @@ body.vscode-high-contrast-light {
   text-overflow: ellipsis;
 }
 
+/* The tool at work takes the directory's place while a turn runs: the foreground, so it reads as
+   news rather than as the static path it replaces. */
+.status-cwd.busy {
+  color: var(--vscode-foreground);
+}
+
+/* Session cost: a figure beside the rings, in the rings' label size, aligned to their row. */
+.status-cost {
+  align-self: center;
+  color: var(--vscode-descriptionForeground, #767676);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Vertical tab bar on the right */
 #tab-bar {
   display: flex;

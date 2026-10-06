@@ -616,22 +616,30 @@ class StatusLineView {
 
     this.element.appendChild(this.buildMainRow(snapshot));
 
-    // Directory last: least urgent, and the only part that can get long
-    if (snapshot.cwd) {
+    // Directory last: least urgent, and the only part that can get long. While a turn runs the
+    // same row names the tool at work instead — the one line of the panel that changes with the
+    // work, in the place that is otherwise static. Same row, same height: nothing refits.
+    const activity = StatusLineView.activityText(snapshot);
+    if (snapshot.cwd || activity) {
       const cwdRow = document.createElement('div');
       cwdRow.className = 'status-row cwd';
       const cwd = document.createElement('span');
-      cwd.className = 'status-cwd';
+      cwd.className = activity ? 'status-cwd busy' : 'status-cwd';
       // Shortened in JS, not by CSS: a right-to-left trick for left-side ellipsis
       // reorders a plain path ("~/foo" came out as "foo/~").
-      cwd.textContent = shortenPath(snapshot.cwd);
-      cwd.dataset.tooltip = snapshot.cwd;
+      cwd.textContent = activity ?? shortenPath(snapshot.cwd ?? '');
+      cwd.dataset.tooltip = [activity, snapshot.cwd].filter((line) => line).join('\n');
       cwdRow.appendChild(cwd);
       this.element.appendChild(cwdRow);
     }
 
+    // A long tool run is not a stale row: the mod reports it as busy and writes nothing new
+    // until the tool returns.
     const ageMs = Date.now() - snapshot.updatedAt * 1000;
-    this.element.classList.toggle('stale', ageMs > StatusLineView.STALE_AFTER_MS);
+    this.element.classList.toggle(
+      'stale',
+      ageMs > StatusLineView.STALE_AFTER_MS && snapshot.state !== 'busy'
+    );
 
     this.updateCentering();
   }
@@ -861,6 +869,18 @@ class StatusLineView {
    * resizable and narrow by nature, and a ring that fell off the right edge would be worse than
    * a taller row.
    */
+  /** `Bash · npm run compile · 2 agents` while a turn runs and something is at work; else nothing. */
+  private static activityText(snapshot: StatusLineSnapshot): string | undefined {
+    if (snapshot.state !== 'busy') return undefined;
+    const agents = snapshot.agents ?? 0;
+    const parts = [
+      snapshot.tool?.name,
+      snapshot.tool?.summary,
+      agents > 0 ? `${String(agents)} agent${agents === 1 ? '' : 's'}` : undefined
+    ].filter((part): part is string => part !== undefined && part.length > 0);
+    return parts.length > 0 ? parts.join(' · ') : undefined;
+  }
+
   private buildMainRow(snapshot: StatusLineSnapshot): HTMLDivElement {
     const row = document.createElement('div');
     row.className = 'status-row main';
@@ -958,6 +978,16 @@ class StatusLineView {
       );
     }
 
+    // A text, not a ring: cost has no ceiling to fill against. A direct child of the row like the
+    // rings, so it wraps on its own rather than dragging a group along.
+    if (snapshot.costUsd !== undefined) {
+      const cost = document.createElement('div');
+      cost.className = 'status-cost';
+      cost.textContent = formatUsd(snapshot.costUsd);
+      cost.dataset.tooltip = 'Session cost, as /cost totals it';
+      groups.push(cost);
+    }
+
     return groups;
   }
 
@@ -996,7 +1026,13 @@ class StatusLineView {
       ring,
       'Ctx',
       formatK(budget),
-      `${String(percent)}% of the window · ${formatK(snapshot.usedTokens)} / ${formatK(snapshot.totalTokens)}\nThreshold ${String(this.threshold)}% — click to change`
+      [
+        `${String(percent)}% of the window · ${formatK(snapshot.usedTokens)} / ${formatK(snapshot.totalTokens)}`,
+        snapshot.liveAt !== undefined
+          ? `Live · request ${String((snapshot.stepIndex ?? 0) + 1)} of this turn`
+          : 'As of the last turn end',
+        `Threshold ${String(this.threshold)}% — click to change`
+      ].join('\n')
     );
 
     // The ring is the only threshold control left, so it has to be reachable by keyboard and
@@ -1157,6 +1193,11 @@ function formatClock(epochSeconds: number): string {
  * Compact token counts the way the statusLine script does: integers from 100k up, one
  * decimal below that, comma as the decimal separator.
  */
+/** `$1.27`; whole dollars from 100 up, where cents say nothing. */
+function formatUsd(usd: number): string {
+  return usd >= 100 ? `$${String(Math.round(usd))}` : `$${usd.toFixed(2)}`;
+}
+
 function formatK(tokens: number): string {
   // A 1M context window would read as "1000k" otherwise
   if (tokens >= 1_000_000) {

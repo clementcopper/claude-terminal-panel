@@ -6,7 +6,14 @@ import globals from 'globals';
 export default tseslint.config(
   // Global ignores
   {
-    ignores: ['dist/**', 'node_modules/**', '*.vsix', 'media/**/*.js']
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      '*.vsix',
+      'media/**/*.js',
+      // Written by Claude Code at every load of the mod; not ours to lint
+      'resources/mods/**/.claude-plugin/**'
+    ]
   },
 
   // Base JS recommended rules
@@ -55,6 +62,23 @@ export default tseslint.config(
         ...globals.browser
       }
     },
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_'
+        }
+      ]
+    }
+  },
+
+  // resources/mods/: hooks modules Claude Code loads as TypeScript. Type-aware rules would need
+  // the declarations the engine writes into the mod folder at first load, which a fresh clone
+  // lacks — so syntax-level rules only here; `npm run typecheck:mod` does the typed half.
+  {
+    files: ['resources/mods/**/*.ts'],
+    extends: [...tseslint.configs.recommended],
     rules: {
       '@typescript-eslint/no-unused-vars': [
         'error',

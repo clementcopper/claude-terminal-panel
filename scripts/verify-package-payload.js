@@ -61,8 +61,26 @@ const REQUIRED_IN_VSIX = [
   'media/main.js',
   'media/styles.css',
   'media/xterm.css',
-  'resources/panel-statusline.js'
+  'resources/panel-statusline.js',
+  // The live bridge: Claude Code loads the module as TypeScript, no bundle involved
+  'resources/mods/panel-bridge/.claude-plugin/plugin.json',
+  'resources/mods/panel-bridge/hooks/hooks.json',
+  'resources/mods/panel-bridge/hooks/register.ts'
 ];
+
+/**
+ * The one place TypeScript belongs in the package: a mod is loaded from source by Claude Code.
+ * Its tests, and the declarations the engine writes beside it, still do not.
+ */
+function isShippedModSource(name) {
+  return (
+    name.startsWith('extension/resources/mods/') &&
+    name.endsWith('.ts') &&
+    !name.endsWith('.test.ts') &&
+    !name.endsWith('.d.ts') &&
+    !name.includes('/.claude-plugin/types/')
+  );
+}
 
 function fail(headline, details) {
   console.error(`\x1b[31m✗ ${headline}\x1b[0m`);
@@ -249,7 +267,9 @@ function checkVsix(vsixPath) {
   // `*.ts` and `tsconfig.json` in .vscodeignore do not cross a directory boundary, so the webview
   // sources under media/ shipped unnoticed. The bundle is what loads; sources never belong here.
   const sources = entries.filter(
-    (entry) => entry.name.endsWith('.ts') || entry.name.endsWith('/tsconfig.json')
+    (entry) =>
+      (entry.name.endsWith('.ts') || entry.name.endsWith('/tsconfig.json')) &&
+      !isShippedModSource(entry.name)
   );
   if (sources.length > 0) {
     problems.push(
@@ -257,6 +277,13 @@ function checkVsix(vsixPath) {
         .map((entry) => entry.name.replace(/^extension\//, ''))
         .join(', ')}`
     );
+  }
+
+  // Written by whichever Claude Code loads the mod, per version — a copy from this machine would
+  // be wrong on the next one, and it is 1 MB of declarations nothing in the package reads.
+  const laidTypes = entries.filter((entry) => entry.name.includes('/.claude-plugin/types/'));
+  if (laidTypes.length > 0) {
+    problems.push(`${String(laidTypes.length)} engine-written type files were packaged`);
   }
 
   if (problems.length > 0) {

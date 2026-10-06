@@ -270,6 +270,10 @@ the extension is the reader:
 3. `statusLineWatcher.ts` watches that directory and turns each write into a `statusLine` message
    for the webview, which draws the row.
 
+Since 2026-10-06 a second producer writes next to the first: the `panel-bridge` mod, a Claude Code
+function-hooks plugin that runs inside the Claude process and writes `<tab id>.live.json` on every
+model request, tool call and state change. The watcher merges the two. See [Live bridge](#live-bridge).
+
 ### Providers
 
 `claudeTerminal.statusLineProvider` decides who supplies the producer:
@@ -382,8 +386,10 @@ silently, because the watch follows the inode rather than the path.
   provider with `vscode` and `node-pty` stubbed out: resume → `--continue` → plain → message, plus
   a plain tab exiting 1 and a resumed tab exiting 0, neither of which respawns.
 
-- The row only updates when Claude re-renders its status line. Idle, the last value stands;
-  `updatedAt` older than 60 s greys the row out.
+- The producer's file only updates when Claude re-renders its status line, which is at turn end,
+  not per model request (measured, `LEARNINGS.md`). The live bridge below fills the gap inside a
+  turn. Idle, the last value stands; `updatedAt` older than 60 s greys the row out, unless the
+  live state says `busy` — a two-minute Bash run is not a stale row.
 - Tabs running something other than Claude never write a file, so their row stays hidden.
 - Showing or hiding the row changes the terminal height, so the webview refits xterm afterwards.
 - The stop button leads the main row and writes Escape into the PTY. Its 36px disc is the same
@@ -524,15 +530,114 @@ So the host asks it itself (`src/usageLimits.ts`):
 `node scripts/probes/model-week.js` (in `npm run probe`) checks the swap against a scratch status
 directory; against the watcher before this change it fails three of seven checks.
 
+### Live bridge
+
+The statusLine command runs at turn end, so inside a turn the Ctx ring stood still while every
+tool round trip grew the window, the waiting pill was a regex guess over PTY bytes, compactions
+were counted by scanning the transcript, and cost was not shown. Claude Code 2.1.291 has
+function-hook plugins ("mods"): a TypeScript module Claude Code loads as written, with hooks on
+every model request, tool call, permission dialog, compaction and measurement. `resources/mods/panel-bridge/`
+is one. It draws nothing in the terminal; the webview stays the only UI.
+
+**Loading.** `ptyManager` appends the mod's folder to `CLAUDE_CODE_PLUGIN_DIRS` in the PTY
+environment for every Claude tab with the status line on, whatever the provider — the mod does
+not depend on the producer. The environment variable rather than `--plugin-dir`, because an older
+Claude Code ignores an unknown variable but exits on an unknown flag. At `session.start` the mod
+takes its own folder out of the variable again for everything the session starts (`$.env.set`), so
+a nested `claude -p` from a Bash tool — which inherits `CLAUDE_PANEL_TAB_ID` too — does not load it
+and overwrite the tab's file with its own state.
+
+**What it writes**, to `$CLAUDE_PANEL_STATUS_DIR/$CLAUDE_PANEL_TAB_ID.live.json`, at most once per
+100 ms (one trailing timer per burst), in one `$.fs.write` call and therefore not atomically — the
+watcher drops a file it cannot parse and keeps the previous one:
+
+```jsonc
+{
+  "v": 1,
+  "updatedAt": 1791301234567, // ms — the producer writes seconds; the watcher converts
+  "resetAt": 0, // ms of the last /clear the mod saw; 0 if none
+  "cwd": "/Users/you/project", // the watcher collapses ~
+  "usedTokens": 254321, // input + cache_read + cache_creation of the last main-thread request
+  "totalTokens": 1000000, // the model's window, from $.session.usage()
+  "usedPercent": 25.4, // the producer's arithmetic, one decimal
+  "stepIndex": 7, // which request of the turn the figure came from, 0-based
+  "modelId": "claude-fable-5-1", // the id; the producer's `model` keeps the display name
+  "effort": "high",
+  "state": "busy", // idle | busy | asking
+  "stateAt": 1791301234000, // ms the state last changed
+  "tool": { "name": "Bash", "summary": "npm run compile" }, // main-thread tool at work
+  "agents": 2, // running subagents
+  "compacted": 1,
+  "compactAuto": 0,
+  "sessionPercent": 70,
+  "sessionResetsAt": 1791304800, // epoch s, like the producer
+  "weekPercent": 55,
+  "weekResetsEpoch": 1791760000, // epoch s; the watcher formats it
+  "costUsd": 1.27
+}
+```
+
+Every field but `v` and `updatedAt` is optional for the reader. Where it comes from:
+
+| Field                                 | Hook                                                                                                     |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `usedTokens`, `stepIndex`, `modelId`  | `turn.step` — the response's `usage` once the stream has ended, main thread only                         |
+| `state`                               | `turn.start` → busy, `turn.complete` → idle, `classic.PermissionRequest` / `AskUserQuestion` → asking    |
+| `tool`                                | `tool.call` before and after `next(e)`                                                                   |
+| `agents`                              | `agent.spawn` adds, the subagent's `turn.complete` (carrying `agentId`) removes                          |
+| `compacted`, `compactAuto`            | `session.compact` after `next(e)`, when it was not skipped; `trigger === 'auto'` counts as auto          |
+| `sessionPercent`, `weekPercent`, cost | `session.measure` (pushed after each turn and when a window moves a whole point) and `$.session.usage()` |
+| `resetAt` and the zeros               | `session.end` with `reason: 'clear'`                                                                     |
+
+**Merge rule** (`mergeLive` in `statusLineWatcher.ts`): fresher wins for everything both files
+carry. The producer runs at turn end with the same token figure the last request reported, and
+between turn ends only the mod writes, so "fresher" is "live while the mod is alive" with no
+liveness window to tune. `model` stays the producer's display name — `withModelWeek` keys on it.
+Compactions: the mod's count after a `/clear` the producer predates, else the larger of the two,
+because a resumed session's event count starts at zero and the transcript scan is the floor. The
+remembered per-directory snapshot (`last/<hash>.json`) is written without the live fields, or a
+fresh tab would start out busy.
+
+**Hand-over from the regex detector.** A snapshot with a `state` makes the tab a live tab in
+`ClaudeTerminalViewProvider`: `promptDetector.onData` is no longer fed for it, and the pill follows
+`state` (`idle` or `asking`, and `stateAt` newer than the last keystroke). Restart, exit and close
+call `statusLineWatcher.removeLive`, which unlinks the live file and re-sends the snapshot without
+the live fields — so a live file present always belongs to the running process, and the regex path
+takes the tab back until the new session writes. OpenCode tabs and older Claude Codes never have
+a live file and keep the regex.
+
+**In the row.** While `busy` and a tool or subagent is at work, the cwd row reads
+`Bash · npm run compile · 2 agents` in the foreground colour; idle, the path returns. The same
+row, so the height does not move. `costUsd` is a text label after the Comp ring (`$1.27`, whole
+dollars from 100). The Ctx tooltip says `Live · request 8 of this turn` or `As of the last turn
+end`.
+
+**Checking the mod itself.** `npm run test:mod` runs `claude plugin validate` (it lists what the
+module hooks, calls and reads from the environment, and refuses, among other things, storing or
+passing `$`) and the mod's own `register.test.ts` against the engine. `npm run typecheck:mod`
+needs the declarations Claude Code writes into `resources/mods/panel-bridge/.claude-plugin/types/`
+at every load — on a fresh clone open a Claude tab in the panel once, or run
+`claude --plugin-dir resources/mods/panel-bridge -p ok`; the folder is git-ignored and never
+packaged. The API is early access and moves between releases; every live field is optional, and
+losing the mod degrades to the producer.
+
+`node scripts/probes/live-merge.js` (in `npm run probe`) drives the watcher's `read()` with a
+producer file and live files of controlled timestamps; against the watcher before the bridge it
+fails at the first check, which maps `<id>.live.json` to the tab.
+
 ### Troubleshooting
 
 ```sh
-ls -l "$TMPDIR/claude-terminal-panel/status/"*/        # one file per Claude tab, per window
+ls -l "$TMPDIR/claude-terminal-panel/status/"*/        # <id>.json per Claude tab, <id>.live.json once the mod wrote
 ps -o command= -p <pid of the claude process>          # is --settings being passed?
+ps -Eo command= -p <pid of the claude process> | tr ' ' '\n' | grep CLAUDE_CODE_PLUGIN_DIRS   # is the mod dir set?
+jq -c '{usedTokens,state,tool,agents}' "$TMPDIR"/claude-terminal-panel/status/*/<id>.live.json
 ```
 
 An empty directory means the producer never ran; files present but no row means the watcher or
-the webview.
+the webview. A `<id>.json` without a `<id>.live.json` after the first prompt means the mod did not
+load: `claude --debug` and `grep panel-bridge` in `~/.claude/debug/` names the event and the
+reason when a hook was skipped or the module refused.
 
 ## Editor context
 

@@ -35,6 +35,42 @@ export function getStatusLineDir(): string {
 const LIMITS_FILE = 'limits.json';
 /** Per-model weekly windows from the usage endpoint, written by `usageLimits.ts`. */
 const MODEL_LIMITS_FILE = 'model-limits.json';
+/**
+ * Suffix of the second producer's file: `<tab id>.live.json`, written by the `panel-bridge` mod
+ * from inside the Claude process on every model request, tool call and state change. Tested
+ * before the plain `.json` suffix, or the file would read as a tab called `<id>.live`.
+ */
+const LIVE_SUFFIX = '.live.json';
+
+/**
+ * What the mod writes. Field names match the producer's where meaning and type are identical,
+ * so the merge is a spread; `updatedAt`, `resetAt` and `stateAt` are milliseconds, and the week
+ * reset is an epoch rather than the producer's formatted string — the watcher formats it.
+ */
+interface LiveSnapshot {
+  updatedAt: number;
+  /** Milliseconds of the last `/clear` the mod saw; 0 when none. */
+  resetAt: number;
+  cwd?: string;
+  usedTokens?: number;
+  totalTokens?: number;
+  usedPercent?: number;
+  stepIndex?: number;
+  modelId?: string;
+  effort?: string;
+  state?: StatusLineSnapshot['state'];
+  stateAt?: number;
+  tool?: { name: string; summary: string };
+  agents?: number;
+  compacted?: number;
+  compactAuto?: number;
+  sessionPercent?: number;
+  sessionResetsAt?: number;
+  weekPercent?: number;
+  weekResetsEpoch?: number;
+  costUsd?: number;
+}
+
 /** Upper bound on how long a tab shows a limit another tab has already superseded. */
 const LIMITS_POLL_MS = 30_000;
 /**
@@ -101,6 +137,8 @@ export class StatusLineWatcher {
   private lastBroadcastLimitsAt: number | undefined;
   private readonly debounceTimers = new Map<string, NodeJS.Timeout>();
   private readonly latest = new Map<string, StatusLineSnapshot>();
+  /** Last parsable live file per tab; a half-written one leaves this standing. */
+  private readonly latestLive = new Map<string, LiveSnapshot>();
   private disposed = false;
 
   constructor(
@@ -350,15 +388,40 @@ export class StatusLineWatcher {
     }
   }
 
-  /** Drops a tab's snapshot and its file. */
+  /** Drops a tab's snapshot and its files. */
   removeTerminal(terminalId: string): void {
     this.clearTimer(terminalId);
     this.latest.delete(terminalId);
+    this.latestLive.delete(terminalId);
+    for (const name of [`${terminalId}.json`, `${terminalId}${LIVE_SUFFIX}`]) {
+      try {
+        fs.unlinkSync(path.join(this.dir, name));
+      } catch {
+        // Never written, or already gone
+      }
+    }
+  }
+
+  /**
+   * Forgets the live file of a tab whose process is gone or being replaced. The producer's
+   * snapshot stays and goes out again without the live fields, so the regex prompt detection
+   * takes the tab back until the new session writes. A live file present therefore always
+   * belongs to the running process — no clock decides whether the mod is alive.
+   */
+  removeLive(terminalId: string): void {
+    this.latestLive.delete(terminalId);
     try {
-      fs.unlinkSync(path.join(this.dir, `${terminalId}.json`));
+      fs.unlinkSync(path.join(this.dir, `${terminalId}${LIVE_SUFFIX}`));
     } catch {
       // Never written, or already gone
     }
+    const known = this.latest.get(terminalId);
+    if (!known || known.state === undefined) {
+      return;
+    }
+    const stripped = stripLive(known);
+    this.latest.set(terminalId, stripped);
+    this.onSnapshot(terminalId, this.withModelWeek(stripped));
   }
 
   dispose(): void {
@@ -574,7 +637,11 @@ export class StatusLineWatcher {
       return;
     }
 
-    const terminalId = filename.slice(0, -'.json'.length);
+    // Both files of a tab share one debounce key, so a producer write and a live write in the
+    // same window cost one read and one message.
+    const terminalId = filename.endsWith(LIVE_SUFFIX)
+      ? filename.slice(0, -LIVE_SUFFIX.length)
+      : filename.slice(0, -'.json'.length);
     this.clearTimer(terminalId);
     this.debounceTimers.set(
       terminalId,
@@ -588,10 +655,28 @@ export class StatusLineWatcher {
   private read(terminalId: string): void {
     if (this.disposed) return;
 
-    let raw: string;
-    try {
-      raw = fs.readFileSync(path.join(this.dir, `${terminalId}.json`), 'utf8');
-    } catch {
+    const producerRaw = this.readFile(`${terminalId}.json`);
+    const liveRaw = this.readFile(`${terminalId}${LIVE_SUFFIX}`);
+
+    if (liveRaw === undefined) {
+      this.latestLive.delete(terminalId);
+    } else {
+      // The mod writes in one call but not atomically; a prefix fails to parse and the previous
+      // live snapshot stands until the next write.
+      const live = parseLiveSnapshot(liveRaw);
+      if (live) {
+        this.latestLive.set(terminalId, live);
+      }
+    }
+    const live = this.latestLive.get(terminalId);
+
+    const producer = producerRaw === undefined ? undefined : parseSnapshot(producerRaw);
+    if (producerRaw !== undefined && !producer) {
+      // Half-written producer file: dropped, the next write wins
+      return;
+    }
+
+    if (!producer && !live) {
       // A missing file is not proof the tab is gone — only `removeTerminal` knows that, and it
       // has already dropped the tab by the time its own unlink fires an event. Anything else
       // that removes the file (a tmp cleaner, a stray `rm`) would otherwise empty the row of a
@@ -604,19 +689,25 @@ export class StatusLineWatcher {
       return;
     }
 
-    const snapshot = parseSnapshot(raw);
-    if (!snapshot) {
-      return;
-    }
+    const snapshot = mergeLive(producer, live);
 
     // Remember first, from the live values, then hand out a snapshot topped up with whatever
-    // rate limits are known — Claude omits them until the session has made a request.
-    this.rememberForCwd(snapshot);
+    // rate limits are known — Claude omits them until the session has made a request. The
+    // remembered snapshot carries no live field: a fresh tab must not start out "busy".
+    this.rememberForCwd(stripLive(snapshot));
     this.rememberLimits(snapshot);
 
     const complete = this.withRememberedLimits(this.withRememberedWindowSize(snapshot));
     this.latest.set(terminalId, complete);
     this.onSnapshot(terminalId, this.withModelWeek(complete));
+  }
+
+  private readFile(name: string): string | undefined {
+    try {
+      return fs.readFileSync(path.join(this.dir, name), 'utf8');
+    } catch {
+      return undefined;
+    }
   }
 
   private clearTimer(terminalId: string): void {
@@ -674,4 +765,159 @@ function parseSnapshot(raw: string): StatusLineSnapshot | undefined {
 
 function numberOrUndefined(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+/**
+ * Parses the mod's file as defensively as the producer's. Only `v` and `updatedAt` are required;
+ * every other field falls through to the producer when missing or malformed.
+ */
+function parseLiveSnapshot(raw: string): LiveSnapshot | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== 'object' || parsed === null) {
+    return undefined;
+  }
+  const value = parsed as Record<string, unknown>;
+  const updatedAt = numberOrUndefined(value.updatedAt);
+  if (value.v !== 1 || updatedAt === undefined) {
+    return undefined;
+  }
+
+  const state = value.state;
+  const tool = value.tool;
+  const toolValue =
+    typeof tool === 'object' && tool !== null ? (tool as Record<string, unknown>) : undefined;
+  const toolName = stringOrUndefined(toolValue?.name);
+  const toolSummary = stringOrUndefined(toolValue?.summary);
+
+  return {
+    updatedAt,
+    resetAt: numberOrUndefined(value.resetAt) ?? 0,
+    cwd: stringOrUndefined(value.cwd),
+    usedTokens: numberOrUndefined(value.usedTokens),
+    totalTokens: numberOrUndefined(value.totalTokens),
+    usedPercent: numberOrUndefined(value.usedPercent),
+    stepIndex: numberOrUndefined(value.stepIndex),
+    modelId: stringOrUndefined(value.modelId),
+    effort: stringOrUndefined(value.effort),
+    state: state === 'idle' || state === 'busy' || state === 'asking' ? state : undefined,
+    stateAt: numberOrUndefined(value.stateAt),
+    tool:
+      toolName !== undefined && toolSummary !== undefined
+        ? { name: toolName, summary: toolSummary }
+        : undefined,
+    agents: numberOrUndefined(value.agents),
+    compacted: numberOrUndefined(value.compacted),
+    compactAuto: numberOrUndefined(value.compactAuto),
+    sessionPercent: numberOrUndefined(value.sessionPercent),
+    sessionResetsAt: numberOrUndefined(value.sessionResetsAt),
+    weekPercent: numberOrUndefined(value.weekPercent),
+    weekResetsEpoch: numberOrUndefined(value.weekResetsEpoch),
+    costUsd: numberOrUndefined(value.costUsd)
+  };
+}
+
+/** A copy without the fields only the mod supplies — gone when its file goes, never remembered. */
+function stripLive(snapshot: StatusLineSnapshot): StatusLineSnapshot {
+  const {
+    state: _state,
+    stateAt: _stateAt,
+    tool: _tool,
+    agents: _agents,
+    costUsd: _costUsd,
+    stepIndex: _stepIndex,
+    modelId: _modelId,
+    liveAt: _liveAt,
+    ...rest
+  } = snapshot;
+  return rest;
+}
+
+/**
+ * Lays the mod's figures over the producer's. The rule is "fresher wins" for everything both
+ * write: the producer runs at turn end with the same token figure the last request reported, and
+ * between turn ends only the mod writes — so this is "live wins while the mod is alive" without
+ * a liveness window. `model` stays the producer's display name: `withModelWeek` keys on it, and
+ * the mod only knows the id. Compactions take the mod's count after a `/clear` the producer has
+ * not seen yet, otherwise the larger of the two — a resumed session's event count starts at
+ * zero, and the producer's transcript scan is the floor.
+ */
+function mergeLive(
+  producer: StatusLineSnapshot | undefined,
+  live: LiveSnapshot | undefined
+): StatusLineSnapshot {
+  if (!live) {
+    if (!producer) {
+      throw new Error('mergeLive needs at least one snapshot');
+    }
+    return producer;
+  }
+
+  const base: StatusLineSnapshot = producer ?? {
+    model: '',
+    cwd: live.cwd === undefined ? undefined : collapseHome(live.cwd),
+    usedTokens: 0,
+    totalTokens: 0,
+    usedPercent: 0,
+    updatedAt: 0
+  };
+  const producerAtMs = base.updatedAt * 1000;
+  const liveFresher = live.updatedAt >= producerAtMs;
+  const merged: StatusLineSnapshot = { ...base };
+
+  const hasTokens =
+    live.usedTokens !== undefined &&
+    live.totalTokens !== undefined &&
+    live.usedPercent !== undefined;
+  if (liveFresher && hasTokens) {
+    merged.usedTokens = live.usedTokens as number;
+    merged.totalTokens = live.totalTokens as number;
+    merged.usedPercent = live.usedPercent as number;
+    merged.stepIndex = live.stepIndex;
+    merged.liveAt = live.updatedAt;
+  }
+
+  if (merged.effort === undefined) merged.effort = live.effort;
+  merged.modelId = live.modelId;
+  merged.state = live.state;
+  merged.stateAt = live.stateAt;
+  merged.tool = live.tool;
+  merged.agents = live.agents;
+  merged.costUsd = live.costUsd;
+
+  if (live.compacted !== undefined) {
+    if (live.resetAt > producerAtMs || base.compacted === undefined) {
+      merged.compacted = live.compacted;
+      merged.compactAuto = live.compactAuto;
+    } else if (live.compacted > base.compacted) {
+      merged.compacted = live.compacted;
+      merged.compactAuto = Math.max(live.compactAuto ?? 0, base.compactAuto ?? 0);
+    }
+  }
+
+  if (liveFresher || base.sessionPercent === undefined) {
+    if (live.sessionPercent !== undefined) {
+      merged.sessionPercent = live.sessionPercent;
+      merged.sessionResetsAt = live.sessionResetsAt;
+      delete merged.sessionResetsInMin;
+    }
+  }
+  if (liveFresher || base.weekPercent === undefined) {
+    if (live.weekPercent !== undefined) {
+      merged.weekPercent = live.weekPercent;
+      merged.weekResetsAt =
+        live.weekResetsEpoch === undefined ? undefined : formatResetTime(live.weekResetsEpoch);
+    }
+  }
+
+  merged.updatedAt = Math.max(producerAtMs, live.updatedAt) / 1000;
+  return merged;
 }

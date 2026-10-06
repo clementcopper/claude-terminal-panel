@@ -196,11 +196,7 @@ export class PtyManager {
    * and outside the panel their status line keeps behaving exactly as before.
    */
   private withStatusLineSettings(config: TerminalConfig): TerminalConfig {
-    if (!config.statusLine || config.statusLineProvider !== 'bundled') {
-      return config;
-    }
-    // `gemini`, `aider` and friends would choke on an unknown flag
-    if (path.basename(config.command).replace(/\.(exe|cmd|bat)$/i, '') !== 'claude') {
+    if (config.statusLineProvider !== 'bundled' || !this.isClaudeStatusLineTab(config)) {
       return config;
     }
 
@@ -209,6 +205,28 @@ export class PtyManager {
     });
 
     return { ...config, args: [...config.args, '--settings', settings] };
+  }
+
+  /**
+   * A tab that gets the panel's status line machinery: the row is on and the command is Claude
+   * Code. `gemini`, `aider` and friends would choke on an unknown flag and load no plugin.
+   */
+  private isClaudeStatusLineTab(config: TerminalConfig): boolean {
+    if (!config.statusLine) {
+      return false;
+    }
+    return path.basename(config.command).replace(/\.(exe|cmd|bat)$/i, '') === 'claude';
+  }
+
+  /**
+   * The mod that writes `<tab id>.live.json` next to the producer's file: live context per model
+   * request, busy/idle/asking, the running tool, compactions and cost. Loaded through the
+   * environment rather than `--plugin-dir`, because an older Claude Code ignores an unknown
+   * variable but exits on an unknown flag. Independent of the producer, so it rides along for
+   * provider `own` as well.
+   */
+  private getPanelBridgeDir(): string {
+    return vscode.Uri.joinPath(this.extensionUri, 'resources', 'mods', 'panel-bridge').fsPath;
   }
 
   /**
@@ -292,6 +310,18 @@ export class PtyManager {
     // the directory, the watcher reads it back.
     env.CLAUDE_PANEL_TAB_ID = terminalId;
     env.CLAUDE_PANEL_STATUS_DIR = getStatusLineDir();
+
+    if (this.isClaudeStatusLineTab(config)) {
+      // Appended, never replacing: the user may load mods of their own this way. Deduplicated
+      // because VS Code itself may have been started from a panel terminal and inherit ours.
+      const modDir = this.getPanelBridgeDir();
+      // `env` is typed as all-strings; the variable itself may well be unset
+      const inherited = ((env.CLAUDE_CODE_PLUGIN_DIRS as string | undefined) ?? '')
+        .split(path.delimiter)
+        .filter((dir) => dir.length > 0 && dir !== modDir);
+      env.CLAUDE_CODE_PLUGIN_DIRS = [...inherited, modDir].join(path.delimiter);
+      log('pty', `${terminalId} loads the panel bridge from ${modDir}`);
+    }
 
     if (config.statusLineProvider === 'bundled') {
       env.CLAUDE_PANEL_COMPACT_BUDGET = String(config.statusLineCompactBudget);

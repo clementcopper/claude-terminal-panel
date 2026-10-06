@@ -17,6 +17,10 @@ Bildschirmaufnahme*.mov
 # Deleting .vscodeignore would put this file back in charge — then the entry would matter.
 # The files stay out of `git status` through .git/info/exclude instead.
 
+# Written by Claude Code into the mod folder at every load: this build's API declarations, so
+# the editor and `npm run typecheck:mod` can type the module. Per version, never committed.
+resources/mods/*/.claude-plugin/types/
+
 # ESLint
 .eslintcache
 

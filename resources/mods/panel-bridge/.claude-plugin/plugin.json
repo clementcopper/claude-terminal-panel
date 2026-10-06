@@ -1,0 +1,8 @@
+{
+  "name": "panel-bridge",
+  "version": "0.1.0",
+  "description": "Feeds the Claude Terminal Panel status row: live context per request, busy/idle/asking state, current tool, subagents, compactions, cost.",
+  "author": {
+    "name": "Daniel Martin"
+  }
+}
