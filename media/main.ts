@@ -1358,7 +1358,61 @@ class WebviewContext {
     if (entry.resizeTimer === undefined) {
       entry.atBottomBeforeResize = ScrollManager.isAtBottom(entry.terminal);
     }
+    // xterm's reflow anchors the viewport to the bottom only while it sits exactly there;
+    // scrolled up, it keeps a line *index*, so a narrower re-wrap inserts lines above and pushes
+    // the content down, and a wider one removes lines above until the base catches up and the
+    // viewport lands on the prompt (measured 2026-10-06, scrolled up 20 lines: one widening step
+    // did it). A marker follows its line through the reflow, so the bottom visible line is
+    // remembered here and put back at the bottom after the fit — the bottom edge stays, the
+    // content grows upward. Daniel's ask; `reflow-anchor.js` holds it.
+    const before = entry.terminal.buffer.active;
+    const viewportBefore = before.viewportY;
+    // The marker goes on the first row of the logical line at the bottom: a wider re-wrap deletes
+    // the continuation rows it no longer needs and disposes any marker sitting on one
+    // (`BufferReflow.ts` fires `onDelete` for them); the first row survives every reflow.
+    let anchorRow = viewportBefore + entry.terminal.rows - 1;
+    while (anchorRow > 0 && before.getLine(anchorRow)?.isWrapped) {
+      anchorRow--;
+    }
+    const anchor = entry.terminal.registerMarker(anchorRow - (before.baseY + before.cursorY)) as
+      | ReturnType<typeof entry.terminal.registerMarker>
+      | undefined;
     entry.fitAddon.fit();
+    const anchorTarget = (): number | undefined => {
+      if (!anchor || anchor.isDisposed || anchor.line < 0) return undefined;
+      // The same logical line's last row, as wrapped now, back at the bottom edge
+      const after = entry.terminal.buffer.active;
+      let lastRow = anchor.line;
+      while (lastRow + 1 < after.length && after.getLine(lastRow + 1)?.isWrapped) {
+        lastRow++;
+      }
+      return Math.max(0, lastRow - entry.terminal.rows + 1);
+    };
+    const target = anchorTarget();
+    if (target !== undefined && target !== entry.terminal.buffer.active.viewportY) {
+      // xterm 6 scrolls through VS Code's scrollable element, which after a reflow still sits at
+      // the pre-fit position with the pre-fit height: a plain `scrollToLine` computes its delta
+      // from the buffer's already-clamped viewport and lands wrong (measured: target 206, landed
+      // 213). A delta from the pre-fit position hits; once the viewport has moved at all, xterm
+      // syncs the element to the new buffer, and the second call lands exactly.
+      entry.terminal.scrollLines(target - viewportBefore);
+      if (entry.terminal.buffer.active.viewportY !== target) {
+        entry.terminal.scrollToLine(target);
+      }
+    }
+    if (target !== undefined && entry.terminal.buffer.active.viewportY !== target) {
+      // Not reached in any measured sequence; a net for a geometry the two calls above cannot
+      // move, settled a frame later once xterm has synced the element.
+      requestAnimationFrame(() => {
+        const late = anchorTarget();
+        if (late !== undefined && late !== entry.terminal.buffer.active.viewportY) {
+          entry.terminal.scrollToLine(late);
+        }
+        anchor?.dispose();
+      });
+    } else {
+      anchor?.dispose();
+    }
     if (options.report) {
       this.scheduleReadyReport(id, entry);
     }

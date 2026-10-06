@@ -764,6 +764,17 @@ before this change it fails seven of eight checks.
   within 107 ms — the "terminal scrolls wildly" report. The viewport snaps to the bottom once,
   at the settle, if that is where it was when the gesture began; never per frame. `scripts/probes/resize-settle.js` (in `npm run probe`) drives the headless webview
   over CDP through both sequences and expects one report each.
+- **The bottom visible line stays the bottom visible line through a re-wrap.** xterm anchors the
+  viewport to the bottom only while it sits exactly there; scrolled up, it keeps a line index, so
+  a narrower re-wrap pushes the content down and a wider one lets the buffer's base catch up until
+  the viewport lands on the prompt (measured: scrolled up 20 lines, one widening step did it).
+  `fitTerminal` marks the first row of the logical line at the bottom before each fit (a marker
+  on a continuation row is disposed when the wider layout deletes that row) and puts that line's
+  last row back at the bottom after it. The correction is synchronous but has to be computed from
+  the pre-fit viewport: xterm 6 scrolls through VS Code's scrollable element, which still holds
+  the pre-fit position and height until xterm's next refresh, so a plain `scrollToLine` landed on
+  the base. `scripts/probes/reflow-anchor.js` (in `npm run probe`) holds both positions through
+  16 width steps.
 - **Avoid Node 25.** `vsce` 3.9.2 collects zero files there and then reports
   `Extension entrypoint(s) missing`, which points at the wrong cause. `vsce ls` printing nothing
   is the tell. Node 20 and 22 both work; the earlier instruction to pin exactly 20 was too narrow,

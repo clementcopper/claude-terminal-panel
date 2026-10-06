@@ -233,6 +233,23 @@ var(--vscode-cornerRadius-large)`; die Webview-Fläche (`.webview-overlay-conten
   Maximize-Sequenz, kein Splitter. Das bisherige `READY_SETTLE_MS = 80` galt nur für den ersten
   Report.
 
+- **xterm hält beim Reflow einen Zeilenindex fest, nicht den Inhalt — außer der Viewport steht exakt
+  unten.** Daniels Wunsch nach dem Settle-Fix: „unteres Ende sticky, Inhalt wächst nach oben“.
+  Headless gemessen (CDP, 121 umbrechende Zeilen, 8 Breitenschritte): unten bleibt `PROMPT >`
+  unten (`_reflowSmaller`/`_reflowLargerAdjustViewport` ziehen `ydisp` nur bei `ydisp === ybase`
+  mit); 20 Zeilen hochgescrollt landete der Viewport nach **einem** Breiterwerden auf dem Prompt,
+  beim Schmalerwerden rutschte der Text nach unten weg. Fix in `fitTerminal`: Marker auf die
+  **erste** Zeile der logischen Zeile am unteren Rand (ein Marker auf einer Fortsetzungszeile wird
+  von `BufferReflow.ts:127` per `onDelete` entsorgt, wenn das breitere Layout die Zeile streicht),
+  nach dem Fit deren letzte Zeile wieder nach unten. Zweite Falle: `scrollToLine` direkt nach dem
+  Fit landete auf der Basis (Ziel 206, Ergebnis 213), weil xterm 6 über VS Codes Scroll-Element
+  scrollt und das bis zum nächsten Refresh noch Position und Höhe von **vor** dem Fit hat;
+  `scrollLines(ziel − viewportVorher)` trifft, und sobald `ydisp` sich einmal bewegt hat, zieht
+  `_sync` die Geometrie nach, ein zweiter `scrollToLine` sitzt exakt. Dritte Falle beim Messen:
+  Testzeilen von 143 Zeichen brechen bei 65–131 Spalten fast überall auf 2 Zeilen, erst 520 ↔ 580 px
+  (3 ↔ 2 Zeilen) zeigt den Effekt — Reflow-Tests brauchen Breiten an einer Umbruchgrenze.
+  `scripts/probes/reflow-anchor.js` hält beide Positionen über 16 Schritte; rot davor.
+
 ## OpenCode theme in the panel
 
 - **OpenCode derives its terminal theme mode from one colour only: `defaultBackground`.** Its

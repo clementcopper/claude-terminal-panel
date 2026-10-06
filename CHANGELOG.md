@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which runs on the main screen). The webview now reports the size 150 ms after it stopped
   moving, snaps the viewport to the bottom once at that moment instead of once per frame, and
   the host passes only a changed size on. `npm run probe` gains `resize-settle.js`.
+- **The bottom edge stays put while the width changes; the content grows upward.** xterm kept a
+  line index when scrolled up, so re-wrapping pushed the text down or let the viewport fall to
+  the prompt. A marker on the logical line at the bottom now survives the reflow and is put back
+  at the bottom after every fit. `npm run probe` gains `reflow-anchor.js`.
 
 - **A file copied in Finder pastes as the file, not as its icon.** Cmd+V and Ctrl+V go through the
   host (`src/clipboardPaste.ts`), which prefers the pasteboard's file URL and pastes the absolute
