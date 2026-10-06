@@ -634,6 +634,9 @@ body.vscode-high-contrast-light {
 }
 
 .status-cwd {
+  /* The whole row: a flex item hugs its text otherwise, and `fitCwd` measures this box */
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }

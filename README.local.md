@@ -607,8 +607,10 @@ takes the tab back until the new session writes. OpenCode tabs and older Claude 
 a live file and keep the regex.
 
 **In the row.** While `busy` and a tool or subagent is at work, the cwd row reads
-`Bash · npm run compile · 2 agents` in the foreground colour; idle, the path returns. The same
-row, so the height does not move. `costUsd` is carried but not drawn: it is `/cost`'s figure at
+`Bash · npm run compile · 2 agents` in the foreground colour, cut with an ellipsis at the panel's
+right edge; idle, the path returns, the whole path when it fits and otherwise the most trailing
+segments that do (`fitCwd`, measured against the row, again on every resize). The same row, so
+the height does not move. `costUsd` is carried but not drawn: it is `/cost`'s figure at
 API list prices, which on a subscription says what the tokens would have cost, not what they
 cost — no value on this machine (Daniel, 2026-10-06). A label for it after the Comp ring had also
 moved the main row's one-line threshold by about 50px (headless measurement, 470 → 520px). The

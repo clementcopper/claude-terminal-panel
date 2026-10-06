@@ -17,7 +17,8 @@ import type { Register, SessionRateLimit, SessionUsage, Timer } from 'claude-cod
 const LIVE_SUFFIX = '.live.json'
 /** One write per burst: a tool round trip raises several events within milliseconds. */
 const WRITE_DELAY_MS = 100
-const SUMMARY_MAX = 60
+/** The webview cuts at the panel's width; this only bounds the file. */
+const SUMMARY_MAX = 200
 /** The producer's rule for a tab id that may join a path. */
 const TAB_ID = /^[\w.-]+$/
 

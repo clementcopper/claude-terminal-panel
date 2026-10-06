@@ -625,12 +625,19 @@ class StatusLineView {
       cwdRow.className = 'status-row cwd';
       const cwd = document.createElement('span');
       cwd.className = activity ? 'status-cwd busy' : 'status-cwd';
-      // Shortened in JS, not by CSS: a right-to-left trick for left-side ellipsis
-      // reorders a plain path ("~/foo" came out as "foo/~").
-      cwd.textContent = activity ?? shortenPath(snapshot.cwd ?? '');
+      if (activity) {
+        // A command reads from its start, so the CSS ellipsis at the right end is the right cut
+        cwd.textContent = activity;
+      } else {
+        // A path reads from its end: as many trailing segments as the row is wide, fitted in
+        // `fitCwd` once the row has a width. Shortened in JS, not by CSS: a right-to-left trick
+        // for a left-side ellipsis reorders a plain path ("~/foo" came out as "foo/~").
+        cwd.dataset.path = snapshot.cwd ?? '';
+      }
       cwd.dataset.tooltip = [activity, snapshot.cwd].filter((line) => line).join('\n');
       cwdRow.appendChild(cwd);
       this.element.appendChild(cwdRow);
+      this.fitCwd();
     }
 
     // A long tool run is not a stale row: the mod reports it as busy and writes nothing new
@@ -656,7 +663,24 @@ class StatusLineView {
    * ring fits on one line in a narrow panel too, and centring it there is not what the frame
    * shows. Only this row: the file and the directory keep the left edge.
    */
+  /**
+   * Fits the directory to the row: the whole path when it fits, else the most trailing segments
+   * that do, behind `…/`. Measured against the span's own box, so the row uses the panel's full
+   * width at every size; the resize observer that re-centres the main row calls it again.
+   */
+  private fitCwd(): void {
+    const span = this.element.querySelector<HTMLElement>('.status-cwd[data-path]');
+    if (!span) return;
+    const path = span.dataset.path ?? '';
+    const segments = path.split('/').filter((segment) => segment.length > 0);
+    span.textContent = path;
+    for (let keep = segments.length - 1; keep >= 1 && span.scrollWidth > span.clientWidth; keep--) {
+      span.textContent = `…/${segments.slice(-keep).join('/')}`;
+    }
+  }
+
   private updateCentering(): void {
+    this.fitCwd();
     const row = this.element.querySelector<HTMLElement>('.status-row.main');
     if (!row) return;
 
@@ -1141,14 +1165,6 @@ class StatusLineView {
  * Keeps the tail of a path, which is the part that identifies the project.
  * `~/work/clients/acme/api` becomes `…/acme/api`; short paths stay whole.
  */
-function shortenPath(path: string, maxSegments = 2): string {
-  const segments = path.split('/').filter((segment) => segment.length > 0);
-  if (segments.length <= maxSegments || path.length <= 28) {
-    return path;
-  }
-  return `…/${segments.slice(-maxSegments).join('/')}`;
-}
-
 /**
  * `42 min` below the hour, `3 h 12` above. A raw minute count stops being readable past 60, and
  * the whole point of this row is that it can be read at a glance.
