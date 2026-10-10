@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A background subagent stays in the cwd row until it ends.** Claude Code runs the Agent tool
+  in the background, so the main turn ends while the agent works; the panel-bridge mod dropped
+  every agent at that turn end and the row showed the path for the agent's whole run. The mod now
+  asks `$.agent.list()` at the main turn end and keeps the ones still running until their own
+  `turn.complete`; the row shows `N agents` while idle and is not marked stale meanwhile. Found
+  and measured in FigmaClaude's copy of the mod (figma-claude `858fc8a`).
+
 - **The terminal no longer "scrolls wildly" on a sidebar drag or maximize.** Every layout frame
   used to reach the PTY as its own resize — 45 in 7 s for a drag, four within 107 ms for a
   maximize with another part open, among them a `71x10` and a `308x68` — and Claude Code redraws

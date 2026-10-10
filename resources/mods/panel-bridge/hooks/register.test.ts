@@ -165,6 +165,54 @@ test('a permission request asks, a nested session is kept off, /clear resets the
   expect((final.resetAt as number) > 0).toBe(true)
 })
 
+/** The Agent tool's call as the engine hands it to `agent.spawn`, in the background. */
+const spawnInput = (toolUseId: string, prompt: string) => ({
+  tool_use_id: toolUseId,
+  prompt,
+  description: prompt,
+  subagentType: 'Explore',
+  provider: { plugin: 'engine', tier: 'core' as const },
+  parentModel: 'claude-opus-5-5',
+  background: true,
+  fork: false
+})
+
+test('a background agent outlives the turn that spawned it: counted until its own turn ends', async ($, on) => {
+  const writes = bottom(on, { window: 1_000_000 })
+  mock.env(on, { CLAUDE_PANEL_STATUS_DIR: DIR, CLAUDE_PANEL_TAB_ID: TAB })
+  const clock = mock.clock(on, { now: 1_000 })
+  let spawned = 0
+  on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: `a${String(++spawned)}` }))
+  // What the engine says of its agents when the main turn ends: a1 still at work, a2 done.
+  const status: Record<string, 'running' | 'completed'> = { a1: 'running', a2: 'completed' }
+  on('agent.list', () => ({
+    value: Object.entries(status).map(([id, s]) => ({ id, description: id, type: 'Explore', status: s }))
+  }))
+
+  await $.session.start({ cwd: '/Users/me/p', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ turnId: 't7', text: 'look around' })
+  await $.agent.spawn(spawnInput('s1', 'count the files'))
+  await $.agent.spawn(spawnInput('s2', 'read the readme'))
+  await clock.advance(150)
+  expect(last(writes).agents).toBe(2)
+
+  // The main turn ends while a1 runs in the background: Claude waits for the person, a1 still counts.
+  await $.turn.complete({ turnId: 't7', answer: 'started', durationMs: 10, isAborted: false, reason: 'answer', usage: USAGE })
+  await clock.advance(150)
+  expect(last(writes).state).toBe('idle')
+  expect(last(writes).agents).toBe(1)
+
+  // A new turn (the agent's notification, or the person typing) keeps it too.
+  await $.turn.start({ turnId: 't8', text: '' })
+  await clock.advance(150)
+  expect(last(writes).agents).toBe(1)
+
+  // Its own turn end takes it off.
+  await $.turn.complete({ turnId: 'a1-t', agentId: 'a1', answer: '12', durationMs: 10, isAborted: false, reason: 'answer' })
+  await clock.advance(150)
+  expect(last(writes).agents).toBe(0)
+})
+
 test('without the panel variables the mod writes nothing', async ($, on) => {
   const writes = bottom(on, { window: 200_000 })
   mock.env(on, {})

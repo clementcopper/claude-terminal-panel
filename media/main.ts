@@ -641,11 +641,13 @@ class StatusLineView {
     }
 
     // A long tool run is not a stale row: the mod reports it as busy and writes nothing new
-    // until the tool returns.
+    // until the tool returns. Nor is a background agent thinking while the main turn is over.
     const ageMs = Date.now() - snapshot.updatedAt * 1000;
     this.element.classList.toggle(
       'stale',
-      ageMs > StatusLineView.STALE_AFTER_MS && snapshot.state !== 'busy'
+      ageMs > StatusLineView.STALE_AFTER_MS &&
+        snapshot.state !== 'busy' &&
+        (snapshot.agents ?? 0) === 0
     );
 
     this.updateCentering();
@@ -893,13 +895,17 @@ class StatusLineView {
    * resizable and narrow by nature, and a ring that fell off the right edge would be worse than
    * a taller row.
    */
-  /** `Bash · npm run compile · 2 agents` while a turn runs and something is at work; else nothing. */
+  /**
+   * `Bash · npm run compile · 2 agents` while something is at work; else nothing. The tool only
+   * while a turn runs; agents also after it — a background agent outlives the turn that spawned
+   * it, and Claude waits for the person meanwhile.
+   */
   private static activityText(snapshot: StatusLineSnapshot): string | undefined {
-    if (snapshot.state !== 'busy') return undefined;
+    const busy = snapshot.state === 'busy';
     const agents = snapshot.agents ?? 0;
     const parts = [
-      snapshot.tool?.name,
-      snapshot.tool?.summary,
+      busy ? snapshot.tool?.name : undefined,
+      busy ? snapshot.tool?.summary : undefined,
       agents > 0 ? `${String(agents)} agent${agents === 1 ? '' : 's'}` : undefined
     ].filter((part): part is string => part !== undefined && part.length > 0);
     return parts.length > 0 ? parts.join(' · ') : undefined;

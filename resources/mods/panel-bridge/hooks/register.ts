@@ -12,7 +12,7 @@
  * (`CLAUDE_PANEL_STATUS_DIR`, `CLAUDE_PANEL_TAB_ID`) and the JSON shape in `payload()`, documented
  * in README.local.md § Status line. Every field there is optional for the reader.
  */
-import type { Register, SessionRateLimit, SessionUsage, Timer } from 'claude-code'
+import type { AgentInfo, AgentStatus, Register, SessionRateLimit, SessionUsage, Timer } from 'claude-code'
 
 const LIVE_SUFFIX = '.live.json'
 /** One write per burst: a tool round trip raises several events within milliseconds. */
@@ -159,6 +159,37 @@ const bump = (after: (fn: () => void) => Timer, write: () => Promise<void>) => {
   })
 }
 
+/** Drops the main thread's tools; a subagent's stay with it. */
+const clearMainTools = () => {
+  for (const [id, entry] of S.tools) {
+    if (entry.agentId === undefined) S.tools.delete(id)
+  }
+}
+
+/** An agent the engine still runs, or holds on its own background work. */
+const ACTIVE: ReadonlySet<AgentStatus> = new Set<AgentStatus>(['pending', 'running', 'waiting'])
+
+/**
+ * A background agent outlives the turn that spawned it, so the main turn's end keeps the ones
+ * the engine still runs; each leaves at its own `turn.complete`. An agent that ended without one
+ * leaves here, at the next main turn end. Without an answer from the engine, all go, as before.
+ */
+const keepRunningAgents = async (list: () => Promise<readonly AgentInfo[]>) => {
+  if (S.agents.size === 0) return
+  let running: Set<string>
+  try {
+    running = new Set((await list()).filter((a) => ACTIVE.has(a.status)).map((a) => a.id))
+  } catch {
+    running = new Set()
+  }
+  for (const id of S.agents) {
+    if (!running.has(id)) S.agents.delete(id)
+  }
+  for (const [id, entry] of S.tools) {
+    if (entry.agentId !== undefined && !S.agents.has(entry.agentId)) S.tools.delete(id)
+  }
+}
+
 const resetForClear = () => {
   S.resetAt = now()
   S.used = undefined
@@ -211,8 +242,8 @@ export const register: Register = (on) => {
   })
 
   on('turn.start', async ($, e, next) => {
-    S.tools.clear()
-    S.agents.clear()
+    // Background agents from an earlier turn keep running; only the main thread starts over
+    clearMainTools()
     setState('busy')
     try {
       const usage = await $.session.usage()
@@ -315,8 +346,8 @@ export const register: Register = (on) => {
       )
       return next(e)
     }
-    S.tools.clear()
-    S.agents.clear()
+    clearMainTools()
+    await keepRunningAgents(() => $.agent.list())
     setState('idle')
     try {
       takeUsage(await $.session.usage())

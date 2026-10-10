@@ -579,15 +579,15 @@ watcher drops a file it cannot parse and keeps the previous one:
 
 Every field but `v` and `updatedAt` is optional for the reader. Where it comes from:
 
-| Field                                 | Hook                                                                                                     |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `usedTokens`, `stepIndex`, `modelId`  | `turn.step` — the response's `usage` once the stream has ended, main thread only                         |
-| `state`                               | `turn.start` → busy, `turn.complete` → idle, `classic.PermissionRequest` / `AskUserQuestion` → asking    |
-| `tool`                                | `tool.call` before and after `next(e)`                                                                   |
-| `agents`                              | `agent.spawn` adds, the subagent's `turn.complete` (carrying `agentId`) removes                          |
-| `compacted`, `compactAuto`            | `session.compact` after `next(e)`, when it was not skipped; `trigger === 'auto'` counts as auto          |
-| `sessionPercent`, `weekPercent`, cost | `session.measure` (pushed after each turn and when a window moves a whole point) and `$.session.usage()` |
-| `resetAt` and the zeros               | `session.end` with `reason: 'clear'`                                                                     |
+| Field                                 | Hook                                                                                                                                         |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `usedTokens`, `stepIndex`, `modelId`  | `turn.step` — the response's `usage` once the stream has ended, main thread only                                                             |
+| `state`                               | `turn.start` → busy, `turn.complete` → idle, `classic.PermissionRequest` / `AskUserQuestion` → asking                                        |
+| `tool`                                | `tool.call` before and after `next(e)`                                                                                                       |
+| `agents`                              | `agent.spawn` adds, the subagent's `turn.complete` (carrying `agentId`) removes; the main turn's end keeps those `$.agent.list()` still runs |
+| `compacted`, `compactAuto`            | `session.compact` after `next(e)`, when it was not skipped; `trigger === 'auto'` counts as auto                                              |
+| `sessionPercent`, `weekPercent`, cost | `session.measure` (pushed after each turn and when a window moves a whole point) and `$.session.usage()`                                     |
+| `resetAt` and the zeros               | `session.end` with `reason: 'clear'`                                                                                                         |
 
 **Merge rule** (`mergeLive` in `statusLineWatcher.ts`): fresher wins for everything both files
 carry. The producer runs at turn end with the same token figure the last request reported, and
@@ -608,7 +608,9 @@ a live file and keep the regex.
 
 **In the row.** While `busy` and a tool or subagent is at work, the cwd row reads
 `Bash · npm run compile · 2 agents` in the foreground colour, cut with an ellipsis at the panel's
-right edge; idle, the path returns, the whole path when it fits and otherwise the most trailing
+right edge. A background agent outlives the turn that spawned it, so `1 agent` stays after the
+turn end until the agent's own `turn.complete` (the tool does not, and the row is not stale
+meanwhile); with nothing at work the path returns, the whole path when it fits and otherwise the most trailing
 segments that do (`fitCwd`, measured against the row, again on every resize). The same row, so
 the height does not move. `costUsd` is carried but not drawn: it is `/cost`'s figure at
 API list prices, which on a subscription says what the tokens would have cost, not what they
