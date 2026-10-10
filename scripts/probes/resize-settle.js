@@ -17,15 +17,12 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { check, finish } = require('./lib');
+const { check, finish, findHeadlessChrome } = require('./lib');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const CHROME = path.join(
-  os.homedir(),
-  'Library/Caches/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-mac-arm64/chrome-headless-shell'
-);
-if (!fs.existsSync(CHROME)) {
-  console.log(`resize-settle skipped — no headless Chromium at ${CHROME}`);
+const CHROME = findHeadlessChrome();
+if (!CHROME) {
+  console.log('resize-settle skipped — no chrome-headless-shell in ~/Library/Caches/ms-playwright');
   process.exit(0);
 }
 
@@ -126,7 +123,6 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   await frame();
   const afterDrag = await posted();
   check('a twelve-step drag reports once', afterDrag.length - startup, 1);
-  check('…with the final size', afterDrag[afterDrag.length - 1], '172x21');
 
   // The measured maximize sequence: huge, normal, sliver, normal — within ~110 ms
   const steps = [
@@ -155,6 +151,15 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   await sleep(400);
   await frame();
   check('an unchanged size is not re-reported', (await posted()).length, afterMaximize.length);
+
+  // The drag's one report carries the final size: what a fresh page fits at 1300x400 in one go.
+  // Measured, not a constant — Menlo's cell width differs between machines (172 vs 168 cols).
+  await size(1300, 400);
+  await cdp('Page.navigate', { url: 'file://' + path.join(scratch, 'index.html') });
+  await sleep(500);
+  await frame();
+  const reference = await posted();
+  check('…the drag reported the final size', afterDrag[afterDrag.length - 1], reference[0]);
 
   ws.close();
   chrome.kill();

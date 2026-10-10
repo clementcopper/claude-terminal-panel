@@ -493,6 +493,14 @@ git apply --check` sagt pro Commit, ob er noch auf `main` passt (git 2.39 kennt 
   sie wieder rot). Sie laufen in Sekunden, brauchen kein Framework und keinen Extension-Host, und
   ersetzen den Nachbau im Scratchpad, der bisher nach jeder Session weg war. Kein Ersatz für den
   Reload — sie messen den Host-Code und die Tab-Leiste, nicht VS Code.
+- **Ein Probe, der bei fehlendem Werkzeug mit Exit 0 überspringt, ist ein grüner Lauf ohne Messung**
+  (2026-10-10). `resize-settle.js` und `reflow-anchor.js` hatten den Pfad
+  `chromium_headless_shell-1228/…-mac-arm64` fest drin; diese Maschine ist x86_64 mit
+  `-1223/…-mac-x64`. `npm run probe` meldete `status=0`, die zwei Probes der Fixes vom 06.10.
+  liefen nie. Jetzt sucht `findHeadlessChrome()` in `lib.js` jede Build-Nummer für die eigene
+  Architektur. Danach fiel der zweite Maschinenbezug: `'172x21'` als erwartete Endgröße, hier
+  misst Menlo `168x21` — die Referenz misst der Probe jetzt selbst an einer frischen Seite.
+  Gegen `e630831^` rot (12 und 4 Posts, Sliver; Anker fällt auf den Prompt), auf `main` grün.
 
 ## Statuszeile
 

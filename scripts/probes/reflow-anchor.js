@@ -14,15 +14,12 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { check, finish } = require('./lib');
+const { check, finish, findHeadlessChrome } = require('./lib');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const CHROME = path.join(
-  os.homedir(),
-  'Library/Caches/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-mac-arm64/chrome-headless-shell'
-);
-if (!fs.existsSync(CHROME)) {
-  console.log(`reflow-anchor skipped — no headless Chromium at ${CHROME}`);
+const CHROME = findHeadlessChrome();
+if (!CHROME) {
+  console.log('reflow-anchor skipped — no chrome-headless-shell in ~/Library/Caches/ms-playwright');
   process.exit(0);
 }
 
