@@ -654,24 +654,25 @@ export class ClaudeTerminalViewProvider
         }
       }
 
-      const document = await vscode.workspace.openTextDocument(uri);
-      const editor = await vscode.window.showTextDocument(document);
-
-      // Navigate to line/column if specified
+      // `vscode.open`, not `openTextDocument`: the latter rejects binary files, so an image link
+      // did nothing at all. `vscode.open` picks the editor by file type — text as before, images
+      // in VS Code's preview — and centres the selection itself.
+      const options: vscode.TextDocumentShowOptions = {};
       if (line !== undefined && line > 0) {
         const position = new vscode.Position(
           line - 1,
           column !== undefined && column > 0 ? column - 1 : 0
         );
-        editor.selection = new vscode.Selection(position, position);
-        editor.revealRange(
-          new vscode.Range(position, position),
-          vscode.TextEditorRevealType.InCenter
-        );
+        options.selection = new vscode.Range(position, position);
       }
+      await vscode.commands.executeCommand('vscode.open', uri, options);
     } catch (error) {
-      // Log error for debugging but don't show disruptive notifications
+      // A click that does nothing reads as broken; say why (e.g. a scratchpad file already gone).
       console.warn(`[Claude Terminal] Failed to open file: ${filePath}`, error);
+      const reason = error instanceof Error ? error.message : String(error);
+      void vscode.window.showWarningMessage(
+        `Claude Terminal: could not open ${filePath}: ${reason}`
+      );
     }
   }
 
