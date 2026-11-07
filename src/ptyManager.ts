@@ -25,6 +25,13 @@ function shellQuote(value: string): string {
 /**
  * Callbacks for PTY events.
  */
+/**
+ * The values Claude Code's `/color` takes (2.1.319, read from the binary: `hF`'s keys). Each
+ * Claude tab gets one at random that no other open tab has, so parallel sessions are told apart
+ * by their prompt bar; the `panel-bridge` mod runs `/color <value>` once the session is idle.
+ */
+const SESSION_COLORS = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan'];
+
 export interface PtyEventCallbacks {
   onData: (terminalId: string, data: string) => void;
   onExit: (terminalId: string, exitCode: number) => void;
@@ -48,6 +55,8 @@ export class PtyManager {
   private readonly ptys = new Map<string, IPty>();
   /** When each PTY was spawned, so an exit can be reported with the life it had. */
   private readonly startedAt = new Map<string, number>();
+  /** Each Claude tab's `/color`, see `sessionColorFor`. */
+  private readonly sessionColors = new Map<string, string>();
 
   constructor(
     private readonly callbacks: PtyEventCallbacks,
@@ -320,7 +329,11 @@ export class PtyManager {
         .split(path.delimiter)
         .filter((dir) => dir.length > 0 && dir !== modDir);
       env.CLAUDE_CODE_PLUGIN_DIRS = [...inherited, modDir].join(path.delimiter);
-      log('pty', `${terminalId} loads the panel bridge from ${modDir}`);
+      env.CLAUDE_PANEL_COLOR = this.sessionColorFor(terminalId);
+      log(
+        'pty',
+        `${terminalId} loads the panel bridge from ${modDir}, color ${env.CLAUDE_PANEL_COLOR}`
+      );
     }
 
     if (config.statusLineProvider === 'bundled') {
@@ -539,6 +552,29 @@ export class PtyManager {
       }
       this.ptys.delete(terminalId);
     }
+  }
+
+  /**
+   * The tab's `/color`: kept across restart, resume and continue (they respawn the same id), so a
+   * tab does not change colour under the person; picked at random among the colours no other
+   * open tab holds, from all of them once every one is taken.
+   */
+  private sessionColorFor(terminalId: string): string {
+    const kept = this.sessionColors.get(terminalId);
+    if (kept !== undefined) {
+      return kept;
+    }
+    const taken = new Set(this.sessionColors.values());
+    const free = SESSION_COLORS.filter((color) => !taken.has(color));
+    const pool = free.length > 0 ? free : SESSION_COLORS;
+    const color = pool[Math.floor(Math.random() * pool.length)];
+    this.sessionColors.set(terminalId, color);
+    return color;
+  }
+
+  /** Frees the tab's colour for the next tab; called when the tab closes, not on a respawn. */
+  releaseSessionColor(terminalId: string): void {
+    this.sessionColors.delete(terminalId);
   }
 
   /**

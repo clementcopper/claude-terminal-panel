@@ -675,6 +675,15 @@ at the call site`. Ein Modul-weites `S.$ = $` für einen Schreib-Timer fällt du
   aber als `~/Library/Caches/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-mac-arm64/chrome-headless-shell`
   und macht `--headless --screenshot=… --window-size=… file://…` ohne Python.
 
+- **`/color` lässt sich aus dem Mod setzen.** Daniel (07.11.2026): jede Session automatisch eine
+  zufällige Farbe, ohne Dubletten unter den offenen Tabs. `/color` gibt es in 2.1.319 („Set the prompt
+  bar color for this session“), Werte `red blue green yellow purple orange pink cyan` (Schlüssel von
+  `hF` im Binary). Der Host wählt pro Tab (`sessionColorFor`, bleibt über Restart/Resume, frei beim
+  Schließen), der Mod ruft in `session.start` `$.command.run({ command: 'color', args })` ohne
+  `await`. E2E per node-pty: Prompt-Rahmen `38;2;136;136;136` → `38;2;196;102;134`, Kontrolle ohne
+  Variable bleibt grau, Start gleich schnell; im Transkript stehen `❯ /color pink` und
+  `⎿ Session color set to: pink`.
+
 ## Schriften und Scrollbar im Panel
 
 - **„SF Pro Compact" gibt es nicht.** Apples Familien heißen `SF Pro` und `SF Compact` — Geschwister,

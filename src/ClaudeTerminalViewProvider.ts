@@ -1153,6 +1153,7 @@ export class ClaudeTerminalViewProvider
 
     log('tab', `${terminalId} closed`);
     this.ptyManager.kill(terminalId);
+    this.ptyManager.releaseSessionColor(terminalId);
     this.ptySizes.delete(terminalId);
     this.liveTabs.delete(terminalId);
     this.lastInputAt.delete(terminalId);

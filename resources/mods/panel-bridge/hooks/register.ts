@@ -19,6 +19,8 @@ const LIVE_SUFFIX = '.live.json'
 const WRITE_DELAY_MS = 100
 /** The webview cuts at the panel's width; this only bounds the file. */
 const SUMMARY_MAX = 200
+/** What `/color` takes; the extension's `SESSION_COLORS`. Anything else is not run. */
+const COLORS = new Set(['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan'])
 /** The producer's rule for a tab id that may join a path. */
 const TAB_ID = /^[\w.-]+$/
 
@@ -224,6 +226,21 @@ export const register: Register = (on) => {
       await $.env.set('CLAUDE_CODE_PLUGIN_DIRS', kept.length > 0 ? kept.join(':') : undefined)
     } catch {
       // Older engine without env.set: the nested case stays as it is
+    }
+
+    // The tab's prompt-bar colour, picked by the extension so parallel tabs differ. Not awaited:
+    // the command is queued until the session is idle, and the start must not wait for that.
+    // Cleared for children like the plugin folder, or a nested `claude` would recolour itself.
+    try {
+      const color = await $.env.get('CLAUDE_PANEL_COLOR')
+      if (color && COLORS.has(color)) {
+        $.command.run({ command: 'color', args: color }).catch(() => {
+          // An engine without /color: the bar keeps its default
+        })
+      }
+      await $.env.set('CLAUDE_PANEL_COLOR', undefined)
+    } catch {
+      // Older engine without command.run or env.set: no colour, nothing else changes
     }
 
     S.cwd = e.cwd
