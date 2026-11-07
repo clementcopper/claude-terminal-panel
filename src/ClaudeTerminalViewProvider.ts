@@ -1723,6 +1723,7 @@ export class ClaudeTerminalViewProvider
     <div id="group-bar"></div>
     <div id="body-row">
         <div id="terminal-column">
+            <div id="prompt-bar" hidden></div>
             <div id="terminals-container"></div>
             <div id="status-line" hidden></div>
         </div>

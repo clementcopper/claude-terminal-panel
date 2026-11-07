@@ -60,7 +60,7 @@ interface LiveSnapshot {
   effort?: string;
   state?: StatusLineSnapshot['state'];
   stateAt?: number;
-  tool?: { name: string; summary: string };
+  tool?: { name: string; summary: string; startedAt?: number };
   agents?: number;
   compacted?: number;
   compactAuto?: number;
@@ -69,6 +69,9 @@ interface LiveSnapshot {
   weekPercent?: number;
   weekResetsEpoch?: number;
   costUsd?: number;
+  prompt?: string;
+  promptAt?: number;
+  color?: string;
 }
 
 /** Upper bound on how long a tab shows a limit another tab has already superseded. */
@@ -812,7 +815,11 @@ function parseLiveSnapshot(raw: string): LiveSnapshot | undefined {
     stateAt: numberOrUndefined(value.stateAt),
     tool:
       toolName !== undefined && toolSummary !== undefined
-        ? { name: toolName, summary: toolSummary }
+        ? {
+            name: toolName,
+            summary: toolSummary,
+            startedAt: numberOrUndefined(toolValue?.startedAt)
+          }
         : undefined,
     agents: numberOrUndefined(value.agents),
     compacted: numberOrUndefined(value.compacted),
@@ -821,7 +828,10 @@ function parseLiveSnapshot(raw: string): LiveSnapshot | undefined {
     sessionResetsAt: numberOrUndefined(value.sessionResetsAt),
     weekPercent: numberOrUndefined(value.weekPercent),
     weekResetsEpoch: numberOrUndefined(value.weekResetsEpoch),
-    costUsd: numberOrUndefined(value.costUsd)
+    costUsd: numberOrUndefined(value.costUsd),
+    prompt: stringOrUndefined(value.prompt),
+    promptAt: numberOrUndefined(value.promptAt),
+    color: stringOrUndefined(value.color)
   };
 }
 
@@ -836,6 +846,9 @@ function stripLive(snapshot: StatusLineSnapshot): StatusLineSnapshot {
     stepIndex: _stepIndex,
     modelId: _modelId,
     liveAt: _liveAt,
+    prompt: _prompt,
+    promptAt: _promptAt,
+    color: _color,
     ...rest
   } = snapshot;
   return rest;
@@ -892,6 +905,9 @@ function mergeLive(
   merged.tool = live.tool;
   merged.agents = live.agents;
   merged.costUsd = live.costUsd;
+  merged.prompt = live.prompt;
+  merged.promptAt = live.promptAt;
+  merged.color = live.color;
 
   if (live.compacted !== undefined) {
     if (live.resetAt > producerAtMs || base.compacted === undefined) {

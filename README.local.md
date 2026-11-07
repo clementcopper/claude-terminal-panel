@@ -565,7 +565,7 @@ watcher drops a file it cannot parse and keeps the previous one:
   "effort": "high",
   "state": "busy", // idle | busy | asking
   "stateAt": 1791301234000, // ms the state last changed
-  "tool": { "name": "Bash", "summary": "npm run compile" }, // main-thread tool at work
+  "tool": { "name": "Bash", "summary": "npm run compile", "startedAt": 1791301250000 }, // main-thread tool at work, ms it began
   "agents": 2, // running subagents
   "compacted": 1,
   "compactAuto": 0,
@@ -573,7 +573,10 @@ watcher drops a file it cannot parse and keeps the previous one:
   "sessionResetsAt": 1791304800, // epoch s, like the producer
   "weekPercent": 55,
   "weekResetsEpoch": 1791760000, // epoch s; the watcher formats it
-  "costUsd": 1.27
+  "costUsd": 1.27,
+  "prompt": "compile it", // the person's last prompt, one line; gone after /clear
+  "promptAt": 1791301234000,
+  "color": "pink" // the tab's /color
 }
 ```
 
@@ -588,6 +591,8 @@ Every field but `v` and `updatedAt` is optional for the reader. Where it comes f
 | `compacted`, `compactAuto`            | `session.compact` after `next(e)`, when it was not skipped; `trigger === 'auto'` counts as auto                                              |
 | `sessionPercent`, `weekPercent`, cost | `session.measure` (pushed after each turn and when a window moves a whole point) and `$.session.usage()`                                     |
 | `resetAt` and the zeros               | `session.end` with `reason: 'clear'`                                                                                                         |
+| `prompt`, `promptAt`                  | `turn.start`'s `text`, whitespace folded; empty text and engine markup (`<task-notification>…`) keep the last one                            |
+| `color`                               | `session.start`: `CLAUDE_PANEL_COLOR`, set by `PtyManager.sessionColorFor`, then `/color` through `$.command.run`                            |
 
 **Merge rule** (`mergeLive` in `statusLineWatcher.ts`): fresher wins for everything both files
 carry. The producer runs at turn end with the same token figure the last request reported, and
@@ -617,6 +622,14 @@ API list prices, which on a subscription says what the tokens would have cost, n
 cost — no value on this machine (Daniel, 2026-10-06). A label for it after the Comp ring had also
 moved the main row's one-line threshold by about 50px (headless measurement, 470 → 520px). The
 Ctx tooltip says `Live · request 8 of this turn` or `As of the last turn end`.
+
+**Run time and prompt bar** (Daniel, 2026-11-07, several sessions in parallel). While `busy` the
+cwd row starts with a spinner and the run time — the tool's since `tool.startedAt`, between tools
+the turn's since `stateAt` — as `42 s`, `1:12`, empty under 2 s; one 1 s timer rewrites only that
+text. Above the terminal, `#prompt-bar` shows `prompt` in one line, tinted with the tab's `color`
+(`/color`'s RGB from Claude's theme), the whole prompt in the tooltip; hidden without a prompt.
+After a window reload it stays hidden until the next prompt, since the mod keeps it per process.
+`scripts/probes/activity-prompt.js` holds both.
 
 **Checking the mod itself.** `npm run test:mod` runs `claude plugin validate` (it lists what the
 module hooks, calls and reads from the environment, and refuses, among other things, storing or

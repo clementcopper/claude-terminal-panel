@@ -19,6 +19,8 @@ const LIVE_SUFFIX = '.live.json'
 const WRITE_DELAY_MS = 100
 /** The webview cuts at the panel's width; this only bounds the file. */
 const SUMMARY_MAX = 200
+/** The bar cuts at the panel's width and the tooltip shows the rest; this only bounds the file. */
+const PROMPT_MAX = 2000
 /** What `/color` takes; the extension's `SESSION_COLORS`. Anything else is not run. */
 const COLORS = new Set(['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan'])
 /** The producer's rule for a tab id that may join a path. */
@@ -26,7 +28,7 @@ const TAB_ID = /^[\w.-]+$/
 
 type State = 'idle' | 'busy' | 'asking'
 
-type ToolEntry = { name: string; summary: string; agentId?: string }
+type ToolEntry = { name: string; summary: string; agentId?: string; startedAt: number }
 
 /**
  * Everything the file is built from. Module state, not `$.state`: nothing draws from it, and a
@@ -52,7 +54,12 @@ const S = {
   sessionResetsAt: undefined as number | undefined,
   weekPercent: undefined as number | undefined,
   weekResetsEpoch: undefined as number | undefined,
-  costUsd: undefined as number | undefined
+  costUsd: undefined as number | undefined,
+  /** The person's last prompt, one line, and when it was sent. Kept across turns. */
+  prompt: undefined as string | undefined,
+  promptAt: undefined as number | undefined,
+  /** The `/color` this tab runs; the panel tints the prompt bar with it. */
+  color: undefined as string | undefined
 }
 
 // ---------- helpers ----------
@@ -112,12 +119,12 @@ const takeUsage = (usage: SessionUsage) => {
 }
 
 /** The main-thread tool that started last, the one the row names. */
-const currentTool = (): { name: string; summary: string } | undefined => {
+const currentTool = (): { name: string; summary: string; startedAt: number } | undefined => {
   let last: ToolEntry | undefined
   for (const entry of S.tools.values()) {
     if (entry.agentId === undefined) last = entry
   }
-  return last ? { name: last.name, summary: last.summary } : undefined
+  return last ? { name: last.name, summary: last.summary, startedAt: last.startedAt } : undefined
 }
 
 const payload = () => ({
@@ -141,7 +148,10 @@ const payload = () => ({
   sessionResetsAt: S.sessionResetsAt,
   weekPercent: S.weekPercent,
   weekResetsEpoch: S.weekResetsEpoch,
-  costUsd: S.costUsd
+  costUsd: S.costUsd,
+  prompt: S.prompt,
+  promptAt: S.promptAt,
+  color: S.color
 })
 
 const text = () => JSON.stringify(payload())
@@ -199,6 +209,9 @@ const resetForClear = () => {
   S.compacted = 0
   S.compactAuto = 0
   S.costUsd = 0
+  // A new conversation: the old prompt would name work that is gone
+  S.prompt = undefined
+  S.promptAt = undefined
   S.tools.clear()
   S.agents.clear()
   S.state = 'idle'
@@ -234,6 +247,7 @@ export const register: Register = (on) => {
     try {
       const color = await $.env.get('CLAUDE_PANEL_COLOR')
       if (color && COLORS.has(color)) {
+        S.color = color
         $.command.run({ command: 'color', args: color }).catch(() => {
           // An engine without /color: the bar keeps its default
         })
@@ -262,6 +276,14 @@ export const register: Register = (on) => {
     // Background agents from an earlier turn keep running; only the main thread starts over
     clearMainTools()
     setState('busy')
+    // The panel's bar above the terminal shows it. A continuation carries no text, and a turn the
+    // engine starts itself (a background task's notification) carries markup, not the person's
+    // words; both keep the last prompt.
+    const said = e.text.replace(/\s+/g, ' ').trim()
+    if (said.length > 0 && !said.startsWith('<')) {
+      S.prompt = said.length > PROMPT_MAX ? `${said.slice(0, PROMPT_MAX - 1)}…` : said
+      S.promptAt = now()
+    }
     try {
       const usage = await $.session.usage()
       if (usage.context.window > 0) S.window = usage.context.window
@@ -300,7 +322,8 @@ export const register: Register = (on) => {
     S.tools.set(id, {
       name: String(e.tool),
       summary: summarize(e as unknown as Record<string, unknown>),
-      agentId: e.agentId
+      agentId: e.agentId,
+      startedAt: now()
     })
     const asks = e.agentId === undefined && String(e.tool) === 'AskUserQuestion'
     if (asks) setState('asking')

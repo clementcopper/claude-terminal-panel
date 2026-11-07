@@ -59,7 +59,8 @@ export interface StatusLineSnapshot {
   /** Unix milliseconds the state last changed — compared with the last user input to decide the pill. */
   stateAt?: number;
   /** The main-thread tool running right now, with a few words from its arguments. */
-  tool?: { name: string; summary: string };
+  /** `startedAt`: Unix milliseconds the call began; the row counts its run time from it. */
+  tool?: { name: string; summary: string; startedAt?: number };
   /** Subagents running at the moment. */
   agents?: number;
   /**
@@ -67,6 +68,12 @@ export interface StatusLineSnapshot {
    * tokens would have cost, not a bill. Carried, not drawn (Daniel's call, 2026-10-06).
    */
   costUsd?: number;
+  /** The person's last prompt, one line, from the mod; drawn in the bar above the terminal. */
+  prompt?: string;
+  /** Unix milliseconds `prompt` was sent. */
+  promptAt?: number;
+  /** The tab's `/color` name (`pink`); tints the prompt bar. */
+  color?: string;
   /** Which model request of the turn the token figures came from (0-based). */
   stepIndex?: number;
   /** The model id the last request named (`claude-fable-5-1`); `model` keeps the display name. */

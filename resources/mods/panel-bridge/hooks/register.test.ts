@@ -19,7 +19,8 @@ const bottom = (
   })
   on('env.set', ($, e) => {
     envWrites.push(e.value)
-    return { value: undefined }
+    // `{}` since 2.1.319 (EnvSetResult: absent `deny` means written); `undefined` before
+    return { value: {} }
   })
   on('session.usage', () => ({
     value: {
@@ -81,13 +82,19 @@ test('a step writes the live context, a tool call the row text, the turn end the
   expect(last(writes).sessionPercent).toBe(12.5)
   expect(last(writes).costUsd).toBe(0.5)
 
-  await $.turn.start({ turnId: 't1', text: 'compile it' })
+  await $.turn.start({ turnId: 't1', text: '  compile\n it ' })
   await clock.advance(200)
   expect(last(writes).state).toBe('busy')
+  expect(last(writes).prompt).toBe('compile it')
+  expect(typeof last(writes).promptAt).toBe('number')
 
   const call = $.tool.call({ tool: 'Bash', tool_use_id: 'c1', command: '  npm   run compile ' })
   await clock.advance(150)
-  expect(last(writes).tool).toEqual({ name: 'Bash', summary: 'npm run compile' })
+  const tool = last(writes).tool as { name: string; summary: string; startedAt: number }
+  expect(tool.name).toBe('Bash')
+  expect(tool.summary).toBe('npm run compile')
+  // Wall-clock, like `stateAt`: the webview counts the run time against Date.now()
+  expect(typeof tool.startedAt).toBe('number')
   await call
   await clock.advance(150)
   expect(last(writes).tool).toBeUndefined()
@@ -121,6 +128,8 @@ test('a step writes the live context, a tool call the row text, the turn end the
   })
   await clock.advance(150)
   expect(last(writes).state).toBe('idle')
+  // The prompt outlives the turn: the bar shows it while Claude waits
+  expect(last(writes).prompt).toBe('compile it')
 })
 
 test('a permission request asks, a nested session is kept off, /clear resets the counters', async ($, on) => {
@@ -136,7 +145,8 @@ test('a permission request asks, a nested session is kept off, /clear resets the
   const clock = mock.clock(on, { now: 5_000 })
 
   await $.session.start({ cwd: '/Users/me/p', surface: 'terminal', isInteractive: true })
-  expect(envWrites).toEqual(['/Users/me/own-mod'])
+  // The plugin folder list without the mod's own, then CLAUDE_PANEL_COLOR cleared for children
+  expect(envWrites).toEqual(['/Users/me/own-mod', undefined])
 
   await $.turn.start({ turnId: 't2', text: 'rm it' })
   await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'rm x' } })
@@ -157,6 +167,7 @@ test('a permission request asks, a nested session is kept off, /clear resets the
 
   await $.session.end({ reason: 'clear', sessionId: 's1', resume: { id: 's1' } })
   const final = last(writes)
+  expect(final.prompt).toBeUndefined()
   expect(final.state).toBe('idle')
   expect(final.usedTokens).toBeUndefined()
   expect(final.compacted).toBe(0)
@@ -206,6 +217,11 @@ test('a background agent outlives the turn that spawned it: counted until its ow
   await $.turn.start({ turnId: 't8', text: '' })
   await clock.advance(150)
   expect(last(writes).agents).toBe(1)
+  // An empty continuation and the engine's own markup keep the person's last prompt
+  expect(last(writes).prompt).toBe('look around')
+  await $.turn.start({ turnId: 't9', text: '<task-notification>a1 done</task-notification>' })
+  await clock.advance(150)
+  expect(last(writes).prompt).toBe('look around')
 
   // Its own turn end takes it off.
   await $.turn.complete({ turnId: 'a1-t', agentId: 'a1', answer: '12', durationMs: 10, isAborted: false, reason: 'answer' })
@@ -221,4 +237,33 @@ test('without the panel variables the mod writes nothing', async ($, on) => {
   await $.turn.start({ turnId: 't3', text: 'hi' })
   await clock.advance(500)
   expect(writes.length).toBe(0)
+})
+
+test('the tab colour runs /color once', async ($, on) => {
+  const writes = bottom(on, { window: 200_000 })
+  const runs: { command: string; args: string }[] = []
+  on('command.run', (_, e) => {
+    runs.push({ command: e.command, args: e.args })
+    return { text: '' }
+  })
+  mock.env(on, { CLAUDE_PANEL_STATUS_DIR: DIR, CLAUDE_PANEL_TAB_ID: TAB, CLAUDE_PANEL_COLOR: 'pink' })
+  const clock = mock.clock(on)
+  await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true })
+  await clock.advance(150)
+  expect(runs).toEqual([{ command: 'color', args: 'pink' }])
+  expect(last(writes).color).toBe('pink')
+})
+
+test('an unknown colour runs no /color', async ($, on) => {
+  bottom(on, { window: 200_000 })
+  const runs: string[] = []
+  on('command.run', (_, e) => {
+    runs.push(e.args)
+    return { text: '' }
+  })
+  mock.env(on, { CLAUDE_PANEL_STATUS_DIR: DIR, CLAUDE_PANEL_TAB_ID: TAB, CLAUDE_PANEL_COLOR: 'magenta; rm' })
+  const clock = mock.clock(on)
+  await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true })
+  await clock.advance(50)
+  expect(runs).toEqual([])
 })

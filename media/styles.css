@@ -631,6 +631,73 @@ body.vscode-high-contrast-light {
   /* A path, like the open-file row above it */
   font-family: var(--panel-mono-font);
   font-size: 9px;
+  /* Spinner, run time and text stay on one line; the text is the part that gives way */
+  flex-wrap: nowrap;
+  column-gap: 6px;
+}
+
+/* The start indicator's spinner, sized to the row's 9px text */
+.status-spinner {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+}
+
+/* The run time reads as news like the tool beside it; tabular, so the row does not twitch */
+.status-elapsed {
+  flex-shrink: 0;
+  color: var(--vscode-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.status-elapsed:empty {
+  display: none;
+}
+
+/* The person's last prompt above the terminal: a fill tinted with the tab's /color, so it
+   matches the frame of Claude's own input below. One line; the tooltip carries the rest.
+   Fills instead of lines, like every state in this panel. */
+#prompt-bar {
+  flex-shrink: 0;
+  padding: 6px 8px 0;
+  background-color: var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e));
+  cursor: default;
+  user-select: none;
+}
+
+#prompt-bar[hidden] {
+  display: none;
+}
+
+.prompt-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background-color: color-mix(
+    in srgb,
+    var(--prompt-tint, var(--vscode-descriptionForeground, #767676)) 16%,
+    var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e))
+  );
+  color: var(--vscode-foreground);
+  font-family: var(--panel-ui-font);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.prompt-mark {
+  flex-shrink: 0;
+  color: var(--prompt-tint, var(--vscode-descriptionForeground, #767676));
+  font-family: var(--panel-mono-font);
+}
+
+.prompt-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .status-cwd {

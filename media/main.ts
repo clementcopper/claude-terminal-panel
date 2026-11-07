@@ -580,6 +580,25 @@ class StatusLineView {
   private static readonly STALE_AFTER_MS = 60_000;
   /** Redraw cadence for the reset countdown while no snapshot arrives. */
   private static readonly TICK_MS = 30_000;
+  /** How often the run time in the directory row moves while a turn runs. */
+  private static readonly BUSY_TICK_MS = 1_000;
+  /** Below this a run time reads like a stopwatch nobody asked for; the start indicator agrees. */
+  private static readonly ELAPSED_MIN_S = 2;
+  /**
+   * The colours `/color` draws the prompt bar in, as Claude Code's dark and light themes define
+   * them (2.1.319, read from the binary); pink measured 196,102,134 in a raw capture. The bar above
+   * the terminal takes the tab's, so it matches the frame of Claude's own input.
+   */
+  private static readonly SESSION_COLORS: Record<string, string> = {
+    red: 'rgb(220, 38, 38)',
+    blue: 'rgb(106, 155, 204)',
+    green: 'rgb(22, 163, 74)',
+    yellow: 'rgb(202, 138, 4)',
+    purple: 'rgb(130, 125, 189)',
+    orange: 'rgb(217, 119, 87)',
+    pink: 'rgb(196, 102, 134)',
+    cyan: 'rgb(8, 145, 178)'
+  };
   /** At this point the bucket is gone, not merely close — see `onCredits`. */
   private static readonly LIMIT_SPENT_PCT = 100;
 
@@ -621,12 +640,16 @@ class StatusLineView {
    * the one number the row exists for.
    */
   private tickTimer: number | undefined;
+  /** Moves the run time once a second while the active tab is busy; see `scheduleBusyTick`. */
+  private busyTimer: number | undefined;
 
   /** Mirrors the setting; the extension host owns the value, this is the drawn copy. */
   private threshold = 60;
 
   constructor(
     private readonly element: HTMLElement,
+    /** The bar above the terminal with the person's last prompt; its height counts too. */
+    private readonly promptElement: HTMLElement,
     private readonly onHeightChange: () => void,
     private readonly onEditorReferenceClick: () => void,
     private readonly onStopTurn: () => void,
@@ -683,18 +706,102 @@ class StatusLineView {
    * much as showing the status line does. Without the refit xterm keeps its old row count.
    */
   private render(): void {
-    const previousHeight = this.element.hidden ? 0 : this.element.offsetHeight;
+    const previousHeight = this.drawnHeight();
     this.draw();
-    const currentHeight = this.element.hidden ? 0 : this.element.offsetHeight;
+    const currentHeight = this.drawnHeight();
 
     if (currentHeight !== previousHeight) {
       this.onHeightChange();
     }
   }
 
+  /** Both elements around the terminal: either one moving changes its height. */
+  private drawnHeight(): number {
+    return (
+      (this.element.hidden ? 0 : this.element.offsetHeight) +
+      (this.promptElement.hidden ? 0 : this.promptElement.offsetHeight)
+    );
+  }
+
+  /**
+   * The person's last prompt above the terminal, one line, cut by CSS; the tooltip has it whole.
+   * Hidden while the tab has none — a fresh session, a `/clear`, or a window reload, since the mod
+   * keeps it per process.
+   */
+  private drawPromptBar(snapshot: StatusLineSnapshot | undefined): void {
+    const bar = this.promptElement;
+    const prompt = snapshot?.prompt;
+    bar.textContent = '';
+    if (!prompt) {
+      bar.hidden = true;
+      delete bar.dataset.tooltip;
+      return;
+    }
+    bar.hidden = false;
+    bar.dataset.tooltip = prompt;
+    const tint = snapshot.color ? StatusLineView.SESSION_COLORS[snapshot.color] : undefined;
+    if (tint) {
+      bar.style.setProperty('--prompt-tint', tint);
+    } else {
+      bar.style.removeProperty('--prompt-tint');
+    }
+    const chip = document.createElement('div');
+    chip.className = 'prompt-chip';
+    const mark = document.createElement('span');
+    mark.className = 'prompt-mark';
+    mark.textContent = '❯';
+    const text = document.createElement('span');
+    text.className = 'prompt-text';
+    text.textContent = prompt;
+    chip.append(mark, text);
+    bar.appendChild(chip);
+  }
+
+  /**
+   * `42 s`, `1:12`, `1:02:05` — run time since `since`, empty under two seconds. Seconds with a
+   * unit like the start indicator; past a minute the colon form, which stays narrow.
+   */
+  private static formatElapsed(since: number): string {
+    const total = Math.floor((Date.now() - since) / 1000);
+    if (total < StatusLineView.ELAPSED_MIN_S) return '';
+    if (total < 60) return `${String(total)} s`;
+    const s = String(total % 60).padStart(2, '0');
+    const m = Math.floor(total / 60) % 60;
+    const h = Math.floor(total / 3600);
+    return h > 0 ? `${String(h)}:${String(m).padStart(2, '0')}:${s}` : `${String(m)}:${s}`;
+  }
+
+  /** When the shown run time counts from: the running tool's start, else the turn's. */
+  private static busySince(snapshot: StatusLineSnapshot): number | undefined {
+    if (snapshot.state !== 'busy') return undefined;
+    return snapshot.tool?.startedAt ?? snapshot.stateAt;
+  }
+
+  /**
+   * One timer for the run time, only while the active tab is busy. It rewrites the one text node,
+   * not the row: a full render measures heights and refits, once a second for nothing.
+   */
+  private scheduleBusyTick(snapshot: StatusLineSnapshot | undefined): void {
+    const wanted = snapshot !== undefined && StatusLineView.busySince(snapshot) !== undefined;
+    if (wanted && this.busyTimer === undefined) {
+      this.busyTimer = window.setInterval(() => {
+        const elapsed = this.element.querySelector<HTMLElement>('.status-elapsed');
+        const since = Number(elapsed?.dataset.since);
+        if (elapsed && Number.isFinite(since)) {
+          elapsed.textContent = StatusLineView.formatElapsed(since);
+        }
+      }, StatusLineView.BUSY_TICK_MS);
+    } else if (!wanted && this.busyTimer !== undefined) {
+      window.clearInterval(this.busyTimer);
+      this.busyTimer = undefined;
+    }
+  }
+
   private draw(): void {
     const snapshot = this.activeId ? this.snapshots.get(this.activeId) : undefined;
     this.scheduleTick(snapshot);
+    this.scheduleBusyTick(snapshot);
+    this.drawPromptBar(snapshot);
 
     // The editor row stands on its own: a tab Claude has not rendered yet still has a file open
     // next to it.
@@ -724,9 +831,22 @@ class StatusLineView {
     // same row names the tool at work instead — the one line of the panel that changes with the
     // work, in the place that is otherwise static. Same row, same height: nothing refits.
     const activity = StatusLineView.activityText(snapshot);
-    if (snapshot.cwd || activity) {
+    if (snapshot.cwd || activity || StatusLineView.busySince(snapshot) !== undefined) {
       const cwdRow = document.createElement('div');
       cwdRow.className = 'status-row cwd';
+      // Something is at work: the spinner says so at a glance, the run time how long already —
+      // the tool's while one runs, the turn's in between. Siblings of the text, so `fitCwd`
+      // still measures the text's own box.
+      const since = StatusLineView.busySince(snapshot);
+      if (since !== undefined) {
+        const spinner = document.createElement('span');
+        spinner.className = 'terminal-startup-spinner status-spinner';
+        const elapsed = document.createElement('span');
+        elapsed.className = 'status-elapsed';
+        elapsed.dataset.since = String(since);
+        elapsed.textContent = StatusLineView.formatElapsed(since);
+        cwdRow.append(spinner, elapsed);
+      }
       const cwd = document.createElement('span');
       cwd.className = activity ? 'status-cwd busy' : 'status-cwd';
       if (activity) {
@@ -1377,8 +1497,17 @@ class WebviewContext {
     this.groupBar = groupBar;
     this.terminalsContainer = terminalsContainer;
     // Showing or hiding a row changes the terminal's height, so xterm has to refit.
+    // In the generated HTML; created here for a page that predates it (the probes' harness pages)
+    let promptBarElement = document.getElementById('prompt-bar');
+    if (!promptBarElement) {
+      promptBarElement = document.createElement('div');
+      promptBarElement.id = 'prompt-bar';
+      promptBarElement.hidden = true;
+      terminalsContainer.before(promptBarElement);
+    }
     this.statusLine = new StatusLineView(
       statusLineElement,
+      promptBarElement,
       () => {
         this.refitActive();
       },

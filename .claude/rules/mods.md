@@ -18,3 +18,4 @@ Distilled from `LEARNINGS.md` § Live-Brücke, which holds the evidence.
 - A real `claude` in a probe PTY stops at the workspace-trust dialog in a new directory: answer it (`\x1b[B`, `\r`) and strip `CLAUDECODE` from the env first.
 - End-to-end check: `scratchpad/e2e/run.js` pattern — node-pty, the panel's two env vars plus the plugin dir, poll `<tab>.live.json`, expect idle → busy → tool → per-step tokens → idle.
 - The mod can run slash commands: `$.command.run({ command, args })` in `session.start`, not awaited (queued until idle). `/color` per tab comes from `CLAUDE_PANEL_COLOR`, picked by `PtyManager.sessionColorFor`; clear the variable for children.
+- After every mod change run `npm run typecheck:mod` **and** `npm run test:mod`; a new Claude Code regenerates the types (2.1.319: `env.set` answers `{}`), and the `/color` commit shipped a red mod test.

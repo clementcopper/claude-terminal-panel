@@ -684,6 +684,19 @@ at the call site`. Ein Modul-weites `S.$ = $` für einen Schreib-Timer fällt du
   Variable bleibt grau, Start gleich schnell; im Transkript stehen `❯ /color pink` und
   `⎿ Session color set to: pink`.
 
+- **Bash-Laufzeit zeigt Claude selbst, nur scrollt sie weg.** Daniel (07.11.2026): bei laufendem
+  Bash sieht er nicht, wie lange es läuft. Rohmitschnitt 70 Spalten, 30-s-Befehl: Claude schreibt
+  `(12s · 5 lines)` und `(ctrl+b to run in background)` unter den Aufruf, im Sekundentakt; die
+  Ausgabe selbst bleibt eingeklappt, und der Mod bekommt kein Event mit Bash-Ausgabe (nur
+  `ToolProgress` `background_hint`). Gebaut: Spinner + Laufzeit vorn in der cwd-Zeile, Prompt-Leiste
+  aus `turn.start.text`. Daniel wählte aus drei gerenderten Varianten die getönte Fläche, Spinner
+  und Zeit links.
+- **Ein neues Claude schreibt die Mod-Typen neu, und der Mod-Test bricht am Stub.** Der E2E-Lauf
+  mit 2.1.319 regenerierte `.claude-plugin/types/`; `env.set` liefert jetzt `{}` (`EnvSetResult`)
+  statt `undefined`, `typecheck:mod` fiel auf `register.test.ts:20`. Und `npm run test:mod` lief
+  beim `/color`-Commit nicht mit — der Test erwartete noch einen `env.set` weniger. Nach jeder
+  Mod-Änderung `typecheck:mod` **und** `test:mod`.
+
 ## Schriften und Scrollbar im Panel
 
 - **„SF Pro Compact" gibt es nicht.** Apples Familien heißen `SF Pro` und `SF Compact` — Geschwister,
