@@ -46,14 +46,114 @@ class FileLinkProvider implements ILinkProvider {
     private readonly postMessage: (msg: WebviewOutgoingMessage) => void
   ) {}
 
-  provideLinks(bufferLineNumber: number, callback: (links: ILink[] | undefined) => void): void {
-    const line = this.terminal.buffer.active.getLine(bufferLineNumber - 1);
+  /** How many rows one logical line may span; a screen full of characters stays bounded. */
+  private static readonly MAX_JOINED_ROWS = 6;
+
+  /**
+   * A hard-wrapped word starts within this many columns of the row's start: after Claude's
+   * two-space indent, `⏺ ` or `⎿  `. Prose that merely ends at the last column starts its last
+   * word further right, so it is never joined to the next row.
+   */
+  private static readonly HARD_WRAP_START_COLUMN = 8;
+
+  private static readonly PATH_CHAR = /[\w./~-]/;
+
+  /** The row's text with the 1-based column of every UTF-16 unit; wide-char placeholders skipped. */
+  private readRow(row: number): { text: string; columns: number[] } | undefined {
+    const line = this.terminal.buffer.active.getLine(row);
     if (!line) {
+      return undefined;
+    }
+    const cell = this.terminal.buffer.active.getNullCell();
+    let text = '';
+    const columns: number[] = [];
+    for (let x = 0; x < line.length; x++) {
+      line.getCell(x, cell);
+      if (cell.getWidth() === 0) {
+        continue;
+      }
+      const chars = cell.getChars() || ' ';
+      for (let i = 0; i < chars.length; i++) {
+        text += chars[i];
+        columns.push(x + 1);
+      }
+    }
+    return { text, columns };
+  }
+
+  /**
+   * Whether `row` continues on `row + 1`. Soft: xterm wrapped it (`isWrapped`, shell output).
+   * Hard: Claude Code breaks a word longer than the panel itself — it fills the row to the last
+   * column and goes on after an indent, with cursor moves, so `isWrapped` stays false (measured
+   * 2026-11-07 on a raw capture at 50 columns). The prompt echo stops one column short.
+   */
+  private continuation(row: number): 'soft' | 'hard' | undefined {
+    const buffer = this.terminal.buffer.active;
+    const next = buffer.getLine(row + 1);
+    if (!next) {
+      return undefined;
+    }
+    if (next.isWrapped) {
+      return 'soft';
+    }
+    const line = buffer.getLine(row);
+    if (!line) {
+      return undefined;
+    }
+    const text = line.translateToString(true);
+    const nextText = next.translateToString(true);
+    const lastWordStart = text.search(/\S+$/);
+    const continues =
+      text.length >= this.terminal.cols - 1 &&
+      FileLinkProvider.PATH_CHAR.test(text[text.length - 1] ?? '') &&
+      lastWordStart >= 0 &&
+      lastWordStart < FileLinkProvider.HARD_WRAP_START_COLUMN &&
+      /^\s+/.test(nextText) &&
+      FileLinkProvider.PATH_CHAR.test(nextText.trimStart()[0] ?? '');
+    return continues ? 'hard' : undefined;
+  }
+
+  provideLinks(bufferLineNumber: number, callback: (links: ILink[] | undefined) => void): void {
+    const row = bufferLineNumber - 1;
+    if (!this.terminal.buffer.active.getLine(row)) {
       callback(undefined);
       return;
     }
 
-    const lineText = line.translateToString();
+    // The logical line around this row: walk back and forth while one row continues on the next.
+    const max = FileLinkProvider.MAX_JOINED_ROWS;
+    let first = row;
+    while (row - first < max - 1 && first > 0 && this.continuation(first - 1)) {
+      first--;
+    }
+    let last = row;
+    while (last - first < max - 1 && this.continuation(last)) {
+      last++;
+    }
+
+    // Joined text plus the buffer position (1-based x, y) of every character in it.
+    let lineText = '';
+    const positions: { x: number; y: number }[] = [];
+    for (let r = first; r <= last; r++) {
+      const read = this.readRow(r);
+      if (!read) {
+        break;
+      }
+      let { text, columns } = read;
+      if (r > first && this.continuation(r - 1) === 'hard') {
+        const indent = text.length - text.trimStart().length;
+        text = text.slice(indent);
+        columns = columns.slice(indent);
+      }
+      if (r < last && this.continuation(r) === 'hard') {
+        text = text.trimEnd();
+      }
+      for (let i = 0; i < text.length; i++) {
+        lineText += text[i];
+        positions.push({ x: columns[i], y: r + 1 });
+      }
+    }
+
     const links: ILink[] = [];
 
     // Reset regex state
@@ -83,12 +183,16 @@ class FileLinkProvider implements ILinkProvider {
         (match[2] ? `:${match[2]}`.length : 0) +
         (match[3] ? `:${match[3]}`.length : 0);
 
+      // `pathEnd` is exclusive; the range's end is the last character, inclusive.
+      const start = positions[pathStart];
+      const end = positions[pathEnd - 1];
+      // xterm asks row by row; report a link only to the rows it covers.
+      if (start.y > bufferLineNumber || end.y < bufferLineNumber) {
+        continue;
+      }
+
       links.push({
-        range: {
-          start: { x: pathStart + 1, y: bufferLineNumber },
-          // `end.x` is inclusive and 1-based; `pathEnd` is already the exclusive 0-based end.
-          end: { x: pathEnd, y: bufferLineNumber }
-        },
+        range: { start, end },
         text: path,
         activate: () => {
           this.postMessage({

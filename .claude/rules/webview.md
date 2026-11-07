@@ -29,6 +29,7 @@ Distilled from `LEARNINGS.md` § Webview, § Terminal-Start im Panel (webview si
 - **xterm 6 uses VS Code's scrollbar widget, not a natively scrolling viewport.** `::-webkit-scrollbar` rules on `.xterm-viewport` hit nothing; visibility is fixed to `Auto` in the bundle. DOM: `.xterm > .xterm-viewport` (vestigial) and `.xterm > .xterm-scrollable-element > (.xterm-screen, .scrollbar.*)`.
 - **A permanently shown scrollbar needs `buffer.active.baseY > 0` as a wrapper class.** Without scrollback the slider fills the whole track.
 - **Claude Code 2.1.291 runs on the main screen; 2.1.251 used the alternate one.** Measured 2026-10-06: no `?1049h` in the startup bytes, a SIGWINCH answers with ~2 KB (`40× \e[K`, 12 newlines), so there is scrollback, `baseY` grows, and `scrollToBottom` is no longer a no-op. Measure the version (`grep -c '\[?1049h'` on a raw node-pty capture), do not trust old notes.
+- **Claude Code hard-wraps a word longer than the panel; `isWrapped` stays false.** Row filled to the last column, continuation after a 2-space indent, written with cursor moves. A link provider joins rows itself (soft via `isWrapped`, hard when the last word starts in the first 8 columns); `file-link-wrap.js` holds it.
 
 ## Theme
 

@@ -249,6 +249,15 @@ var(--vscode-cornerRadius-large)`; die Webview-Fläche (`.webview-overlay-conten
   Testzeilen von 143 Zeichen brechen bei 65–131 Spalten fast überall auf 2 Zeilen, erst 520 ↔ 580 px
   (3 ↔ 2 Zeilen) zeigt den Effekt — Reflow-Tests brauchen Breiten an einer Umbruchgrenze.
   `scripts/probes/reflow-anchor.js` hält beide Positionen über 16 Schritte; rot davor.
+- **Claude Code bricht ein überlanges Wort selbst um, xterm weiß nichts davon.** Daniel (07.11.2026):
+  Scratchpad-Bildlinks gingen nur im Vollbild-Panel. Rohmitschnitt per node-pty bei 50 Spalten: ein
+  110-Zeichen-Pfad kam als `⏺ ` + 48, dann zweimal 2 Leerzeichen Einzug + Rest, jede Zeile per
+  Cursorbewegung geschrieben, also `isWrapped = false`; die Prompt-Wiederholung endet eine Spalte
+  früher. `FileLinkProvider` las je eine Pufferzeile, die zweite Hälfte öffnete sogar einen falschen
+  Halbpfad. Jetzt fügt er Zeilen zusammen — weich über `isWrapped`, hart wenn die Zeile bis
+  `cols − 1` reicht und ihr letztes Wort in den ersten 8 Spalten beginnt. Ohne die Startspalten-Sperre
+  wurde aus `src/foo.ts` am Zeilenende plus „and“ darunter `src/foo.tsand`; die Probe
+  `scripts/probes/file-link-wrap.js` zeigt das rot.
 
 ## OpenCode theme in the panel
 
