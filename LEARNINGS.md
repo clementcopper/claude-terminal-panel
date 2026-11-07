@@ -696,6 +696,13 @@ at the call site`. Ein Modul-weites `S.$ = $` für einen Schreib-Timer fällt du
   nackten `/color` (2.1.319: Zufallsfarbe, keine Auswahlliste) nur `{"ref":1}` — geloggt, bevor
   eine zweite Hypothese kam. Der Hook würfelt deshalb selbst und reicht `next({ ...e, args })`
   weiter. E2E: pink → `/color green` → green → `/color` → cyan, Claude und Leiste gleich.
+- **Eine Haiku-Zeile pro Turn kostet 1,5–2,7 s und ein paar hundert Tokens.** Daniel (07.11.2026):
+  über dem Prompt eine Zeile zu Claudes letzter Antwort, „damit ich schnell sehen kann, worum es
+  geht und woran gearbeitet wird“. `$.model.complete({ model: 'haiku', effort: 'low' })` im
+  `turn.complete`, nicht awaited. Gemessen mit einem Wegwerf-Mod an drei echten Antworten: erst
+  „Der Assistent hat … berechnet“ (216–302 Output-Tokens, Denkzeit), mit Systemprompt „Thema und
+  Stand, ≤ 12 Wörter“ und `effort: 'low'` dann „pairs()-Funktion: Rest verwerfen oder auffüllen?“
+  bei 28–372 Output-Tokens. E2E: zweiter Prompt trägt `before` = Haikus Zeile zur ersten Antwort.
 - **Ein neues Claude schreibt die Mod-Typen neu, und der Mod-Test bricht am Stub.** Der E2E-Lauf
   mit 2.1.319 regenerierte `.claude-plugin/types/`; `env.set` liefert jetzt `{}` (`EnvSetResult`)
   statt `undefined`, `typecheck:mod` fiel auf `register.test.ts:20`. Und `npm run test:mod` lief

@@ -71,6 +71,7 @@ interface LiveSnapshot {
   costUsd?: number;
   prompt?: string;
   promptAt?: number;
+  before?: string;
   color?: string;
 }
 
@@ -831,6 +832,7 @@ function parseLiveSnapshot(raw: string): LiveSnapshot | undefined {
     costUsd: numberOrUndefined(value.costUsd),
     prompt: stringOrUndefined(value.prompt),
     promptAt: numberOrUndefined(value.promptAt),
+    before: stringOrUndefined(value.before),
     color: stringOrUndefined(value.color)
   };
 }
@@ -848,6 +850,7 @@ function stripLive(snapshot: StatusLineSnapshot): StatusLineSnapshot {
     liveAt: _liveAt,
     prompt: _prompt,
     promptAt: _promptAt,
+    before: _before,
     color: _color,
     ...rest
   } = snapshot;
@@ -907,6 +910,7 @@ function mergeLive(
   merged.costUsd = live.costUsd;
   merged.prompt = live.prompt;
   merged.promptAt = live.promptAt;
+  merged.before = live.before;
   merged.color = live.color;
 
   if (live.compacted !== undefined) {

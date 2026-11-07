@@ -121,6 +121,8 @@ export interface StatusLineSnapshot {
   prompt?: string;
   /** Unix milliseconds `prompt` was sent. */
   promptAt?: number;
+  /** One line by Haiku on Claude's answer that `prompt` replies to; drawn above it. */
+  before?: string;
   /** The tab's `/color` name (`pink`); tints the prompt bar. */
   color?: string;
   /** Which model request of the turn the token figures came from (0-based). */

@@ -738,7 +738,8 @@ class StatusLineView {
       return;
     }
     bar.hidden = false;
-    bar.dataset.tooltip = prompt;
+    const before = snapshot.before;
+    bar.dataset.tooltip = before ? `✻ ${before}\n❯ ${prompt}` : prompt;
     const tint = snapshot.color ? StatusLineView.SESSION_COLORS[snapshot.color] : undefined;
     if (tint) {
       bar.style.setProperty('--prompt-tint', tint);
@@ -747,14 +748,26 @@ class StatusLineView {
     }
     const chip = document.createElement('div');
     chip.className = 'prompt-chip';
+    // What Claude's answer before the prompt was about, then the prompt: the last exchange
+    if (before) {
+      chip.appendChild(StatusLineView.promptLine('before', '✻', before));
+    }
+    chip.appendChild(StatusLineView.promptLine('said', '❯', prompt));
+    bar.appendChild(chip);
+  }
+
+  /** One line of the prompt bar: a mark and text cut with an ellipsis. */
+  private static promptLine(kind: 'before' | 'said', markText: string, value: string): HTMLElement {
+    const line = document.createElement('div');
+    line.className = `prompt-line ${kind}`;
     const mark = document.createElement('span');
     mark.className = 'prompt-mark';
-    mark.textContent = '❯';
+    mark.textContent = markText;
     const text = document.createElement('span');
     text.className = 'prompt-text';
-    text.textContent = prompt;
-    chip.append(mark, text);
-    bar.appendChild(chip);
+    text.textContent = value;
+    line.append(mark, text);
+    return line;
   }
 
   /**

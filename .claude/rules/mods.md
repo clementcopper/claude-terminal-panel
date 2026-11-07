@@ -19,3 +19,4 @@ Distilled from `LEARNINGS.md` § Live-Brücke, which holds the evidence.
 - End-to-end check: `scratchpad/e2e/run.js` pattern — node-pty, the panel's two env vars plus the plugin dir, poll `<tab>.live.json`, expect idle → busy → tool → per-step tokens → idle.
 - The mod can run slash commands: `$.command.run({ command, args })` in `session.start`, not awaited (queued until idle). `/color` per tab comes from `CLAUDE_PANEL_COLOR`, picked by `PtyManager.sessionColorFor`; clear the variable for children.
 - After every mod change run `npm run typecheck:mod` **and** `npm run test:mod`; a new Claude Code regenerates the types (2.1.319: `env.set` answers `{}`), and the `/color` commit shipped a red mod test.
+- A model call from the mod (`$.model.complete`) goes in `turn.complete` unawaited with an `AbortController`; the turn end must not wait, and the next answer cancels the old call. Haiku `effort: 'low'`, a topic-and-state system prompt: 1.5–2.7 s, ≤ 586 input tokens.

@@ -671,8 +671,8 @@ body.vscode-high-contrast-light {
 
 .prompt-chip {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  flex-direction: column;
+  gap: 3px;
   padding: 6px 10px;
   border-radius: 6px;
   background-color: color-mix(
@@ -688,10 +688,27 @@ body.vscode-high-contrast-light {
   overflow: hidden;
 }
 
+.prompt-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* The line about Claude's last answer: the status row's grey, Claude's spark in Claude's orange
+   (the tab accent, ENGINE_ACCENT_COLORS.claude) */
+.prompt-line.before {
+  color: var(--vscode-descriptionForeground, #767676);
+}
+
 .prompt-mark {
   flex-shrink: 0;
   color: var(--prompt-tint, var(--vscode-descriptionForeground, #767676));
   font-family: var(--panel-mono-font);
+}
+
+.prompt-line.before .prompt-mark {
+  color: #d97757;
 }
 
 .prompt-text {

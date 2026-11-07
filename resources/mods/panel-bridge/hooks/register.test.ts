@@ -306,3 +306,90 @@ test('the person’s own /color recolours the bar; the bare one gets its colour 
   await clock.advance(150)
   expect(last(writes).color).toBeUndefined()
 })
+
+/** A main-thread turn end with the answer the person will reply to. */
+const answered = (turnId: string, answer: string) => ({
+  turnId,
+  answer,
+  durationMs: 10,
+  isAborted: false,
+  reason: 'answer' as const,
+  usage: USAGE
+})
+
+const HAIKU_USAGE = {
+  input_tokens: 300,
+  output_tokens: 20,
+  cache_read_input_tokens: 0,
+  cache_creation_input_tokens: 0
+}
+
+test('the line above the prompt is Haiku’s summary of the answer the prompt replies to', async ($, on) => {
+  const writes = bottom(on, { window: 200_000 })
+  // Haiku answers when the test says so, to cover a summary that lands after the next prompt
+  const pending: ((text: string) => void)[] = []
+  const asked: string[] = []
+  on('model.complete', (_, e) => {
+    asked.push(e.prompt)
+    return new Promise((resolve) => {
+      pending.push((text) =>
+        resolve({ value: { isAnswered: true as const, text, usage: HAIKU_USAGE } })
+      )
+    })
+  })
+  mock.env(on, { CLAUDE_PANEL_STATUS_DIR: DIR, CLAUDE_PANEL_TAB_ID: TAB })
+  const clock = mock.clock(on)
+  on('agent.list', () => ({ value: [] }))
+  await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true })
+
+  // First prompt: nothing before it yet
+  await $.turn.start({ turnId: 't1', text: 'compile it' })
+  await clock.advance(150)
+  expect(last(writes).before).toBeUndefined()
+
+  // Its answer goes to Haiku once, not awaited by the turn end
+  await $.turn.complete(answered('t1', 'Compiled. Two warnings remain.\nShall I fix them?'))
+  expect(asked).toEqual(['Compiled. Two warnings remain.\nShall I fix them?'])
+  pending.shift()!('Build compiles; two warnings open\n')
+  await clock.advance(150)
+
+  // The reply to that answer carries its line
+  await $.turn.start({ turnId: 't2', text: 'yes, fix them' })
+  await clock.advance(150)
+  expect(last(writes).before).toBe('Build compiles; two warnings open')
+
+  // An answer whose summary lands only after the next prompt still reaches that prompt
+  await $.turn.complete(answered('t2', 'Fixed both warnings.'))
+  await $.turn.start({ turnId: 't3', text: 'commit' })
+  await clock.advance(150)
+  expect(last(writes).before).toBe('Build compiles; two warnings open')
+  pending.shift()!('Warnings fixed; ready to commit')
+  await clock.advance(150)
+  expect(last(writes).before).toBe('Warnings fixed; ready to commit')
+
+  // A subagent's turn end asks nothing
+  await $.turn.complete({ ...answered('a1-t', 'agent report'), agentId: 'a1' })
+  expect(asked.length).toBe(2)
+
+  // /clear drops both lines
+  await $.session.end({ reason: 'clear', sessionId: 's1', resume: { id: 's1' } })
+  expect(last(writes).before).toBeUndefined()
+  expect(last(writes).prompt).toBeUndefined()
+})
+
+test('without a summary from Haiku the line is the answer’s first line', async ($, on) => {
+  const writes = bottom(on, { window: 200_000 })
+  on('model.complete', () => ({
+    value: { isAnswered: false as const, reason: 'empty-reply' as const, usage: HAIKU_USAGE }
+  }))
+  mock.env(on, { CLAUDE_PANEL_STATUS_DIR: DIR, CLAUDE_PANEL_TAB_ID: TAB })
+  const clock = mock.clock(on)
+  on('agent.list', () => ({ value: [] }))
+  await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true })
+  await $.turn.start({ turnId: 't1', text: 'look' })
+  await $.turn.complete(answered('t1', '\n  Found three callers of resize().\nDetails below.'))
+  await clock.advance(150)
+  await $.turn.start({ turnId: 't2', text: 'show me' })
+  await clock.advance(150)
+  expect(last(writes).before).toBe('Found three callers of resize().')
+})

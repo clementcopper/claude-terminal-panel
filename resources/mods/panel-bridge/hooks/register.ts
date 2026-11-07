@@ -21,6 +21,18 @@ const WRITE_DELAY_MS = 100
 const SUMMARY_MAX = 200
 /** The bar cuts at the panel's width and the tooltip shows the rest; this only bounds the file. */
 const PROMPT_MAX = 2000
+/**
+ * The line above the person's prompt in the panel's bar: what Claude's answer before it was about
+ * and where the work stood. One Haiku call per main-thread turn end, through the session's own
+ * client; measured 2026-11-07 on three real answers: 1.5–2.7 s, 104–586 input tokens.
+ */
+const SUMMARY_MODEL = 'haiku'
+/** The answer is cut here before it goes to Haiku; a long answer's opening carries its topic. */
+const SUMMARY_INPUT_MAX = 6000
+const SUMMARY_SYSTEM =
+  'You label a coding session for a status bar so its owner sees at a glance what it is about and where the work stands. One line, at most 12 words, in the language of the text. Name the topic and the current state or the open question. No subject like "The assistant", no quotes, no preamble.'
+/** Bounds the line in the file; the bar cuts at the panel's width. */
+const BEFORE_MAX = 200
 /** What `/color` takes; the extension's `SESSION_COLORS`. Anything else is not run. */
 const COLORS = new Set(['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan'])
 /** The producer's rule for a tab id that may join a path. */
@@ -59,7 +71,15 @@ const S = {
   prompt: undefined as string | undefined,
   promptAt: undefined as number | undefined,
   /** The `/color` this tab runs; the panel tints the prompt bar with it. */
-  color: undefined as string | undefined
+  color: undefined as string | undefined,
+  /** Real prompts so far, so a late summary knows whether it still belongs to the newest one. */
+  prompts: 0,
+  /** The line for the newest main-thread answer, once Haiku has written it. */
+  lastSummary: undefined as string | undefined,
+  /** The line shown above `prompt`: the answer the person was replying to. */
+  before: undefined as string | undefined,
+  /** Cancels a summary still running when the next answer is in. */
+  summaryAbort: undefined as AbortController | undefined
 }
 
 // ---------- helpers ----------
@@ -92,6 +112,16 @@ const summarize = (e: Record<string, unknown>): string => {
   const one = text.replace(/\s+/g, ' ').trim()
   return one.length > SUMMARY_MAX ? `${one.slice(0, SUMMARY_MAX - 1)}…` : one
 }
+
+/** One line, bounded: Haiku sometimes adds a newline or a trailing period run. */
+const oneLine = (text: string): string => {
+  const one = text.replace(/\s+/g, ' ').trim()
+  return one.length > BEFORE_MAX ? `${one.slice(0, BEFORE_MAX - 1)}…` : one
+}
+
+/** Without Haiku: the answer's first non-empty line, so the bar still says something. */
+const fallbackLine = (answer: string): string =>
+  oneLine(answer.split('\n').find((line) => line.trim().length > 0) ?? '')
 
 const epochSeconds = (iso: string | undefined): number | undefined => {
   if (iso === undefined) return undefined
@@ -151,6 +181,7 @@ const payload = () => ({
   costUsd: S.costUsd,
   prompt: S.prompt,
   promptAt: S.promptAt,
+  before: S.before,
   color: S.color
 })
 
@@ -212,6 +243,9 @@ const resetForClear = () => {
   // A new conversation: the old prompt would name work that is gone
   S.prompt = undefined
   S.promptAt = undefined
+  S.lastSummary = undefined
+  S.before = undefined
+  S.summaryAbort?.abort()
   S.tools.clear()
   S.agents.clear()
   S.state = 'idle'
@@ -283,6 +317,9 @@ export const register: Register = (on) => {
     if (said.length > 0 && !said.startsWith('<')) {
       S.prompt = said.length > PROMPT_MAX ? `${said.slice(0, PROMPT_MAX - 1)}…` : said
       S.promptAt = now()
+      S.prompts += 1
+      // The answer this prompt replies to; a summary still on its way sets it when it lands
+      S.before = S.lastSummary
     }
     try {
       const usage = await $.session.usage()
@@ -389,6 +426,41 @@ export const register: Register = (on) => {
     clearMainTools()
     await keepRunningAgents(() => $.agent.list())
     setState('idle')
+    if (S.path !== undefined && e.reason !== 'refusal' && e.answer.trim().length > 0) {
+      // Not awaited: the turn end must not wait for Haiku. A newer answer cancels this one.
+      S.summaryAbort?.abort()
+      const abort = new AbortController()
+      S.summaryAbort = abort
+      const promptsAtAnswer = S.prompts
+      const answer = e.answer
+      const land = (line: string) => {
+        S.lastSummary = line
+        // Only while the person has replied to this answer at most once since
+        if (S.prompts === promptsAtAnswer + 1) S.before = line
+        bump(
+          (fn) => $.clock.after(WRITE_DELAY_MS, fn),
+          () => $.fs.write(S.path ?? '', text())
+        )
+      }
+      $.model
+        .complete(
+          {
+            model: SUMMARY_MODEL,
+            effort: 'low',
+            maxTokens: 400,
+            system: SUMMARY_SYSTEM,
+            prompt: answer.slice(0, SUMMARY_INPUT_MAX)
+          },
+          { signal: abort.signal }
+        )
+        .then((r) => {
+          if (abort.signal.aborted) return
+          land(r.isAnswered ? oneLine(r.text) : fallbackLine(answer))
+        })
+        .catch(() => {
+          if (!abort.signal.aborted) land(fallbackLine(answer))
+        })
+    }
     try {
       takeUsage(await $.session.usage())
     } catch {

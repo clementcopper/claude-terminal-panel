@@ -47,9 +47,9 @@ send({type:'createTab',id:'t1',name:'Claude 1',awaitingStart:false});send({type:
 window.__write=s=>send({type:'output',id:'t1',data:s});
 window.__rows=()=>document.querySelectorAll('#terminal-t1 .xterm-rows > div').length;
 window.__status=d=>send({type:'statusLine',id:'t1',data:d});
-window.__read=()=>{const bar=document.getElementById('prompt-bar');const text=bar&&bar.querySelector('.prompt-text');
+window.__read=()=>{const bar=document.getElementById('prompt-bar');const text=bar&&bar.querySelector('.prompt-line.said .prompt-text');const bt=bar&&bar.querySelector('.prompt-line.before .prompt-text');const bm=bar&&bar.querySelector('.prompt-line.before .prompt-mark');
 const el=document.querySelector('.status-elapsed');const cwd=document.querySelector('.status-cwd');
-return {barShown:!!bar&&!bar.hidden,barText:text?text.textContent:null,barTooltip:bar?bar.dataset.tooltip||null:null,
+return {before:bt?bt.textContent:null,beforeMark:bm?bm.textContent:null,beforeColor:bm?getComputedStyle(bm).color:null,beforeCut:bt?bt.scrollWidth>bt.clientWidth:null,barShown:!!bar&&!bar.hidden,barText:text?text.textContent:null,barTooltip:bar?bar.dataset.tooltip||null:null,
 barCut:text?text.scrollWidth>text.clientWidth:null,tint:bar?bar.style.getPropertyValue('--prompt-tint'):null,
 spinner:!!document.querySelector('.status-spinner'),elapsed:el?el.textContent:null,row:cwd?cwd.textContent:null,rows:window.__rows()}};
 </script></body></html>`
@@ -159,8 +159,29 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   check('prompt: whole in the tooltip', tool.barTooltip, PROMPT);
   check('prompt: tinted with the tab colour', tool.tint, 'rgb(196, 102, 134)');
   check('prompt: the terminal lost rows to the bar', tool.rows < fresh.rows, true);
+  check('prompt: no line before it without a summary', tool.before, null);
+
+  // 3b. the line about Claude's answer before the prompt: above it, in the same fill, cut, both in
+  // the tooltip, the spark in Claude's orange; one more line taken from the terminal
+  const BEFORE =
+    'Datei-Links im Terminal: Bildpfade öffnen jetzt, Umbruch noch offen, Probe rot gegen HEAD';
+  const withBefore = await show({ state: 'idle', prompt: PROMPT, before: BEFORE, color: 'pink' });
+  check('before: the line', withBefore.before, BEFORE);
+  check('before: the spark', withBefore.beforeMark, '✻');
+  check('before: in Claude orange', withBefore.beforeColor, 'rgb(217, 119, 87)');
+  check('before: cut to one line', withBefore.beforeCut, true);
+  check('before: the prompt still below', withBefore.barText, PROMPT);
+  check('before: both in the tooltip', withBefore.barTooltip, `✻ ${BEFORE}\n❯ ${PROMPT}`);
+  check('before: the terminal lost another row', withBefore.rows < tool.rows, true);
 
   // 4. the time moves on its own
+  await show({
+    ...{ state: 'busy' },
+    stateAt: now - 72_000,
+    tool: { name: 'Bash', summary: 'npm test', startedAt: now - 42_000 },
+    prompt: PROMPT,
+    color: 'pink'
+  });
   await sleep(2100);
   const later = await evaluate('window.__read()');
   check('the run time moves without a new snapshot', later.elapsed !== tool.elapsed, true);
