@@ -427,6 +427,27 @@ export const register: Register = (on) => {
     return done
   }).catch(($, e, next) => next(e))
 
+  // The person's own `/color` recolours the panel's prompt bar too, or the bar and Claude's input
+  // frame disagree. `/color green` names it. The bare `/color` picks one at random (2.1.319) and
+  // answers with a drawn row, no text (`{ ref }`, logged) — so the mod makes that pick itself,
+  // among the colours other than the current one, and hands it on as the argument.
+  on('command.run', { command: 'color' }, async ($, e, next) => {
+    let chosen = e.args.trim().toLowerCase()
+    if (chosen === '') {
+      const others = [...COLORS].filter((c) => c !== S.color)
+      chosen = others[Math.floor(Math.random() * others.length)] ?? 'default'
+    }
+    const result = await next({ ...e, args: chosen })
+    if (COLORS.has(chosen) || chosen === 'default') {
+      S.color = chosen === 'default' ? undefined : chosen
+      bump(
+        (fn) => $.clock.after(WRITE_DELAY_MS, fn),
+        () => $.fs.write(S.path ?? '', text())
+      )
+    }
+    return result
+  })
+
   on('session.end', async ($, e, next) => {
     if (e.reason === 'clear') {
       resetForClear()

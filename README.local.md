@@ -582,17 +582,17 @@ watcher drops a file it cannot parse and keeps the previous one:
 
 Every field but `v` and `updatedAt` is optional for the reader. Where it comes from:
 
-| Field                                 | Hook                                                                                                                                         |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `usedTokens`, `stepIndex`, `modelId`  | `turn.step` — the response's `usage` once the stream has ended, main thread only                                                             |
-| `state`                               | `turn.start` → busy, `turn.complete` → idle, `classic.PermissionRequest` / `AskUserQuestion` → asking                                        |
-| `tool`                                | `tool.call` before and after `next(e)`                                                                                                       |
-| `agents`                              | `agent.spawn` adds, the subagent's `turn.complete` (carrying `agentId`) removes; the main turn's end keeps those `$.agent.list()` still runs |
-| `compacted`, `compactAuto`            | `session.compact` after `next(e)`, when it was not skipped; `trigger === 'auto'` counts as auto                                              |
-| `sessionPercent`, `weekPercent`, cost | `session.measure` (pushed after each turn and when a window moves a whole point) and `$.session.usage()`                                     |
-| `resetAt` and the zeros               | `session.end` with `reason: 'clear'`                                                                                                         |
-| `prompt`, `promptAt`                  | `turn.start`'s `text`, whitespace folded; empty text and engine markup (`<task-notification>…`) keep the last one                            |
-| `color`                               | `session.start`: `CLAUDE_PANEL_COLOR`, set by `PtyManager.sessionColorFor`, then `/color` through `$.command.run`                            |
+| Field                                 | Hook                                                                                                                                                                                                                          |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `usedTokens`, `stepIndex`, `modelId`  | `turn.step` — the response's `usage` once the stream has ended, main thread only                                                                                                                                              |
+| `state`                               | `turn.start` → busy, `turn.complete` → idle, `classic.PermissionRequest` / `AskUserQuestion` → asking                                                                                                                         |
+| `tool`                                | `tool.call` before and after `next(e)`                                                                                                                                                                                        |
+| `agents`                              | `agent.spawn` adds, the subagent's `turn.complete` (carrying `agentId`) removes; the main turn's end keeps those `$.agent.list()` still runs                                                                                  |
+| `compacted`, `compactAuto`            | `session.compact` after `next(e)`, when it was not skipped; `trigger === 'auto'` counts as auto                                                                                                                               |
+| `sessionPercent`, `weekPercent`, cost | `session.measure` (pushed after each turn and when a window moves a whole point) and `$.session.usage()`                                                                                                                      |
+| `resetAt` and the zeros               | `session.end` with `reason: 'clear'`                                                                                                                                                                                          |
+| `prompt`, `promptAt`                  | `turn.start`'s `text`, whitespace folded; empty text and engine markup (`<task-notification>…`) keep the last one                                                                                                             |
+| `color`                               | `session.start`: `CLAUDE_PANEL_COLOR`, set by `PtyManager.sessionColorFor`, then `/color` through `$.command.run`; the person's own `/color` through a `command.run` hook (a bare `/color` gets its random pick from the mod) |
 
 **Merge rule** (`mergeLive` in `statusLineWatcher.ts`): fresher wins for everything both files
 carry. The producer runs at turn end with the same token figure the last request reported, and

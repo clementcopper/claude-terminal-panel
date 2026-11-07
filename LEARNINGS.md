@@ -691,6 +691,11 @@ at the call site`. Ein Modul-weites `S.$ = $` für einen Schreib-Timer fällt du
   `ToolProgress` `background_hint`). Gebaut: Spinner + Laufzeit vorn in der cwd-Zeile, Prompt-Leiste
   aus `turn.start.text`. Daniel wählte aus drei gerenderten Varianten die getönte Fläche, Spinner
   und Zeit links.
+- **Das nackte `/color` antwortet ohne Text.** Daniel tippte `/color green`, die Leiste blieb in
+  der Panel-Farbe. Ein `command.run`-Hook sieht `args`; mit Argument kommt der Text zurück, beim
+  nackten `/color` (2.1.319: Zufallsfarbe, keine Auswahlliste) nur `{"ref":1}` — geloggt, bevor
+  eine zweite Hypothese kam. Der Hook würfelt deshalb selbst und reicht `next({ ...e, args })`
+  weiter. E2E: pink → `/color green` → green → `/color` → cyan, Claude und Leiste gleich.
 - **Ein neues Claude schreibt die Mod-Typen neu, und der Mod-Test bricht am Stub.** Der E2E-Lauf
   mit 2.1.319 regenerierte `.claude-plugin/types/`; `env.set` liefert jetzt `{}` (`EnvSetResult`)
   statt `undefined`, `typecheck:mod` fiel auf `register.test.ts:20`. Und `npm run test:mod` lief

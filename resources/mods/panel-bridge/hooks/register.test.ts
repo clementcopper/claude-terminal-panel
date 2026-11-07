@@ -267,3 +267,42 @@ test('an unknown colour runs no /color', async ($, on) => {
   await clock.advance(50)
   expect(runs).toEqual([])
 })
+
+/** `/color <args>` as the person types it; `''` is the bare command, which picks at random. */
+const typed = (args: string) => ({
+  command: 'color',
+  args,
+  origin: { kind: 'composer' as const },
+  presentation: { isFullscreen: false, columns: 80 }
+})
+
+test('the person’s own /color recolours the bar; the bare one gets its colour from the mod', async ($, on) => {
+  const writes = bottom(on, { window: 200_000 })
+  const seen: string[] = []
+  on('command.run', (_, e) => {
+    seen.push(e.args)
+    return { text: `Session color set to: ${e.args}` }
+  })
+  mock.env(on, { CLAUDE_PANEL_STATUS_DIR: DIR, CLAUDE_PANEL_TAB_ID: TAB, CLAUDE_PANEL_COLOR: 'pink' })
+  const clock = mock.clock(on)
+  await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true })
+  await clock.advance(150)
+  expect(last(writes).color).toBe('pink')
+
+  await $.command.run(typed('green'))
+  await clock.advance(150)
+  expect(last(writes).color).toBe('green')
+
+  // The bare command: the mod picks a colour other than the current one and passes it on, so the
+  // engine sets the same one the bar shows
+  await $.command.run(typed(''))
+  await clock.advance(150)
+  const picked = seen[seen.length - 1]!
+  expect(picked).not.toBe('green')
+  expect(['red', 'blue', 'yellow', 'purple', 'orange', 'pink', 'cyan']).toContain(picked)
+  expect(last(writes).color).toBe(picked)
+
+  await $.command.run(typed('default'))
+  await clock.advance(150)
+  expect(last(writes).color).toBeUndefined()
+})
