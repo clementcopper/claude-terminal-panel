@@ -1,43 +1,57 @@
-# Handoff — 2026-09-06 11:02
+# Handoff — 2026-11-07 15:11
 
 Arbeitsverzeichnis: /Users/danielmartin/claude-terminal-panel
 
 ## Stand
 
-Drei Review-Runden (05./06.09.) sind auf `origin/main` bis `0aab09f`: Julians PR #1 portiert und
-geschlossen, ~40 Befunde aus Host, Webview und Packaging behoben, Version 1.2.0, drei Probes unter
-`scripts/probes/` (`npm run probe`, `npm run probe:ui`). Build 1.2.0 ist installiert; der letzte
-Reload war vor Runde 3 (`fb430e4..0aab09f` noch ungesehen im Panel). Arbeitsbaum sauber.
+Sechs Panel-Features für Daniels parallele Sessions, alle gebaut, installiert, von Daniel im Panel
+getestet: Bild-Links öffnen (`vscode.open`), umgebrochene Pfade klickbar (Claude bricht hart um,
+`isWrapped` false), `/color` zufällig pro Tab ohne Dubletten + eigenes `/color` färbt mit,
+Spinner + Laufzeit in der Statuszeile, Leiste über dem Terminal: `✻` + Haikus Zeile zur letzten
+Antwort, darunter der letzte Prompt, in der Tabfarbe. Details: README.local.md § Status line
+(Feldtabelle, „Run time and prompt bar“), LEARNINGS.md (Einträge vom 07.11.).
+HEAD: 23f907d
 
 ## Mitten drin
 
-- Nichts halb. Runde-3-Handtests stehen aus (Rename nach Pill-Flackern, zwei schnelle `+`, Link
-  ohne Workspace-Ordner).
+- Nichts halb.
 
 ## Nächster Schritt
 
-Fenster neu laden, dann:
+Nichts offen beauftragt. Wenn Daniel weitermacht, zuerst prüfen:
 
 ```sh
-cd ~/claude-terminal-panel && npm run probe && npm run probe:ui
+cd ~/claude-terminal-panel && npm run test:mod && npm run probe
 ```
 
-Danach die drei Handtests aus CHANGELOG.md § 1.2.0 Fixed (letzte Zeilen).
+## Offene Punkte (bekannt, nicht beauftragt)
+
+- Prompt-Filter in `turn.start` ist eine Heuristik (leer oder beginnt mit `<` → kein Prompt). Sauberer
+  wäre `prompt.submit` mit `origin.kind` (`composer` vs. `task-notification`, in den Mod-Typen) — nie
+  live an einem echten Hintergrund-Task gesehen.
+- Ein von Hand gesetztes `/color` kennt `PtyManager.sessionColorFor` nicht: neuer Tab kann dieselbe
+  Farbe bekommen; Restart/Resume setzt die Panel-Farbe wieder. Daniel: „nicht schlimm“.
+- Nach Fenster-Reload ist die Leiste leer bis zum nächsten Prompt (Mod-Zustand pro Prozess).
 
 ## Schon probiert, geht nicht
 
-- Tab aus xterm heraus führt nie in die Tab-Leiste; xterm nimmt die Taste. Befehle bleiben der Weg.
-- `git merge-tree --merge-base` gibt es in git 2.39 nicht; Cherry-Picks per `git apply --check`.
-- `git checkout <datei>` nach einem sed-Probe-Edit nimmt uncommittete Arbeit mit (ist mir passiert).
+- Bare `/color` liefert dem `command.run`-Hook nur `{"ref":1}`, keinen Text — der Mod würfelt
+  deshalb selbst und reicht `args` weiter. Text aus der gerenderten Zeile lesen (`ui.render`
+  `CommandOutput`) nicht gebaut, ungetestet verworfen: alte Zeilen würden beim Scroll/Resume neu
+  rendern und eine alte Farbe setzen können.
+- Bash-Ausgabe live zeigen: der Mod bekommt kein Event mit Bash-Output (nur `ToolProgress`
+  `background_hint`). Daniel wollte nur Zeit + Spinner.
+- Ein-Zeilen-Variante der Leiste (Zusammenfassung · Prompt): bei 420 px bleibt „Bildpfade öff…“.
 
 ## Was Daniel entschieden hat
 
-- Upstream vernachlässigen, Refactors nach Nutzen (Memory `upstream-vernachlaessigen`).
-- Web-Links über `vscode.env.openExternal`; Version 1.2.0; alle Findings umsetzen, auch die UI.
-- Nicht gemacht, bewusst: Linux-`/tmp`, `release.yml`, CSS-Fallback-Vereinheitlichung,
-  Major-Updates (eslint 10, typescript 7).
+- Leiste: Variante C (getönte Fläche), Spinner und Zeit links vor dem Befehl, Zusammenfassung und
+  Prompt zwei Zeilen in einer Fläche, `✻` in Claude-Orange `#d97757`.
+- Zusammenfassung von Haiku (nicht ausgeschnitten), Ziel „schnell sehen, worum es geht und woran
+  gearbeitet wird“.
+- `/color` zufällig ohne Dubletten.
 
 ## Erledigt und vom Tisch
 
-- PR #1 geschlossen mit Kommentar; Branch `pr-1` liegt lokal noch, `git branch -D pr-1` räumt ihn.
-- Artifact mit Bildern: https://claude.ai/code/artifact/98aac7b7-314b-4c93-bf4f-aebdf5deb34a
+- Agent SDK: nicht genutzt und nicht geplant; die Extension fährt das echte `claude` im PTY.
+- Varianten-Artifact: https://claude.ai/artifact/LBznUXDPmzcKCLwVeBatkZ (Version 5 = gebautes Bild)
