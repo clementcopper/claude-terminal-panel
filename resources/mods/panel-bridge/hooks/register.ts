@@ -72,6 +72,8 @@ const S = {
   promptAt: undefined as number | undefined,
   /** The `/color` this tab runs; the panel tints the prompt bar with it. */
   color: undefined as string | undefined,
+  /** Whether `/color` ran in this session, by the mod or by the person. */
+  colorApplied: false,
   /** Real prompts so far, so a late summary knows whether it still belongs to the newest one. */
   prompts: 0,
   /** The line for the newest main-thread answer, once Haiku has written it. */
@@ -275,16 +277,15 @@ export const register: Register = (on) => {
       // Older engine without env.set: the nested case stays as it is
     }
 
-    // The tab's prompt-bar colour, picked by the extension so parallel tabs differ. Not awaited:
-    // the command is queued until the session is idle, and the start must not wait for that.
+    // The tab's prompt-bar colour, picked by the extension so parallel tabs differ. The panel's bar
+    // takes it now; `/color` itself waits for the first real prompt (see `turn.start`): run here,
+    // it wrote a transcript for every tab that never got a prompt, and `--continue` then reopened
+    // that empty session instead of the last real one (2026-11-08, reproduced).
     // Cleared for children like the plugin folder, or a nested `claude` would recolour itself.
     try {
       const color = await $.env.get('CLAUDE_PANEL_COLOR')
       if (color && COLORS.has(color)) {
         S.color = color
-        $.command.run({ command: 'color', args: color }).catch(() => {
-          // An engine without /color: the bar keeps its default
-        })
       }
       await $.env.set('CLAUDE_PANEL_COLOR', undefined)
     } catch {
@@ -320,6 +321,18 @@ export const register: Register = (on) => {
       S.prompts += 1
       // The answer this prompt replies to; a summary still on its way sets it when it lands
       S.before = S.lastSummary
+      // The session has a transcript now, so `/color` adds to it instead of creating one. From a
+      // timer, not from this hook: a command run inside a hook the turn waits on is refused; it
+      // queues and runs once the turn is over, so Claude's frame turns after the first answer.
+      if (S.color !== undefined && !S.colorApplied) {
+        S.colorApplied = true
+        const color = S.color
+        $.clock.after(WRITE_DELAY_MS, () => {
+          $.command.run({ command: 'color', args: color }).catch(() => {
+            // An engine without /color or command.run: the bar keeps its default
+          })
+        })
+      }
     }
     try {
       const usage = await $.session.usage()
@@ -512,6 +525,7 @@ export const register: Register = (on) => {
     const result = await next({ ...e, args: chosen })
     if (COLORS.has(chosen) || chosen === 'default') {
       S.color = chosen === 'default' ? undefined : chosen
+      S.colorApplied = true
       bump(
         (fn) => $.clock.after(WRITE_DELAY_MS, fn),
         () => $.fs.write(S.path ?? '', text())

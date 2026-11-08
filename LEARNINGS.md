@@ -691,6 +691,15 @@ at the call site`. Ein Modul-weites `S.$ = $` für einen Schreib-Timer fällt du
   `ToolProgress` `background_hint`). Gebaut: Spinner + Laufzeit vorn in der cwd-Zeile, Prompt-Leiste
   aus `turn.start.text`. Daniel wählte aus drei gerenderten Varianten die getönte Fläche, Spinner
   und Zeit links.
+- **Ein Slash-Befehl aus dem Mod legt ein Transkript an, und `--continue` nimmt das neueste.**
+  Daniel (08.11.2026): „Continue Last Session“ öffnete nur noch eine leere Session mit gesetzter
+  Farbe. Das `/color` in `session.start` schrieb für jeden Tab ohne Prompt ein `.jsonl` (nur
+  `agent-color`, `system`, Hook-Anhänge); `claude --continue` nahm diese leere Session. Erste
+  Reproduktion schrieb gar nichts: der Test-Claude erbte `CLAUDE_CODE_CHILD_SESSION` aus der
+  laufenden Session („Transcript saving is off“) — Session-Variablen aus der Probe-Env löschen.
+  Dann: ohne Farbe 0 Transkripte, mit Farbe 1, `--continue` öffnete die leere statt der echten.
+  Fix: `/color` erst beim ersten echten Prompt; danach frischer Tab 0 Transkripte, `--continue`
+  zeigt die echte Session. Claudes eigener Rahmen färbt sich jetzt erst nach der ersten Antwort.
 - **Das nackte `/color` antwortet ohne Text.** Daniel tippte `/color green`, die Leiste blieb in
   der Panel-Farbe. Ein `command.run`-Hook sieht `args`; mit Argument kommt der Text zurück, beim
   nackten `/color` (2.1.319: Zufallsfarbe, keine Auswahlliste) nur `{"ref":1}` — geloggt, bevor

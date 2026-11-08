@@ -239,7 +239,7 @@ test('without the panel variables the mod writes nothing', async ($, on) => {
   expect(writes.length).toBe(0)
 })
 
-test('the tab colour runs /color once', async ($, on) => {
+test('the tab colour runs /color once, at the first real prompt, never at the start', async ($, on) => {
   const writes = bottom(on, { window: 200_000 })
   const runs: { command: string; args: string }[] = []
   on('command.run', (_, e) => {
@@ -250,8 +250,39 @@ test('the tab colour runs /color once', async ($, on) => {
   const clock = mock.clock(on)
   await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true })
   await clock.advance(150)
-  expect(runs).toEqual([{ command: 'color', args: 'pink' }])
+  // A tab nobody types into must leave no transcript behind, or `--continue` reopens it
+  expect(runs).toEqual([])
+  // …while the panel's bar is tinted from the start
   expect(last(writes).color).toBe('pink')
+
+  // A continuation is no prompt
+  await $.turn.start({ turnId: 't0', text: '' })
+  await clock.advance(150)
+  expect(runs).toEqual([])
+
+  await $.turn.start({ turnId: 't1', text: 'hello' })
+  await clock.advance(150)
+  expect(runs).toEqual([{ command: 'color', args: 'pink' }])
+
+  await $.turn.start({ turnId: 't2', text: 'again' })
+  await clock.advance(150)
+  expect(runs.length).toBe(1)
+})
+
+test('the person’s own /color before the first prompt leaves the mod’s out', async ($, on) => {
+  bottom(on, { window: 200_000 })
+  const runs: string[] = []
+  on('command.run', (_, e) => {
+    runs.push(e.args)
+    return { text: '' }
+  })
+  mock.env(on, { CLAUDE_PANEL_STATUS_DIR: DIR, CLAUDE_PANEL_TAB_ID: TAB, CLAUDE_PANEL_COLOR: 'pink' })
+  const clock = mock.clock(on)
+  await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true })
+  await $.command.run(typed('green'))
+  await $.turn.start({ turnId: 't1', text: 'hello' })
+  await clock.advance(150)
+  expect(runs).toEqual(['green'])
 })
 
 test('an unknown colour runs no /color', async ($, on) => {
@@ -264,7 +295,8 @@ test('an unknown colour runs no /color', async ($, on) => {
   mock.env(on, { CLAUDE_PANEL_STATUS_DIR: DIR, CLAUDE_PANEL_TAB_ID: TAB, CLAUDE_PANEL_COLOR: 'magenta; rm' })
   const clock = mock.clock(on)
   await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true })
-  await clock.advance(50)
+  await $.turn.start({ turnId: 't1', text: 'hello' })
+  await clock.advance(150)
   expect(runs).toEqual([])
 })
 
