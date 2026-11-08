@@ -700,6 +700,10 @@ at the call site`. Ein Modul-weites `S.$ = $` für einen Schreib-Timer fällt du
   Dann: ohne Farbe 0 Transkripte, mit Farbe 1, `--continue` öffnete die leere statt der echten.
   Fix: `/color` erst beim ersten echten Prompt; danach frischer Tab 0 Transkripte, `--continue`
   zeigt die echte Session. Claudes eigener Rahmen färbt sich jetzt erst nach der ersten Antwort.
+  Zweite Quelle, beim Aufräumen gefunden: eine Neuinstallation lädt den Mod in offenen Tabs neu, und
+  Claude schreibt „panel-bridge: plugin.json changed — reloaded“ als `system`-Zeile ins Transkript —
+  ein Tab ohne Prompt bekommt so auch eine leere Session (designdone-de `db22c1a7`). Nur beim
+  Entwickeln; nach einer Installation `--continue` in solchen Verzeichnissen prüfen.
 - **Das nackte `/color` antwortet ohne Text.** Daniel tippte `/color green`, die Leiste blieb in
   der Panel-Farbe. Ein `command.run`-Hook sieht `args`; mit Argument kommt der Text zurück, beim
   nackten `/color` (2.1.319: Zufallsfarbe, keine Auswahlliste) nur `{"ref":1}` — geloggt, bevor
