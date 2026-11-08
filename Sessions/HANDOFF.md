@@ -1,57 +1,49 @@
-# Handoff — 2026-11-07 15:11
+# Handoff — 2026-11-08 14:48
 
 Arbeitsverzeichnis: /Users/danielmartin/claude-terminal-panel
 
 ## Stand
 
-Sechs Panel-Features für Daniels parallele Sessions, alle gebaut, installiert, von Daniel im Panel
-getestet: Bild-Links öffnen (`vscode.open`), umgebrochene Pfade klickbar (Claude bricht hart um,
-`isWrapped` false), `/color` zufällig pro Tab ohne Dubletten + eigenes `/color` färbt mit,
-Spinner + Laufzeit in der Statuszeile, Leiste über dem Terminal: `✻` + Haikus Zeile zur letzten
-Antwort, darunter der letzte Prompt, in der Tabfarbe. Details: README.local.md § Status line
-(Feldtabelle, „Run time and prompt bar“), LEARNINGS.md (Einträge vom 07.11.).
-HEAD: 23f907d
-
-## Mitten drin
-
-- Nichts halb.
+„Continue Last Session in Current Tab“ ist repariert: `/color` lief in `session.start` und legte
+für jeden Tab ohne Prompt ein Transkript an, das `claude --continue` dann öffnete. Jetzt läuft
+`/color` erst beim ersten echten Prompt (`turn.start`, über `$.clock.after`), Claudes Rahmen färbt
+sich nach der ersten Antwort, die Panel-Leiste sofort. Reproduziert und nach dem Fix wiederholt
+(node-pty, `scratchpad/repro-continue/run.js`). Installiert; Daniel hat noch nicht neu geladen und
+„Continue“ gedrückt. Leere Farb-Sessions aufgeräumt (6 Dateien im Papierkorb). Davor (07.11.):
+Bild-Links, umgebrochene Pfade, `/color` pro Tab, Spinner + Laufzeit, Prompt-Leiste mit
+Haiku-Zeile — Details in README.local.md § Status line und LEARNINGS.md.
+HEAD: 893b4cd
 
 ## Nächster Schritt
 
-Nichts offen beauftragt. Wenn Daniel weitermacht, zuerst prüfen:
+Daniel lädt das Fenster neu und drückt in einem Tab „Continue Last Session“ — erwartet: die letzte
+echte Session. Falls nicht, zuerst das neueste Transkript des Verzeichnisses ansehen:
 
 ```sh
-cd ~/claude-terminal-panel && npm run test:mod && npm run probe
+ls -t ~/.claude/projects/-Users-danielmartin-claude-terminal-panel/*.jsonl | head -3
 ```
 
 ## Offene Punkte (bekannt, nicht beauftragt)
 
-- Prompt-Filter in `turn.start` ist eine Heuristik (leer oder beginnt mit `<` → kein Prompt). Sauberer
-  wäre `prompt.submit` mit `origin.kind` (`composer` vs. `task-notification`, in den Mod-Typen) — nie
-  live an einem echten Hintergrund-Task gesehen.
-- Ein von Hand gesetztes `/color` kennt `PtyManager.sessionColorFor` nicht: neuer Tab kann dieselbe
-  Farbe bekommen; Restart/Resume setzt die Panel-Farbe wieder. Daniel: „nicht schlimm“.
-- Nach Fenster-Reload ist die Leiste leer bis zum nächsten Prompt (Mod-Zustand pro Prozess).
+- Noch liegen gelassen, weil gerade beschrieben: leere Farb-Sessions `4df8bbfd` (`~/.claude`) und
+  `84ecac59` (designdone-termin). Verschwinden aus „Continue“, sobald dort eine echte Session neuer ist.
+- Eine Neuinstallation der Extension schreibt „panel-bridge … reloaded“ in offene Tabs → auch das
+  legt für Tabs ohne Prompt ein Transkript an (nur beim Entwickeln).
+- Prompt-Filter in `turn.start` ist eine Heuristik (`<`); `prompt.submit` mit `origin.kind` wäre sauber.
+- Global geschrieben, für die nächste CTO-Session: `~/.claude/LEARNINGS.md` (§ Cause only after
+  reproduction) und `~/.claude/rules/working-rules.md` (Zeile „A null result from a nested tool…“).
 
 ## Schon probiert, geht nicht
 
-- Bare `/color` liefert dem `command.run`-Hook nur `{"ref":1}`, keinen Text — der Mod würfelt
-  deshalb selbst und reicht `args` weiter. Text aus der gerenderten Zeile lesen (`ui.render`
-  `CommandOutput`) nicht gebaut, ungetestet verworfen: alte Zeilen würden beim Scroll/Resume neu
-  rendern und eine alte Farbe setzen können.
-- Bash-Ausgabe live zeigen: der Mod bekommt kein Event mit Bash-Output (nur `ToolProgress`
-  `background_hint`). Daniel wollte nur Zeit + Spinner.
-- Ein-Zeilen-Variante der Leiste (Zusammenfassung · Prompt): bei 420 px bleibt „Bildpfade öff…“.
+- Reproduktion mit einem Test-Claude aus dieser Session schrieb nie ein Transkript: er erbt
+  `CLAUDE_CODE_CHILD_SESSION` („Transcript saving is off“). Session-Variablen aus der Env löschen.
+- `$.command.run` direkt im `turn.start`-Hook: laut API-Doku verweigert, solange der Turn auf den
+  Hook wartet — daher `$.clock.after`.
 
 ## Was Daniel entschieden hat
 
-- Leiste: Variante C (getönte Fläche), Spinner und Zeit links vor dem Befehl, Zusammenfassung und
-  Prompt zwei Zeilen in einer Fläche, `✻` in Claude-Orange `#d97757`.
-- Zusammenfassung von Haiku (nicht ausgeschnitten), Ziel „schnell sehen, worum es geht und woran
-  gearbeitet wird“.
-- `/color` zufällig ohne Dubletten.
+- Leere Sessions in den Papierkorb (Finder, „Zurücklegen“ möglich), nicht löschen.
 
 ## Erledigt und vom Tisch
 
-- Agent SDK: nicht genutzt und nicht geplant; die Extension fährt das echte `claude` im PTY.
-- Varianten-Artifact: https://claude.ai/artifact/LBznUXDPmzcKCLwVeBatkZ (Version 5 = gebautes Bild)
+- `db22c1a7` (designdone-de, nur Reload-Meldungen) im Papierkorb; „Continue“ dort öffnet `ebe0e90b`.
