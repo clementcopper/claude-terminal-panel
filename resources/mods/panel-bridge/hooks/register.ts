@@ -67,6 +67,11 @@ const S = {
   weekPercent: undefined as number | undefined,
   weekResetsEpoch: undefined as number | undefined,
   costUsd: undefined as number | undefined,
+  /**
+   * What the person typed for the turn about to start, when its text is markup: a slash command
+   * (`<command-message>…`) or a `!` line (the turn opens on `<bash-stdout>…`). `turn.start` takes it.
+   */
+  typed: undefined as string | undefined,
   /** The person's last prompt, one line, and when it was sent. Kept across turns. */
   prompt: undefined as string | undefined,
   promptAt: undefined as number | undefined,
@@ -245,6 +250,7 @@ const resetForClear = () => {
   // A new conversation: the old prompt would name work that is gone
   S.prompt = undefined
   S.promptAt = undefined
+  S.typed = undefined
   S.lastSummary = undefined
   S.before = undefined
   S.summaryAbort?.abort()
@@ -313,9 +319,12 @@ export const register: Register = (on) => {
     setState('busy')
     // The panel's bar above the terminal shows it. A continuation carries no text, and a turn the
     // engine starts itself (a background task's notification) carries markup, not the person's
-    // words; both keep the last prompt.
-    const said = e.text.replace(/\s+/g, ' ').trim()
-    if (said.length > 0 && !said.startsWith('<')) {
+    // words; both keep the last prompt. A slash command or a `!` line arrives as markup too, so it
+    // comes as typed from `prompt.submit` / `session.append`.
+    const typed = e.agentId === undefined ? S.typed : undefined
+    if (e.agentId === undefined) S.typed = undefined
+    const said = (typed ?? e.text).replace(/\s+/g, ' ').trim()
+    if (said.length > 0 && (typed !== undefined || !said.startsWith('<'))) {
       S.prompt = said.length > PROMPT_MAX ? `${said.slice(0, PROMPT_MAX - 1)}…` : said
       S.promptAt = now()
       S.prompts += 1
@@ -346,6 +355,31 @@ export const register: Register = (on) => {
     )
     return next(e)
   })
+
+  // The prompt as typed: a skill or prompt command shows as `/code-review high`, not as the engine's
+  // `<command-message>` markup. Only the person's own (the terminal, or the phone through Remote
+  // Control); a local command such as `/context` raises no `prompt.submit` and keeps the topic.
+  // `next(e)` resolves after `turn.start`, so the text is set before it.
+  on('prompt.submit', async ($, e, next) => {
+    if (S.path !== undefined && !e.isMeta && (e.origin.kind === 'composer' || e.origin.kind === 'bridge')) {
+      S.typed = e.text
+    }
+    const entered = await next(e)
+    if (entered.drop !== undefined) S.typed = undefined
+    return entered
+  }).catch(($, e, next) => next(e))
+
+  // A `!` line raises no `prompt.submit`; the engine records it as `<bash-input>…` and then starts a
+  // turn on its output (2.1.319, measured 2026-11-09), which `turn.start` names with this.
+  on('session.append', ($, e, next) => {
+    if (S.path !== undefined && e.agentId === undefined && e.door === 'command' && e.message.type === 'user') {
+      const first = e.message.content[0]
+      const text = first?.type === 'text' && typeof first.text === 'string' ? first.text : ''
+      const line = /^<bash-input>([\s\S]*)<\/bash-input>$/.exec(text)
+      if (line) S.typed = `!${line[1] ?? ''}`
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
 
   on('turn.step', async function* ($, e, next) {
     const stream = next(e)

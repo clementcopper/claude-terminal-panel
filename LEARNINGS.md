@@ -721,6 +721,17 @@ at the call site`. Ein Modul-weites `S.$ = $` für einen Schreib-Timer fällt du
   statt `undefined`, `typecheck:mod` fiel auf `register.test.ts:20`. Und `npm run test:mod` lief
   beim `/color`-Commit nicht mit — der Test erwartete noch einen `env.set` weniger. Nach jeder
   Mod-Änderung `typecheck:mod` **und** `test:mod`.
+- **`/` und `!` kommen in `turn.start` als Markup an.** Daniel (09.11.2026): was zeigt die
+  Prompt-Leiste bei Prompts mit „/“ oder „!“? Gemessen mit 2.1.319, echtes `claude` in node-pty
+  plus Log-Mod: `/context` und `/color blue` lösen nur `command.run` aus, weder `prompt.submit` noch
+  `turn.start`. Ein Skill (`/probe-skill`) löst `prompt.submit` mit `text: "/probe-skill"` und
+  `command` aus, `turn.start.text` ist `<command-message>…</command-message>`. `!echo hi` löst kein
+  `prompt.submit` aus, nur `session.append` (`door: 'command'`, `<bash-input>echo hi</bash-input>`).
+  Danach startet die Engine **einen eigenen Turn** auf `<bash-stdout>hi…`, und Claude antwortet.
+  Der `<`-Filter ließ deshalb alle drei Fälle beim alten Prompt. Daniel wählte: Skills und `!` so
+  zeigen, wie er sie getippt hat, lokale Befehle nicht. Gebaut: `S.typed` aus `prompt.submit`
+  (`composer`/`bridge`) und aus `<bash-input>`, `turn.start` nimmt das. Zweiter E2E-Lauf:
+  `/probe-skill` und `!echo hi` stehen in `prompt`, nach `/context` steht dort weiter der vorige.
 
 ## Schriften und Scrollbar im Panel
 

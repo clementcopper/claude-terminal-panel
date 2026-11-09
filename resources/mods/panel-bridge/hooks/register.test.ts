@@ -425,3 +425,47 @@ test('without a summary from Haiku the line is the answer’s first line', async
   await clock.advance(150)
   expect(last(writes).before).toBe('Found three callers of resize().')
 })
+
+test('a skill and a ! line show as typed; a local command and a notification keep the prompt', async ($, on) => {
+  const writes = bottom(on, { window: 200_000 })
+  on('prompt.submit', (_, e) => ({ text: e.text }))
+  mock.env(on, { CLAUDE_PANEL_STATUS_DIR: DIR, CLAUDE_PANEL_TAB_ID: TAB })
+  const clock = mock.clock(on)
+  await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true })
+  // As the engine raises them (2.1.319, measured): `prompt.submit` first, its turn inside `next`
+  const submit = (text: string, kind: 'composer' | 'task-notification' = 'composer') =>
+    $.prompt.submit({ text, origin: { kind }, wait: false })
+
+  await submit('compile it')
+  await $.turn.start({ turnId: 't1', text: 'compile it' })
+  await clock.advance(150)
+  expect(last(writes).prompt).toBe('compile it')
+
+  // A skill: the turn opens on markup, the bar shows what was typed
+  await submit('/code-review high')
+  await $.turn.start({
+    turnId: 't2',
+    text: '<command-message>code-review</command-message>\n<command-name>/code-review</command-name>'
+  })
+  await clock.advance(150)
+  expect(last(writes).prompt).toBe('/code-review high')
+
+  // A ! line raises no prompt.submit; the engine records it, then starts a turn on its output
+  const row = (text: string) => ({
+    message: { type: 'user' as const, role: 'user' as const, content: [{ type: 'text' as const, text }] },
+    door: 'command' as const,
+    origin: { kind: 'unclassified' as const },
+    uuid: `u-${text.length}`
+  })
+  await $.session.append(row('<bash-input>npm test</bash-input>'))
+  await $.session.append(row('<bash-stdout>ok</bash-stdout><bash-stderr></bash-stderr>'))
+  await $.turn.start({ turnId: 't3', text: '<bash-stdout>ok</bash-stdout><bash-stderr></bash-stderr>' })
+  await clock.advance(150)
+  expect(last(writes).prompt).toBe('!npm test')
+
+  // A local command (/context) raises neither, and a notification is not the person's
+  await submit('<task-notification>a1 done</task-notification>', 'task-notification')
+  await $.turn.start({ turnId: 't4', text: '<task-notification>a1 done</task-notification>' })
+  await clock.advance(150)
+  expect(last(writes).prompt).toBe('!npm test')
+})
