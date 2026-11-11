@@ -30,6 +30,8 @@ function shellQuote(value: string): string {
  * Claude tab gets one at random that no other open tab has, so parallel sessions are told apart
  * by their prompt bar; the `panel-bridge` mod runs `/color <value>` once the session is idle.
  */
+/** The PTY's locale when the host has none; what VS Code's own terminal would set. */
+const FALLBACK_LOCALE = 'en_US.UTF-8';
 const SESSION_COLORS = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan'];
 
 export interface PtyEventCallbacks {
@@ -307,6 +309,14 @@ export class PtyManager {
       COLORTERM: 'truecolor',
       FORCE_COLOR: '1'
     });
+
+    // VS Code started from the Dock carries no locale, so the PTY ran in `C`. Claude Code copies
+    // through `pbcopy`, which then reads UTF-8 as Mac Roman: „Für“ arrived as „F√ºr“. VS Code's own
+    // terminal sets LANG for the same reason (`terminal.integrated.detectLocale`); a locale that is
+    // already set, by the parent or the settings, stays.
+    if (!env.LC_ALL && !env.LC_CTYPE && !env.LANG) {
+      env.LANG = FALLBACK_LOCALE;
+    }
 
     // Inter-agent channel: every PTY gets these, status line or not. OpenCode has no status
     // line, and gating them behind it would leave that tab unable to name itself.

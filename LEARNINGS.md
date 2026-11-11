@@ -117,6 +117,17 @@ Non-obvious findings and dead ends. Only add what saves future work.
   which is why the countdown is recomputed in the webview from the absolute `sessionResetsAt`
   rather than fetched.
 
+- **Without a locale, every copy from a panel tab breaks its umlauts.** Daniel (11.11.2026) copied
+  a message from one session into another and got `F√ºr … ¬ß … ‚Äû…‚Äú`. That is UTF-8 read as Mac
+  Roman, character for character (`'Für'.encode('utf-8').decode('mac_roman')`). Claude Code 2.1.322
+  copies through `pbcopy` (found in the binary next to OSC 52), and `pbcopy` reads its input in
+  the locale's encoding. None of the four running panel tabs had `LANG`, `LC_ALL` or `LC_CTYPE`
+  (`ps eww`): VS Code started from the Dock has no locale, and the PTY inherits the extension
+  host's environment. Reproduced: `env -i pbcopy` gives `F√ºr ¬ß`, with `LANG=en_US.UTF-8` it gives
+  `Für §`. Fix: `buildEnvironment` sets `LANG=en_US.UTF-8` when no locale is set, as VS Code's own
+  terminal does (`terminal.integrated.detectLocale`). Probe through `PtyManager` with real
+  `locale`: the old code gives `C`, the new one `en_US.UTF-8`, and a parent `de_DE.UTF-8` stays.
+
 ## Prompt input
 
 - **An at-mention pulls the whole file, a line range in it is only prose.**
