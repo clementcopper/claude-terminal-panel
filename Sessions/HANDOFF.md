@@ -1,49 +1,48 @@
-# Handoff — 2026-11-08 14:48
+# Handoff — 2026-11-11 20:56
 
 Arbeitsverzeichnis: /Users/danielmartin/claude-terminal-panel
 
 ## Stand
 
-„Continue Last Session in Current Tab“ ist repariert: `/color` lief in `session.start` und legte
-für jeden Tab ohne Prompt ein Transkript an, das `claude --continue` dann öffnete. Jetzt läuft
-`/color` erst beim ersten echten Prompt (`turn.start`, über `$.clock.after`), Claudes Rahmen färbt
-sich nach der ersten Antwort, die Panel-Leiste sofort. Reproduziert und nach dem Fix wiederholt
-(node-pty, `scratchpad/repro-continue/run.js`). Installiert; Daniel hat noch nicht neu geladen und
-„Continue“ gedrückt. Leere Farb-Sessions aufgeräumt (6 Dateien im Papierkorb). Davor (07.11.):
-Bild-Links, umgebrochene Pfade, `/color` pro Tab, Spinner + Laufzeit, Prompt-Leiste mit
-Haiku-Zeile — Details in README.local.md § Status line und LEARNINGS.md.
-HEAD: 893b4cd
+Zwei Fixes gebaut und installiert, Daniel hat noch nicht neu geladen:
+
+1. Prompt-Leiste zeigt Skills und `!`-Zeilen wie getippt (`/code-review high`, `!npm test`);
+   lokale Befehle (`/context`, `/color`, `/model`) lassen das Thema stehen. Mod nimmt den Text aus
+   `prompt.submit` (composer/bridge) und `session.append` `<bash-input>` (`register.ts`, `S.typed`).
+   Echter E2E-Lauf und Mod-Test (rot gegen alt) grün.
+2. Umlaute beim Kopieren aus Panel-Tabs: PTY hatte keine Locale, Claude Codes `pbcopy` las UTF-8
+   als Mac Roman (`Für` → `F√ºr`). `buildEnvironment` setzt `LANG=en_US.UTF-8`, falls keine Locale
+   da ist (`src/ptyManager.ts`). Reproduziert, Probe alt `C` / neu `en_US.UTF-8`.
+   Belege: LEARNINGS.md § Claude Code und § Live-Brücke, `.claude/rules/host.md`, `mods.md`.
+   HEAD: 0c4939a
 
 ## Nächster Schritt
 
-Daniel lädt das Fenster neu und drückt in einem Tab „Continue Last Session“ — erwartet: die letzte
-echte Session. Falls nicht, zuerst das neueste Transkript des Verzeichnisses ansehen:
+Daniel lädt das Fenster neu, startet einen frischen Tab und prüft:
 
-```sh
-ls -t ~/.claude/projects/-Users-danielmartin-claude-terminal-panel/*.jsonl | head -3
-```
+- Text mit „ü § „…““ aus einem Tab kopieren, in anderen einfügen → keine `√º`.
+- `/probe`-artiger Skill oder `!echo hi` → Leiste zeigt den getippten Befehl.
 
 ## Offene Punkte (bekannt, nicht beauftragt)
 
-- Noch liegen gelassen, weil gerade beschrieben: leere Farb-Sessions `4df8bbfd` (`~/.claude`) und
-  `84ecac59` (designdone-termin). Verschwinden aus „Continue“, sobald dort eine echte Session neuer ist.
-- Eine Neuinstallation der Extension schreibt „panel-bridge … reloaded“ in offene Tabs → auch das
-  legt für Tabs ohne Prompt ein Transkript an (nur beim Entwickeln).
-- Prompt-Filter in `turn.start` ist eine Heuristik (`<`); `prompt.submit` mit `origin.kind` wäre sauber.
-- Global geschrieben, für die nächste CTO-Session: `~/.claude/LEARNINGS.md` (§ Cause only after
-  reproduction) und `~/.claude/rules/working-rules.md` (Zeile „A null result from a nested tool…“).
+- Verdacht, ungeprüft: `turn.start` eines Subagenten (`agentId` gesetzt) könnte `S.prompt` mit
+  dem Agent-Auftrag überschreiben; der Prompt-Zweig in `turn.start` prüft `agentId` nicht.
+- `!` startet in Claude Code 2.1.319 einen eigenen Model-Turn (zweimal gemessen) — ob das immer so
+  ist, unbekannt; ohne Turn erscheint die `!`-Zeile erst gar nicht in der Leiste.
+- Aus Handoff 08.11. weiter offen: Reinstall schreibt „panel-bridge … reloaded“ in offene Tabs.
 
 ## Schon probiert, geht nicht
 
-- Reproduktion mit einem Test-Claude aus dieser Session schrieb nie ein Transkript: er erbt
-  `CLAUDE_CODE_CHILD_SESSION` („Transcript saving is off“). Session-Variablen aus der Env löschen.
-- `$.command.run` direkt im `turn.start`-Hook: laut API-Doku verweigert, solange der Turn auf den
-  Hook wartet — daher `$.clock.after`.
+- `npx prettier --write` auf `resources/mods/panel-bridge/hooks/*.ts`: formatiert die ganzen
+  Dateien um (Mod-Stil ohne Semikolons, war nie prettier-sauber). Mod-Dateien nicht prettieren.
+- `rm` auf Scratchpad-Pfade mit `cd` davor verweigert der Safety-Check; neuen Ordner anlegen statt
+  aufräumen.
+- Escape vor Enter bei Slash-Befehlen in der PTY-Probe: unnötig, Enter führt den Befehl aus.
 
 ## Was Daniel entschieden hat
 
-- Leere Sessions in den Papierkorb (Finder, „Zurücklegen“ möglich), nicht löschen.
+- Prompt-Leiste: Skills und `!` wie getippt, lokale Slash-Befehle nicht (09.11.).
 
 ## Erledigt und vom Tisch
 
-- `db22c1a7` (designdone-de, nur Reload-Meldungen) im Papierkorb; „Continue“ dort öffnet `ebe0e90b`.
+- `<`-Heuristik bleibt nur als Fallback für Turns ohne `prompt.submit` (Notifications, Tests).
