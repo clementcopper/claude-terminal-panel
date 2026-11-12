@@ -325,6 +325,78 @@ Print nothing when the panel variables are set, or the line shows up twice.
 Write `sessionResetsAt` (Unix seconds) as well as `sessionResetsInMin`: the absolute point is what
 survives being remembered, and the minutes are recomputed from it at render time.
 
+### Progress lists
+
+> Contract v1, agreed 2026-11-12. The reader and the panel display are **not built yet**; this
+> section fixes what writers may rely on so they can be built first.
+
+A long-running program (a check runner, a build, a migration) or a project can hand the panel a
+list: a title and entries, each with a state. There are two places, one format:
+
+| List    | Path                                                                    | Written by                    | Lives                                                                                                   |
+| ------- | ----------------------------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Tab     | `$CLAUDE_PANEL_STATUS_DIR/progress/$CLAUDE_PANEL_TAB_ID/<list id>.json` | a program running in that tab | until the tab closes or a list with the same `id` replaces it; the writer never deletes it when it ends |
+| Project | `<group cwd>/.claude/progress/<list id>.json`                           | the project, committed to git | across sessions; every tab of the group shows it                                                        |
+
+- `<list id>` matches `[a-z0-9-]{1,40}` and equals the file's `id` field.
+- **Without both panel variables a program writes nothing** and behaves as before. Any process
+  started from a panel tab inherits them, a Bash tool call of Claude included.
+- Tab lists live in a subfolder on purpose: the watcher reads every `.json` directly inside
+  `$CLAUDE_PANEL_STATUS_DIR` as a tab's snapshot.
+
+```jsonc
+{
+  "v": 1,
+  "id": "kuza-check",
+  "title": "kuza check",
+  "state": "running", // running | done | failed — for a project list, running = in progress
+  "pid": 12345, // tab lists only; running with a dead pid is shown as cancelled
+  "startedAt": 1794484219373, // ms
+  "updatedAt": 1794484662071, // ms
+  "expectedSeconds": 1900, // optional
+  "paused": { "reason": "CPU throttled", "since": 1794484650000 }, // optional; absent = not paused
+  "detail": "/tmp/kuza-check-ab12", // optional path; the panel opens it only after asking
+  "items": [
+    { "id": "test", "label": "test", "state": "ok", "seconds": 71 },
+    { "id": "window", "label": "window", "state": "running", "startedAt": 1794484600000 },
+    {
+      "id": "height",
+      "label": "height",
+      "state": "failed",
+      "note": "…",
+      "log": "/tmp/…/height.log"
+    },
+    { "id": "mail", "label": "mail", "state": "pending" }
+  ]
+  // item.state: pending | running | ok | failed | blocked | info
+  // item fields beyond id, label, state are optional: seconds, startedAt, note, log
+}
+```
+
+`paused` exists so a wait between two entries (the runner holding off while macOS throttles the
+CPU) does not read as a hang. All times are milliseconds, like `.live.json`.
+
+**Writers**
+
+- Write atomically: a temp file in the same folder whose name does **not** end in `.json`
+  (`.<list id>.tmp-<pid>`), then `rename`.
+- Create the folder with `mkdir -p`, mode 700; the file gets mode 600.
+- A few writes per second at most. Two per entry plus one per pause is the expected rate.
+- Unknown fields are ignored; `v` only goes up for an incompatible change.
+
+**What the reader promises**
+
+- The file is as untrusted as terminal output: at most 200 items, `title` and `label` cut at 120
+  characters, `note` at 500, everything set as text, never as HTML, and no path is opened without
+  asking.
+- A file that does not parse is dropped and the last good one stands.
+- Closing a tab, or the window's own startup cleanup, removes `progress/<tab id>/`.
+
+**Reading a tab list from outside the panel** (for a `status` command in another terminal): the
+newest file by `updatedAt` among
+`$TMPDIR/claude-terminal-panel/status/*/progress/*/<list id>.json`. That path shape is part of
+the contract.
+
 ### Before the first render
 
 Claude Code only runs the statusLine command when it renders its own status line, which happens
