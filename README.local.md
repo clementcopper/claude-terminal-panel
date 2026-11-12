@@ -361,7 +361,7 @@ list: a title and entries, each with a state. There are two places, one format:
   "updatedAt": 1794484662071, // ms
   "expectedSeconds": 1900, // optional
   "paused": { "reason": "CPU throttled", "since": 1794484650000 }, // optional; absent = not paused
-  "detail": "/tmp/kuza-check-ab12", // optional path; the panel opens it only after asking
+  "detail": "/tmp/kuza-check-ab12", // optional path, absolute; a project list may give it relative to its cwd
   "items": [
     { "id": "test", "label": "test", "state": "ok", "seconds": 71 },
     { "id": "window", "label": "window", "state": "running", "startedAt": 1794484600000 },
@@ -381,6 +381,10 @@ list: a title and entries, each with a state. There are two places, one format:
 
 `paused` exists so a wait between two entries (the runner holding off while macOS throttles the
 CPU) does not read as a hang. All times are milliseconds, like `.live.json`.
+
+A list cancelled from outside (Ctrl-C, a crash) cannot write its end: it stays `running` with its
+running item, and the panel shows it cancelled once its `pid` is dead, with `updatedAt` as the end
+and that item as open. `blocked` items need only a `note` saying what is missing.
 
 **Writers**
 
