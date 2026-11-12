@@ -112,7 +112,14 @@ export function buildProgressChip(
     const close = document.createElement('button');
     close.className = 'progress-close';
     close.type = 'button';
-    close.textContent = '×';
+    // Drawn, not the × character: a glyph hangs on the baseline and sat 1.5 px below the title
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 8 8');
+    svg.setAttribute('aria-hidden', 'true');
+    const cross = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    cross.setAttribute('d', 'M1 1L7 7M7 1L1 7');
+    svg.appendChild(cross);
+    close.appendChild(svg);
     close.setAttribute('aria-label', `Dismiss ${list.title}`);
     close.dataset.tooltip = 'Dismiss';
     close.addEventListener('click', () => onDismiss(list.id));

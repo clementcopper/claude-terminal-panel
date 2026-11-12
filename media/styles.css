@@ -1165,14 +1165,28 @@ body.vscode-high-contrast-light {
   appearance: none;
   border: none;
   background: none;
-  padding: 0 2px;
+  /* A 16px square, centred on the head line like the spinner and the title */
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin: -2px -4px -2px 0;
   flex-shrink: 0;
-  font: inherit;
-  font-size: 14px;
-  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--vscode-descriptionForeground, #767676);
   border-radius: 3px;
   cursor: pointer;
+}
+
+.progress-close svg {
+  width: 8px;
+  height: 8px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
 }
 
 .progress-close:hover {
