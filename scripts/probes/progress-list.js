@@ -6,7 +6,7 @@
  * most likely to break. Checks: an atomic write arrives; a half-written file leaves the previous
  * list standing; items are capped at 200 and labels at 120 characters; a file whose `id` disagrees
  * with its name is ignored; a running list with a dead pid reads as cancelled, with a live one as
- * running; dismiss deletes the file; closing the tab removes its folder. Red before the watcher
+ * running; dismiss hides the run and keeps the file; closing the tab removes its folder. Red before the watcher
  * existed: the module was missing.
  */
 const fs = require('fs');
@@ -110,12 +110,47 @@ const lastFor = (tab) => {
     ['cancelled', 'done']
   );
 
+  const doneStartedAt = watcher.get('t2').find((l) => l.id === 'done').startedAt;
   watcher.dismiss('t2', 'done');
-  check('dismiss deletes the file', fs.existsSync(path.join(root, 't2', 'done.json')), false);
+  // The × hides the chip; the file lives until the tab closes, so `kuza status` still finds it
+  check('dismiss keeps the file', fs.existsSync(path.join(root, 't2', 'done.json')), true);
   check(
     'dismiss sends the rest',
     lastFor('t2').map((l) => l.id),
     ['build']
+  );
+  check(
+    'dismissed list stays hidden for a rebuilt webview',
+    watcher.get('t2').map((l) => l.id),
+    ['build']
+  );
+  write(
+    't2',
+    'done',
+    list({ id: 'done', title: 'done', state: 'done', pid: deadPid, startedAt: doneStartedAt })
+  );
+  await sleep(300);
+  check(
+    'the same run rewritten stays hidden',
+    watcher.get('t2').map((l) => l.id),
+    ['build']
+  );
+  write(
+    't2',
+    'done',
+    list({
+      id: 'done',
+      title: 'done',
+      state: 'running',
+      pid: process.pid,
+      startedAt: Date.now() + 1000
+    })
+  );
+  await sleep(300);
+  check(
+    'a new run with the same id shows again',
+    watcher.get('t2').map((l) => l.id),
+    ['build', 'done']
   );
 
   watcher.removeTerminal('t1');

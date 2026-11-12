@@ -119,6 +119,8 @@ export class ProgressWatcher {
   private readonly root: string;
   /** Tab id → list id → the last list that parsed. */
   private readonly lists = new Map<string, Map<string, StoredList>>();
+  /** Tab id → list id → `startedAt` of the run whose chip the × hid; a new run shows again. */
+  private readonly dismissed = new Map<string, Map<string, number>>();
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private watcher: fs.FSWatcher | undefined;
   private pidTimer: NodeJS.Timeout | undefined;
@@ -149,21 +151,24 @@ export class ProgressWatcher {
     return this.current(terminalId);
   }
 
-  /** The × on a finished chip: the list is gone for good, its file too. */
+  /**
+   * The × on a finished chip hides that run. The file stays until the tab closes: programs read
+   * it from outside the panel (`kuza status` shows the last check), and the contract promises it.
+   */
   dismiss(terminalId: string, listId: string): void {
     if (!LIST_ID.test(listId)) return;
-    this.lists.get(terminalId)?.delete(listId);
-    try {
-      fs.unlinkSync(path.join(this.root, terminalId, `${listId}.json`));
-    } catch {
-      // Already gone
-    }
+    const stored = this.lists.get(terminalId)?.get(listId);
+    if (!stored) return;
+    const byId = this.dismissed.get(terminalId) ?? new Map<string, number>();
+    byId.set(listId, stored.list.startedAt);
+    this.dismissed.set(terminalId, byId);
     this.emit(terminalId);
   }
 
   /** The tab closed: its lists and their folder go with it. */
   removeTerminal(terminalId: string): void {
     this.lists.delete(terminalId);
+    this.dismissed.delete(terminalId);
     for (const [key, timer] of this.timers) {
       if (key.startsWith(`${terminalId}/`)) {
         clearTimeout(timer);
@@ -214,7 +219,7 @@ export class ProgressWatcher {
     }
     const byId = this.lists.get(terminalId) ?? new Map<string, StoredList>();
     if (raw === undefined) {
-      // Deleted: by the × (already dropped) or by the writer starting over
+      // Deleted: by the writer starting over, or by hand
       if (!byId.delete(listId)) return;
     } else {
       const parsed = parseProgressList(raw, listId);
@@ -229,7 +234,9 @@ export class ProgressWatcher {
   private current(terminalId: string): ProgressList[] {
     const byId = this.lists.get(terminalId);
     if (!byId) return [];
+    const hidden = this.dismissed.get(terminalId);
     return [...byId.values()]
+      .filter(({ list }) => hidden?.get(list.id) !== list.startedAt)
       .map(({ list, pid }) =>
         list.state === 'running' && pid !== undefined && !isAlive(pid)
           ? { ...list, state: 'cancelled' as const, paused: undefined }

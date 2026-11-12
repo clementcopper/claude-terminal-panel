@@ -333,7 +333,8 @@ survives being remembered, and the minutes are recomputed from it at render time
 Each tab list is drawn as a chip under the prompt chip: mark, title, finished / total, run time
 and time left; one cell per item; the running or waiting item on the left of the foot, the
 failed ones on the right with their notes and logs in the tooltip. A finished or cancelled chip
-stays until its × is clicked, which deletes the file. `npm run probe` covers both halves
+stays until its × is clicked, which hides that run's chip; the file stays until the tab closes,
+so a program reading it from outside (`kuza status`) still finds the last run. `npm run probe` covers both halves
 (`progress-list.js`, `progress-chip.js`).
 
 A long-running program (a check runner, a build, a migration) or a project can hand the panel a
