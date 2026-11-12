@@ -146,6 +146,20 @@ Aus `CLAUDE.md` [gelesen] und `.claude/rules/` [Agent]:
 Panel-Tab, einmal im Vordergrund und einmal als Hintergrund-Aufruf, Daniel schaut zu. Ein grüner Test auf einer
 der beiden Seiten ist keine Abnahme.
 
+## Was Daniel entschieden hat
+
+- 12.11.2026: Erst der Vertrag, dann die Anzeige. Vertrag v1 in `README.local.md` § Progress lists (a7966d6).
+- 12.11.2026: Projektlisten liegen in `<cwd>/.claude/progress/<list id>.json`.
+- 12.11.2026: Layout **A**: ein zweiter Chip unter dem Prompt-Chip, eine Zelle je Eintrag, Kopfzeile mit Titel,
+  Zählung, Laufzeit und Restzeit, Fußzeile mit dem laufenden und dem roten Eintrag. Verworfen: Ring in der
+  Statuszeile (B), Liste über der Statuszeile (C). Bilder: https://claude.ai/artifact/AsvznDFjpAnXTZUHWjMsGv
+- 12.11.2026: Zustände von A abgenommen: Pause (❚❚, Pausenzeit, nächster Eintrag), fertig (Haken, Gesamtzeit,
+  „27 grün · 1 rot“), abgebrochen (graues Quadrat, kein Rot). Bilder: https://claude.ai/artifact/3L2Eh6NWUxpfmiicMsh7Aj
+- 12.11.2026: Ein fertiger oder abgebrochener Chip bleibt stehen, bis Daniel ihn schließt (× im Chip). Gewählt gegen
+  „bis zum nächsten Prompt“ und „feste Zeit“; Kosten: 67 px je stehendem Chip.
+- 12.11.2026: Erst nur das VS-Code-Panel; Figma Claude folgt, wenn sich der Chip mit einem echten `kuza check`
+  bewährt hat.
+
 ## Fragen an Daniel (einzeln stellen)
 
 - Wo im Panel steht die Liste? Zwei bis drei vollständige Layouts nebeneinander, aus der Formensprache der
