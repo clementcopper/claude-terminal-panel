@@ -162,6 +162,7 @@ der beiden Seiten ist keine Abnahme.
 - 12.11.2026: Der Chip startet eingeklappt (eine Zeile wie der Prompt-Chip, 27 px); ein Klick auf die Kopfzeile
   klappt ihn auf (Streifen und Fußzeile, 61 px), ein zweiter wieder zu. Das × gegen die Ziffern daneben ausgerichtet,
   1 px angehoben (3cdfcc5).
+- 12.11.2026: Eingeklappt zeigt die Kopfzeile ein rotes „1 failed“; aufgeklappt nennt die Fußzeile die Läufe.
 
 ## Fragen an Daniel (einzeln stellen)
 

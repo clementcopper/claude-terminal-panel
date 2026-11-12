@@ -1307,6 +1307,12 @@ body.vscode-high-contrast-light {
   color: var(--vscode-foreground, #cccccc);
 }
 
+.progress-fail-count {
+  flex-shrink: 0;
+  color: var(--progress-failed);
+  font-weight: 600;
+}
+
 .progress-bad {
   margin-left: auto;
   min-width: 0;

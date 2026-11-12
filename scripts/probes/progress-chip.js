@@ -51,7 +51,7 @@ count:q('.progress-count')?q('.progress-count').textContent:null,time:q('.progre
 spinner:!!q('.status-spinner'),mark:q('.progress-mark')?q('.progress-mark').textContent:null,
 now:q('.progress-now')?q('.progress-now').textContent:null,bad:q('.progress-bad')?q('.progress-bad').textContent:null,
 badTip:q('.progress-bad')?q('.progress-bad').dataset.tooltip:null,close:!!q('.progress-close'),
-markup:c?c.querySelectorAll('img,script').length:0,folded:c?c.classList.contains('collapsed'):null,stripShown:!!(q('.progress-strip')&&q('.progress-strip').offsetHeight>0),expanded:q('.progress-toggle')?q('.progress-toggle').getAttribute('aria-expanded'):null,chipH:c?Math.round(c.getBoundingClientRect().height):0,
+markup:c?c.querySelectorAll('img,script').length:0,folded:c?c.classList.contains('collapsed'):null,failCount:q('.progress-fail-count')?q('.progress-fail-count').textContent:null,stripShown:!!(q('.progress-strip')&&q('.progress-strip').offsetHeight>0),expanded:q('.progress-toggle')?q('.progress-toggle').getAttribute('aria-expanded'):null,chipH:c?Math.round(c.getBoundingClientRect().height):0,
 rows:document.querySelectorAll('#terminal-t1 .xterm-rows > div').length}};
 </script></body></html>`
 );
@@ -177,6 +177,7 @@ const running = (extra) => ({
   check('labels are text, not markup', run.markup, 0);
   check('chip takes rows from the terminal', run.rows < fresh.rows, true);
   check('starts folded', run.folded, true);
+  check('folded: red failed count in the head', run.failCount, '1 failed');
   check('folded: no strip', run.stripShown, false);
   check('folded: aria-expanded false', run.expanded, 'false');
 
@@ -189,6 +190,7 @@ const running = (extra) => ({
   const opened = await toggle();
   check('click: open', opened.folded, false);
   check('open: strip shown', opened.stripShown, true);
+  check('open: no failed count in the head', opened.failCount, null);
   check('open: aria-expanded true', opened.expanded, 'true');
   check('open: taller', opened.chipH > run.chipH, true);
   check('open: terminal loses rows', opened.rows < run.rows, true);

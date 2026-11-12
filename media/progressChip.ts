@@ -130,6 +130,15 @@ export function buildProgressChip(
     span('progress-time', headTime(list, now)),
     drawn('progress-chevron', expanded ? 'M1 5L4 2L7 5' : 'M1 3L4 6L7 3')
   );
+  // Folded, the foot with its failures is gone; a red count in the head keeps them in sight
+  // (Daniel, 2026-11-12). Open, the foot names them and this would say it twice.
+  const failedCount = list.items.filter((item) => item.state === 'failed').length;
+  if (!expanded && failedCount > 0) {
+    toggle.insertBefore(
+      span('progress-fail-count', `${String(failedCount)} failed`),
+      toggle.querySelector('.progress-time')
+    );
+  }
   toggle.addEventListener('click', () => onToggle(list.id));
   head.appendChild(toggle);
   if (list.state !== 'running') {
