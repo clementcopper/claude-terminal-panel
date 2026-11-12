@@ -90,36 +90,54 @@ function mark(list: ProgressList): HTMLElement {
   );
 }
 
+/** An 8px stroke icon, the × and the fold arrow; both sit on the head line the same way. */
+function drawn(className: string, d: string): SVGSVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  if (className) svg.setAttribute('class', className);
+  svg.setAttribute('viewBox', '0 0 8 8');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', d);
+  svg.appendChild(path);
+  return svg;
+}
+
 export function buildProgressChip(
   list: ProgressList,
-  onDismiss: (listId: string) => void
+  onDismiss: (listId: string) => void,
+  expanded = false,
+  onToggle: (listId: string) => void = () => undefined
 ): HTMLElement {
   const now = Date.now();
   const chip = document.createElement('div');
-  chip.className = `progress-chip ${list.state}`;
+  chip.className = `progress-chip ${list.state}${expanded ? '' : ' collapsed'}`;
   chip.dataset.listId = list.id;
 
   const finished = list.items.filter((item) => FINISHED_ITEM.has(item.state)).length;
   const head = document.createElement('div');
   head.className = 'progress-head';
-  head.append(
+  // The head line is the button that opens and folds the chip (Daniel, 2026-11-12): folded by
+  // default, one line; the × beside it is its own button, never nested inside this one.
+  const toggle = document.createElement('button');
+  toggle.className = 'progress-toggle';
+  toggle.type = 'button';
+  toggle.setAttribute('aria-expanded', String(expanded));
+  toggle.dataset.tooltip = expanded ? 'Fold' : 'Show progress';
+  toggle.append(
     mark(list),
     span('progress-title', list.title),
     span('progress-count', `${String(finished)} / ${String(list.items.length)}`),
-    span('progress-time', headTime(list, now))
+    span('progress-time', headTime(list, now)),
+    drawn('progress-chevron', expanded ? 'M1 5L4 2L7 5' : 'M1 3L4 6L7 3')
   );
+  toggle.addEventListener('click', () => onToggle(list.id));
+  head.appendChild(toggle);
   if (list.state !== 'running') {
     const close = document.createElement('button');
     close.className = 'progress-close';
     close.type = 'button';
     // Drawn, not the × character: a glyph hangs on the baseline and sat 1.5 px below the title
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('viewBox', '0 0 8 8');
-    svg.setAttribute('aria-hidden', 'true');
-    const cross = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    cross.setAttribute('d', 'M1 1L7 7M7 1L1 7');
-    svg.appendChild(cross);
-    close.appendChild(svg);
+    close.appendChild(drawn('', 'M1 1L7 7M7 1L1 7'));
     close.setAttribute('aria-label', `Dismiss ${list.title}`);
     close.dataset.tooltip = 'Dismiss';
     close.addEventListener('click', () => onDismiss(list.id));
@@ -154,6 +172,9 @@ export function buildProgressChip(
     foot.appendChild(right);
   }
 
+  // Folded, the chip is its head line alone; the strip and the foot wait in the DOM
+  strip.hidden = !expanded;
+  foot.hidden = !expanded;
   chip.append(head, strip, foot);
   return chip;
 }

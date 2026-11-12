@@ -649,6 +649,8 @@ class StatusLineView {
   private busyTimer: number | undefined;
   /** Progress lists per tab, drawn as chips under the prompt chip; see `progressChip.ts`. */
   private readonly progress = new Map<string, ProgressList[]>();
+  /** Chips opened by a click, as `<tab id>/<list id>`; every chip starts folded. */
+  private readonly expandedLists = new Set<string>();
   /** Moves the chips' times once a second while a list of the active tab runs. */
   private progressTimer: number | undefined;
 
@@ -705,6 +707,11 @@ class StatusLineView {
     } else {
       this.progress.delete(id);
     }
+    // A list that is gone takes its open state with it; a new one with the same id starts folded
+    for (const key of this.expandedLists) {
+      const [tab, listId] = key.split('/');
+      if (tab === id && !lists.some((list) => list.id === listId)) this.expandedLists.delete(key);
+    }
     if (id === this.activeId) {
       this.render();
     }
@@ -713,6 +720,9 @@ class StatusLineView {
   remove(id: string): void {
     this.snapshots.delete(id);
     this.progress.delete(id);
+    for (const key of this.expandedLists) {
+      if (key.startsWith(`${id}/`)) this.expandedLists.delete(key);
+    }
     if (id === this.activeId) {
       this.activeId = null;
       this.render();
@@ -782,8 +792,28 @@ class StatusLineView {
       bar.appendChild(chip);
     }
     for (const list of lists) {
-      bar.appendChild(buildProgressChip(list, (listId) => this.dismissProgress(listId)));
+      const tab = this.activeId ?? '';
+      bar.appendChild(
+        buildProgressChip(
+          list,
+          (listId) => this.dismissProgress(listId),
+          this.expandedLists.has(`${tab}/${list.id}`),
+          (listId) => this.toggleProgress(listId)
+        )
+      );
     }
+  }
+
+  /** Opens or folds one chip; `render()` measures the new height and refits the terminal. */
+  private toggleProgress(listId: string): void {
+    if (!this.activeId) return;
+    const key = `${this.activeId}/${listId}`;
+    if (!this.expandedLists.delete(key)) this.expandedLists.add(key);
+    this.render();
+    // The bar was rebuilt; keep the keyboard on the same chip's head
+    this.promptElement
+      .querySelector<HTMLElement>(`.progress-chip[data-list-id="${listId}"] .progress-toggle`)
+      ?.focus();
   }
 
   /** Drops the chip at once; the host deletes the file and confirms with the remaining lists. */

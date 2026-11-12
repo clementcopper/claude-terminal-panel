@@ -1114,6 +1114,61 @@ body.vscode-high-contrast-light {
   margin-top: 0;
 }
 
+.progress-chip.collapsed {
+  padding: 6px 10px;
+}
+
+/* `hidden` alone loses against the `display: flex` of both rows */
+.progress-chip.collapsed .progress-strip,
+.progress-chip.collapsed .progress-foot {
+  display: none;
+}
+
+/* The head line opens and folds the chip; a button that looks like the line it is */
+.progress-toggle {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.progress-toggle:focus {
+  outline: none;
+}
+
+/* Fills, not rings: hovering or focusing the head darkens the whole chip a step */
+.progress-chip:has(.progress-toggle:hover),
+.progress-chip:has(.progress-toggle:focus-visible) {
+  background-color: color-mix(
+    in srgb,
+    var(--vscode-descriptionForeground, #767676) 13%,
+    var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e))
+  );
+}
+
+.progress-chevron {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  display: block;
+  fill: none;
+  stroke: var(--vscode-descriptionForeground, #767676);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* Same optical lift as the × beside it (3cdfcc5) */
+  transform: translateY(-1px);
+}
+
 .progress-head,
 .progress-foot {
   display: flex;

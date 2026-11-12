@@ -159,6 +159,9 @@ der beiden Seiten ist keine Abnahme.
   „bis zum nächsten Prompt“ und „feste Zeit“; Kosten: 67 px je stehendem Chip.
 - 12.11.2026: Erst nur das VS-Code-Panel; Figma Claude folgt, wenn sich der Chip mit einem echten `kuza check`
   bewährt hat.
+- 12.11.2026: Der Chip startet eingeklappt (eine Zeile wie der Prompt-Chip, 27 px); ein Klick auf die Kopfzeile
+  klappt ihn auf (Streifen und Fußzeile, 61 px), ein zweiter wieder zu. Das × gegen die Ziffern daneben ausgerichtet,
+  1 px angehoben (3cdfcc5).
 
 ## Fragen an Daniel (einzeln stellen)
 
