@@ -132,7 +132,8 @@ export type WebviewIncomingMessage =
   | { type: 'editorContext'; data: EditorContext | null }
   | { type: 'focusTerminal' }
   | { type: 'pasteText'; id: string; text: string }
-  | { type: 'contextThreshold'; value: number };
+  | { type: 'contextThreshold'; value: number }
+  | { type: 'progress'; id: string; lists: ProgressList[] };
 
 /** One dropped file: its name and its bytes as base64. Mirror of `DroppedFile` in `src/types.ts`. */
 export interface DroppedFile {
@@ -160,7 +161,8 @@ export type WebviewOutgoingMessage =
   | { type: 'pasteRequest'; id: string }
   | { type: 'dropFiles'; id: string; files: DroppedFile[] }
   | { type: 'promptContextThreshold' }
-  | { type: 'themeApplied' };
+  | { type: 'themeApplied' }
+  | { type: 'dismissProgress'; id: string; listId: string };
 
 // Terminal entry in the map
 export interface TerminalEntry {
@@ -187,3 +189,31 @@ export interface TerminalEntry {
 
 // xterm.js theme type (re-export for convenience)
 export type XTermTheme = ITheme;
+
+/**
+ * A progress list a program in a tab wrote under `progress/<tab id>/` — the contract is
+ * `README.local.md` § Progress lists. Declared twice like every message shape here (`src/types.ts`,
+ * `media/types.ts`). `cancelled` is never written by a program: the watcher reports a `running`
+ * list whose process is gone that way.
+ */
+export interface ProgressItem {
+  id: string;
+  label: string;
+  state: 'pending' | 'running' | 'ok' | 'failed' | 'blocked' | 'info';
+  seconds?: number;
+  startedAt?: number;
+  note?: string;
+  log?: string;
+}
+
+export interface ProgressList {
+  id: string;
+  title: string;
+  state: 'running' | 'done' | 'failed' | 'cancelled';
+  startedAt: number;
+  updatedAt: number;
+  expectedSeconds?: number;
+  paused?: { reason: string; since: number };
+  detail?: string;
+  items: ProgressItem[];
+}

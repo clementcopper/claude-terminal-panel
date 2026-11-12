@@ -11,8 +11,10 @@ import type {
   XTermTheme,
   StatusLineSnapshot,
   EditorContext,
-  DroppedFile
+  DroppedFile,
+  ProgressList
 } from './types';
+import { buildProgressChip, progressTicks, tickProgressChip } from './progressChip';
 
 // File path link provider for terminal
 class FileLinkProvider implements ILinkProvider {
@@ -428,6 +430,9 @@ const messageHandlers: MessageHandlers = {
   },
   contextThreshold: (message, ctx) => {
     ctx.setContextThreshold(message.value);
+  },
+  progress: (message, ctx) => {
+    ctx.setProgress(message.id, message.lists);
   }
 };
 
@@ -642,6 +647,10 @@ class StatusLineView {
   private tickTimer: number | undefined;
   /** Moves the run time once a second while the active tab is busy; see `scheduleBusyTick`. */
   private busyTimer: number | undefined;
+  /** Progress lists per tab, drawn as chips under the prompt chip; see `progressChip.ts`. */
+  private readonly progress = new Map<string, ProgressList[]>();
+  /** Moves the chips' times once a second while a list of the active tab runs. */
+  private progressTimer: number | undefined;
 
   /** Mirrors the setting; the extension host owns the value, this is the drawn copy. */
   private threshold = 60;
@@ -653,7 +662,8 @@ class StatusLineView {
     private readonly onHeightChange: () => void,
     private readonly onEditorReferenceClick: () => void,
     private readonly onStopTurn: () => void,
-    private readonly onThresholdPrompt: () => void
+    private readonly onThresholdPrompt: () => void,
+    private readonly onDismissProgress: (listId: string) => void
   ) {
     // Centring is a measurement, not a breakpoint, so it has to be taken again whenever the panel
     // changes width — a resize on its own never rebuilds the row. Toggling `justify-content`
@@ -689,8 +699,20 @@ class StatusLineView {
     this.render();
   }
 
+  setProgress(id: string, lists: ProgressList[]): void {
+    if (lists.length > 0) {
+      this.progress.set(id, lists);
+    } else {
+      this.progress.delete(id);
+    }
+    if (id === this.activeId) {
+      this.render();
+    }
+  }
+
   remove(id: string): void {
     this.snapshots.delete(id);
+    this.progress.delete(id);
     if (id === this.activeId) {
       this.activeId = null;
       this.render();
@@ -731,29 +753,65 @@ class StatusLineView {
   private drawPromptBar(snapshot: StatusLineSnapshot | undefined): void {
     const bar = this.promptElement;
     const prompt = snapshot?.prompt;
+    const lists = this.activeId ? (this.progress.get(this.activeId) ?? []) : [];
     bar.textContent = '';
-    if (!prompt) {
+    delete bar.dataset.tooltip;
+    // The bar carries the prompt chip and the progress chips under it; either keeps it open
+    if (!prompt && lists.length === 0) {
       bar.hidden = true;
-      delete bar.dataset.tooltip;
       return;
     }
     bar.hidden = false;
-    const before = snapshot.before;
-    bar.dataset.tooltip = before ? `✻ ${before}\n❯ ${prompt}` : prompt;
-    const tint = snapshot.color ? StatusLineView.SESSION_COLORS[snapshot.color] : undefined;
-    if (tint) {
-      bar.style.setProperty('--prompt-tint', tint);
-    } else {
-      bar.style.removeProperty('--prompt-tint');
+    if (prompt) {
+      const before = snapshot.before;
+      const tint = snapshot.color ? StatusLineView.SESSION_COLORS[snapshot.color] : undefined;
+      if (tint) {
+        bar.style.setProperty('--prompt-tint', tint);
+      } else {
+        bar.style.removeProperty('--prompt-tint');
+      }
+      const chip = document.createElement('div');
+      chip.className = 'prompt-chip';
+      // On the chip, not the bar: the progress chips below carry tooltips of their own
+      chip.dataset.tooltip = before ? `✻ ${before}\n❯ ${prompt}` : prompt;
+      // What Claude's answer before the prompt was about, then the prompt: the last exchange
+      if (before) {
+        chip.appendChild(StatusLineView.promptLine('before', '✻', before));
+      }
+      chip.appendChild(StatusLineView.promptLine('said', '❯', prompt));
+      bar.appendChild(chip);
     }
-    const chip = document.createElement('div');
-    chip.className = 'prompt-chip';
-    // What Claude's answer before the prompt was about, then the prompt: the last exchange
-    if (before) {
-      chip.appendChild(StatusLineView.promptLine('before', '✻', before));
+    for (const list of lists) {
+      bar.appendChild(buildProgressChip(list, (listId) => this.dismissProgress(listId)));
     }
-    chip.appendChild(StatusLineView.promptLine('said', '❯', prompt));
-    bar.appendChild(chip);
+  }
+
+  /** Drops the chip at once; the host deletes the file and confirms with the remaining lists. */
+  private dismissProgress(listId: string): void {
+    if (!this.activeId) return;
+    const lists = (this.progress.get(this.activeId) ?? []).filter((list) => list.id !== listId);
+    this.setProgress(this.activeId, lists);
+    this.onDismissProgress(listId);
+  }
+
+  /** One timer for every running chip of the active tab; it rewrites text, never the bar. */
+  private scheduleProgressTick(): void {
+    const lists = this.activeId ? (this.progress.get(this.activeId) ?? []) : [];
+    const wanted = lists.some(progressTicks);
+    if (wanted && this.progressTimer === undefined) {
+      this.progressTimer = window.setInterval(() => {
+        const current = this.activeId ? (this.progress.get(this.activeId) ?? []) : [];
+        for (const list of current) {
+          const chip = this.promptElement.querySelector<HTMLElement>(
+            `.progress-chip[data-list-id="${list.id}"]`
+          );
+          if (chip) tickProgressChip(chip, list);
+        }
+      }, StatusLineView.BUSY_TICK_MS);
+    } else if (!wanted && this.progressTimer !== undefined) {
+      window.clearInterval(this.progressTimer);
+      this.progressTimer = undefined;
+    }
   }
 
   /** One line of the prompt bar: a mark and text cut with an ellipsis. */
@@ -815,6 +873,7 @@ class StatusLineView {
     this.scheduleTick(snapshot);
     this.scheduleBusyTick(snapshot);
     this.drawPromptBar(snapshot);
+    this.scheduleProgressTick();
 
     // The editor row stands on its own: a tab Claude has not rendered yet still has a file open
     // next to it.
@@ -1535,8 +1594,18 @@ class WebviewContext {
       },
       () => {
         this.postMessage({ type: 'promptContextThreshold' });
+      },
+      (listId) => {
+        const id = this.state.getActiveId();
+        if (id) {
+          this.postMessage({ type: 'dismissProgress', id, listId });
+        }
       }
     );
+  }
+
+  setProgress(id: string, lists: ProgressList[]): void {
+    this.statusLine.setProgress(id, lists);
   }
 
   setContextThreshold(value: number): void {

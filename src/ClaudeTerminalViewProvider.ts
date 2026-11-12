@@ -25,6 +25,7 @@ import { readPasteboard } from './clipboardPaste';
 import { startModelLimitsPoll } from './usageLimits';
 import { PromptDetector, type PromptDetectorConfig } from './promptDetector';
 import { StatusLineWatcher } from './statusLineWatcher';
+import { ProgressWatcher } from './progressWatcher';
 import { EditorContextTracker } from './editorContextTracker';
 import { InterAgentRouter } from './interagent/InterAgentRouter';
 import { log } from './log';
@@ -69,6 +70,8 @@ export class ClaudeTerminalViewProvider
   /** Last keystroke per tab, so a state older than the user's own input does not raise the pill. */
   private readonly lastInputAt = new Map<string, number>();
   private readonly statusLineWatcher: StatusLineWatcher;
+  /** Progress lists programs in a tab write; see `progressWatcher.ts`. */
+  private readonly progressWatcher: ProgressWatcher;
   /** Fable's own weekly window and any other per-model one; see `usageLimits.ts`. */
   private readonly modelLimitsPoll: { dispose(): void };
   private readonly editorTracker: EditorContextTracker;
@@ -172,6 +175,11 @@ export class ClaudeTerminalViewProvider
       this.checkContextThreshold(terminalId, snapshot);
     });
 
+    // After the status line watcher: it creates the window folder the lists live in.
+    this.progressWatcher = new ProgressWatcher((terminalId, lists) => {
+      this.postMessage({ type: 'progress', id: terminalId, lists });
+    });
+
     // Only while a CLI is running: a window of cold restored tabs has no ring worth updating.
     this.modelLimitsPoll = startModelLimitsPoll(
       () => this.stateManager.getAll().some((tab) => this.ptyManager.isRunning(tab.id)),
@@ -223,6 +231,11 @@ export class ClaudeTerminalViewProvider
       default:
         return 'dark';
     }
+  }
+
+  /** The × on a finished progress chip. */
+  handleDismissProgress(id: string, listId: string): void {
+    this.progressWatcher.dismiss(id, listId);
   }
 
   /**
@@ -285,6 +298,10 @@ export class ClaudeTerminalViewProvider
         this.postMessage({ type: 'statusLine', id: tab.id, data: snapshot });
       } else {
         this.sendInitialStatusLine(tab.id, tab.cwd);
+      }
+      const lists = this.progressWatcher.get(tab.id);
+      if (lists.length > 0) {
+        this.postMessage({ type: 'progress', id: tab.id, lists });
       }
     }
     this.sendGroupsUpdate();
@@ -1159,6 +1176,7 @@ export class ClaudeTerminalViewProvider
     this.lastInputAt.delete(terminalId);
     this.promptDetector.removeTerminal(terminalId);
     this.statusLineWatcher.removeTerminal(terminalId);
+    this.progressWatcher.removeTerminal(terminalId);
     this.thresholdNotified.delete(terminalId);
     this.coldTerminals.delete(terminalId);
     this.exitRecovery.delete(terminalId);
@@ -1420,6 +1438,7 @@ export class ClaudeTerminalViewProvider
     this.promptDetector.dispose();
     this.modelLimitsPoll.dispose();
     this.statusLineWatcher.dispose();
+    this.progressWatcher.dispose();
     this.editorTracker.dispose();
     this.configManager.dispose();
   }

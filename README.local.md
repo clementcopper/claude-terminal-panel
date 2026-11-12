@@ -327,8 +327,14 @@ survives being remembered, and the minutes are recomputed from it at render time
 
 ### Progress lists
 
-> Contract v1, agreed 2026-11-12. The reader and the panel display are **not built yet**; this
-> section fixes what writers may rely on so they can be built first.
+> Contract v1, agreed 2026-11-12. **Tab lists are read and drawn** (`src/progressWatcher.ts`,
+> `media/progressChip.ts`); project lists are not read yet.
+
+Each tab list is drawn as a chip under the prompt chip: mark, title, finished / total, run time
+and time left; one cell per item; the running or waiting item on the left of the foot, the
+failed ones on the right with their notes and logs in the tooltip. A finished or cancelled chip
+stays until its × is clicked, which deletes the file. `npm run probe` covers both halves
+(`progress-list.js`, `progress-chip.js`).
 
 A long-running program (a check runner, a build, a migration) or a project can hand the panel a
 list: a title and entries, each with a state. There are two places, one format:

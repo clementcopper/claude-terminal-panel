@@ -1079,3 +1079,166 @@ body.vscode-high-contrast-light {
     animation: none;
   }
 }
+
+/* Progress lists under the prompt chip — layout A (Sessions/Fortschritt-Auftrag.md). Same shape as
+   the prompt chip, a quieter fill, and the status line's own state colours: its ring fill for
+   done, its danger red for failed, its warning orange for blocked, its track grey for open. The
+   fill of a done cell is the ring's purple rather than a green, because the panel has no green. */
+.progress-chip {
+  --progress-ok: #7878ff;
+  --progress-failed: #ec1500;
+  --progress-blocked: #fda400;
+  --progress-open: var(--vscode-editorWidget-border, #c8c8c8);
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 10px 8px;
+  border-radius: 6px;
+  background-color: color-mix(
+    in srgb,
+    var(--vscode-descriptionForeground, #767676) 7%,
+    var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e))
+  );
+  color: var(--vscode-foreground, #cccccc);
+  font-family: var(--panel-ui-font);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* The prompt chip above has no margin of its own; the first progress chip without a prompt
+   chip sits at the bar's own top padding */
+#prompt-bar > .progress-chip:first-child {
+  margin-top: 0;
+}
+
+.progress-head,
+.progress-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.progress-mark {
+  width: 12px;
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 9px;
+  line-height: 12px;
+  color: var(--vscode-descriptionForeground, #767676);
+}
+
+.progress-mark.done {
+  color: var(--progress-ok);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.progress-mark.failed {
+  color: var(--progress-failed);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.progress-title {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.progress-count,
+.progress-time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-time {
+  margin-left: auto;
+  color: var(--vscode-descriptionForeground, #767676);
+}
+
+.progress-close {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0 2px;
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--vscode-descriptionForeground, #767676);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.progress-close:hover {
+  background-color: var(--vscode-toolbar-hoverBackground, rgba(184, 184, 184, 0.31));
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.progress-close:focus {
+  outline: none;
+}
+
+.progress-close:focus-visible {
+  background-color: var(--vscode-toolbar-hoverBackground, rgba(184, 184, 184, 0.31));
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.progress-strip {
+  display: flex;
+  gap: 2px;
+}
+
+.progress-cell {
+  flex: 1;
+  min-width: 0;
+  height: 5px;
+  border-radius: 1.5px;
+  background-color: var(--progress-open);
+}
+
+.progress-cell.ok,
+.progress-cell.info {
+  background-color: var(--progress-ok);
+}
+
+.progress-cell.failed {
+  background-color: var(--progress-failed);
+}
+
+.progress-cell.blocked {
+  background-color: var(--progress-blocked);
+}
+
+.progress-cell.running {
+  background-color: color-mix(in srgb, var(--progress-ok) 40%, var(--progress-open));
+}
+
+.progress-foot {
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground, #767676);
+}
+
+.progress-now {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.progress-chip.running .progress-now {
+  color: var(--vscode-foreground, #cccccc);
+}
+
+.progress-bad {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--progress-failed);
+  font-weight: 600;
+}

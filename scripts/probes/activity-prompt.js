@@ -49,7 +49,7 @@ window.__rows=()=>document.querySelectorAll('#terminal-t1 .xterm-rows > div').le
 window.__status=d=>send({type:'statusLine',id:'t1',data:d});
 window.__read=()=>{const bar=document.getElementById('prompt-bar');const text=bar&&bar.querySelector('.prompt-line.said .prompt-text');const bt=bar&&bar.querySelector('.prompt-line.before .prompt-text');const bm=bar&&bar.querySelector('.prompt-line.before .prompt-mark');
 const el=document.querySelector('.status-elapsed');const cwd=document.querySelector('.status-cwd');
-return {before:bt?bt.textContent:null,beforeMark:bm?bm.textContent:null,beforeColor:bm?getComputedStyle(bm).color:null,beforeCut:bt?bt.scrollWidth>bt.clientWidth:null,barShown:!!bar&&!bar.hidden,barText:text?text.textContent:null,barTooltip:bar?bar.dataset.tooltip||null:null,
+return {before:bt?bt.textContent:null,beforeMark:bm?bm.textContent:null,beforeColor:bm?getComputedStyle(bm).color:null,beforeCut:bt?bt.scrollWidth>bt.clientWidth:null,barShown:!!bar&&!bar.hidden,barText:text?text.textContent:null,barTooltip:bar&&bar.querySelector('.prompt-chip')?bar.querySelector('.prompt-chip').dataset.tooltip||null:null,
 barCut:text?text.scrollWidth>text.clientWidth:null,tint:bar?bar.style.getPropertyValue('--prompt-tint'):null,
 spinner:!!document.querySelector('.status-spinner'),elapsed:el?el.textContent:null,row:cwd?cwd.textContent:null,rows:window.__rows()}};
 </script></body></html>`

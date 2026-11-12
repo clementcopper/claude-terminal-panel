@@ -295,7 +295,9 @@ export type WebviewMessage =
    * point in time (after the new background is live in xterm) at which OpenCode tabs can safely be
    * poked to re-resolve their theme — poking earlier races the 50 ms sample delay in the webview.
    */
-  | { type: 'themeApplied' };
+  | { type: 'themeApplied' }
+  /** The × on a finished progress chip: the watcher deletes that list's file. */
+  | { type: 'dismissProgress'; id: string; listId: string };
 
 // Extension message types (from extension to webview)
 export type ExtensionMessage =
@@ -332,4 +334,34 @@ export type ExtensionMessage =
   /** Text for xterm's `paste()`, which adds the bracketed-paste markers when the CLI wants them. */
   | { type: 'pasteText'; id: string; text: string }
   // The threshold lives in the settings; the webview only draws and drags it
-  | { type: 'contextThreshold'; value: number };
+  | { type: 'contextThreshold'; value: number }
+  /** Every progress list of one tab, oldest first; an empty array clears them. */
+  | { type: 'progress'; id: string; lists: ProgressList[] };
+
+/**
+ * A progress list a program in a tab wrote under `progress/<tab id>/` — the contract is
+ * `README.local.md` § Progress lists. Declared twice like every message shape here (`src/types.ts`,
+ * `media/types.ts`). `cancelled` is never written by a program: the watcher reports a `running`
+ * list whose process is gone that way.
+ */
+export interface ProgressItem {
+  id: string;
+  label: string;
+  state: 'pending' | 'running' | 'ok' | 'failed' | 'blocked' | 'info';
+  seconds?: number;
+  startedAt?: number;
+  note?: string;
+  log?: string;
+}
+
+export interface ProgressList {
+  id: string;
+  title: string;
+  state: 'running' | 'done' | 'failed' | 'cancelled';
+  startedAt: number;
+  updatedAt: number;
+  expectedSeconds?: number;
+  paused?: { reason: string; since: number };
+  detail?: string;
+  items: ProgressItem[];
+}

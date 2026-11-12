@@ -24,6 +24,7 @@ export interface MessageHandlerContext {
   handleDropFiles(id: string, files: DroppedFile[]): void;
   handlePromptContextThreshold(): void;
   handleThemeApplied(): void;
+  handleDismissProgress(id: string, listId: string): void;
 }
 
 type MessageHandler<T extends WebviewMessage> = (message: T, ctx: MessageHandlerContext) => void;
@@ -93,6 +94,9 @@ const messageHandlers: MessageHandlerMap = {
   },
   themeApplied: (_message, ctx) => {
     ctx.handleThemeApplied();
+  },
+  dismissProgress: (message, ctx) => {
+    ctx.handleDismissProgress(message.id, message.listId);
   }
 };
 
