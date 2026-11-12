@@ -166,6 +166,12 @@ Non-obvious findings and dead ends. Only add what saves future work.
 
 ## Webview
 
+- **`hidden` loses against an author `display`.** (12.11.2026) The folded progress chip set
+  `hidden` on its strip and foot, both `display: flex` in `styles.css`; the UA's `[hidden]` rule
+  is weaker, so the chip stayed 58 px instead of 27 px. The probe's visibility check read the
+  attribute and was green; the height check next to it caught it. Fixed with a `.collapsed`
+  rule that sets `display: none`.
+
 - **`xterm.css` paints the viewport `#000`** (`.xterm .xterm-viewport`, line 93 — a workaround for
   opaque macOS scrollbars). xterm colours the cells from its theme but not that surface, and
   `FitAddon` works in whole rows, so the leftover strip below the last row showed as a black band
@@ -524,11 +530,12 @@ git apply --check` sagt pro Commit, ob er noch auf `main` passt (git 2.39 kennt 
 
 ## Statuszeile
 
-- **Ein Icon richtet sich am Nachbarn aus, nicht am Titel.** (12.11.2026) Das × im Fortschritts-Chip
-  war als Schriftzeichen 1,5 px zu tief (hängt an der Grundlinie). Als gezeichnetes Kreuz lag es
-  auf die Titelmitte genau (0,25 px), und Daniel fand es „immer noch zu tief“: Daneben steht die
-  Zeit „29:12“, deren Ziffernmitte 0,75 px höher liegt. Vier Höhen nebeneinander, er nahm 1 px
-  höher (0,25 px über der Ziffernmitte). Gemessen an den gemalten Pixeln (Tintenband je Spalte).
+- **An icon aligns with the text right beside it, not with the title.** (12.11.2026) The × in the
+  progress chip sat 1.5 px low as a typed character (it hangs on the baseline). Drawn as an SVG
+  cross it sat exactly on the title's middle (0.25 px off), and Daniel still found it "too low":
+  beside it stands the time "29:12", whose digit middle is 0.75 px higher. Four heights side by
+  side, he took 1 px up (0.25 px above the digits). Measured on the painted pixels, ink band per
+  column (`ink.py` in that day's scratchpad).
 
 - **Fables Wochenlimit steht nicht in der Statuszeilen-Payload.** (18.09.2026) Daniel nutzt seit
   einer Woche Fable auf Max; der Week-Ring zeigte 54 %, während `/api/oauth/usage` für Fable

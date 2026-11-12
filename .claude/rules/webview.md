@@ -39,6 +39,7 @@ Distilled from `LEARNINGS.md` § Webview, § Terminal-Start im Panel (webview si
 
 ## Misc
 
+- **`hidden` loses against any author `display`.** The folded chip kept its `display: flex` rows (58 px instead of 27); hide by a class rule with `display: none`, and probe visibility by height, never by the attribute.
 - **VS Code runs its own paste command into a focused webview; `preventDefault` on Cmd+V's keydown does not stop it.** It arrives as a `paste` event (empty for a Finder copy). Capture `paste` on the terminal as well and fold requests per gesture (`requestPaste`, 300 ms).
 - **A drop reaches the webview only with Shift held.** VS Code blocks iframe pointer events during every drag (`windowDidDragStart` on `dragover`) and unblocks on `shiftKey`; nothing in the extension can change that.
 
