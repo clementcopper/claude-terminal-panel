@@ -1183,6 +1183,10 @@ body.vscode-high-contrast-light {
   width: 8px;
   height: 8px;
   display: block;
+  /* Optical, chosen by Daniel from four heights (2026-11-12): centred in the box the cross sat
+     0.75px below the middle of the time digits beside it, and that is what the eye compares it
+     with. 1px up puts it 0.25px above them, measured in the painted pixels. */
+  transform: translateY(-1px);
   fill: none;
   stroke: currentColor;
   stroke-width: 1.4;

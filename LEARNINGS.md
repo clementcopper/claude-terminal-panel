@@ -524,6 +524,12 @@ git apply --check` sagt pro Commit, ob er noch auf `main` passt (git 2.39 kennt 
 
 ## Statuszeile
 
+- **Ein Icon richtet sich am Nachbarn aus, nicht am Titel.** (12.11.2026) Das × im Fortschritts-Chip
+  war als Schriftzeichen 1,5 px zu tief (hängt an der Grundlinie). Als gezeichnetes Kreuz lag es
+  auf die Titelmitte genau (0,25 px), und Daniel fand es „immer noch zu tief“: Daneben steht die
+  Zeit „29:12“, deren Ziffernmitte 0,75 px höher liegt. Vier Höhen nebeneinander, er nahm 1 px
+  höher (0,25 px über der Ziffernmitte). Gemessen an den gemalten Pixeln (Tintenband je Spalte).
+
 - **Fables Wochenlimit steht nicht in der Statuszeilen-Payload.** (18.09.2026) Daniel nutzt seit
   einer Woche Fable auf Max; der Week-Ring zeigte 54 %, während `/api/oauth/usage` für Fable
   **100 %** meldete (`weekly_scoped`, `severity: critical`) und für alle Modelle 55 %. Claude
