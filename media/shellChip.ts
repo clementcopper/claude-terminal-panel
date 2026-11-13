@@ -3,16 +3,47 @@ import type { ShellRun } from './types';
 
 /**
  * The process monitor (Daniel, 2026-11-13, `Sessions/Fortschritt-Auftrag.md`): a Bash call of
- * Claude's as a chip in the progress chip's form. Folded: mark, command, run time. Open: the last
- * lines of its output, read-only. A call that writes a progress list shows its output inside that
+ * Claude's as a chip in the progress chip's form. Folded: mark, command, run time. Open: the command
+ * after a `$`, then its whole output (as far as the host keeps it), read-only, in a box of fixed
+ * height that scrolls. A call that writes a progress list shows its output inside that
  * list's chip instead (`buildShellOutput`).
  *
  * The output is model- and program-generated: every line is set as text, colour codes become
  * classes, nothing is parsed as markup.
  */
 
-/** The output box always holds this many lines, so a growing tail never moves the terminal. */
+/** The output box is this many lines high (`styles.css`), so a growing output never moves the terminal. */
 export const OUTPUT_ROWS = 8;
+
+/** Where the person left an output box, by `data-out-key`; a rebuild of the bar puts it back. */
+export interface OutputScroll {
+  top: number;
+  atBottom: boolean;
+}
+
+/** Reads every output box's scroll position before the bar is rebuilt. */
+export function saveOutputScroll(root: ParentNode): Map<string, OutputScroll> {
+  const saved = new Map<string, OutputScroll>();
+  for (const box of root.querySelectorAll<HTMLElement>('.shell-out[data-out-key]')) {
+    saved.set(box.dataset.outKey ?? '', {
+      top: box.scrollTop,
+      // A pixel of slack: fractional line boxes leave the end a hair short of scrollHeight
+      atBottom: box.scrollHeight - box.scrollTop - box.clientHeight < 2
+    });
+  }
+  return saved;
+}
+
+/**
+ * After the rebuild: a box the person had scrolled up stays where it was; a new box, or one that
+ * sat at the end, follows the newest line, like a terminal.
+ */
+export function restoreOutputScroll(root: ParentNode, saved: Map<string, OutputScroll>): void {
+  for (const box of root.querySelectorAll<HTMLElement>('.shell-out[data-out-key]')) {
+    const was = saved.get(box.dataset.outKey ?? '');
+    box.scrollTop = !was || was.atBottom ? box.scrollHeight : was.top;
+  }
+}
 
 const ANSI_NAMES = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
 
@@ -77,17 +108,37 @@ export function ansiLine(line: string): HTMLElement {
   return row;
 }
 
-/** The read-only output box: the last lines, a block cursor while the call runs. */
-export function buildShellOutput(lines: string[], running: boolean, readable = true): HTMLElement {
+/** The command as typed, `$` before its first line, like a terminal's prompt. */
+function inputLines(command: string): HTMLElement[] {
+  return command.split('\n').map((text, i) => {
+    const row = document.createElement('div');
+    row.className = 'shell-line shell-input';
+    row.append(span('shell-prompt', i === 0 ? '$ ' : '  '), document.createTextNode(text));
+    return row;
+  });
+}
+
+/**
+ * The read-only output box: the command, every line the host sent, a block cursor while the call
+ * runs. `outKey` names the box across rebuilds, so its scroll position survives them.
+ */
+export function buildShellOutput(
+  lines: string[],
+  running: boolean,
+  readable = true,
+  command?: string,
+  outKey?: string
+): HTMLElement {
   const box = document.createElement('div');
   box.className = 'shell-out';
+  if (outKey !== undefined) box.dataset.outKey = outKey;
+  if (command) box.append(...inputLines(command));
   if (!readable) {
     box.appendChild(span('shell-note', 'Output not readable'));
     box.dataset.tooltip = "Claude Code's output file for this call was not found";
     return box;
   }
-  const shown = lines.slice(-(running ? OUTPUT_ROWS - 1 : OUTPUT_ROWS));
-  for (const line of shown) box.appendChild(ansiLine(line));
+  for (const line of lines) box.appendChild(ansiLine(line));
   if (running) {
     const last = document.createElement('div');
     last.className = 'shell-line';
@@ -110,7 +161,8 @@ export function buildShellChip(
   run: ShellRun,
   expanded: boolean,
   onToggle: (key: string) => void,
-  onDismiss: (key: string) => void
+  onDismiss: (key: string) => void,
+  outKey?: string
 ): HTMLElement {
   const now = Date.now();
   const chip = document.createElement('div');
@@ -146,7 +198,9 @@ export function buildShellChip(
   }
   chip.appendChild(head);
   if (expanded)
-    chip.appendChild(buildShellOutput(run.lines, run.state === 'running', run.readable));
+    chip.appendChild(
+      buildShellOutput(run.lines, run.state === 'running', run.readable, run.command, outKey)
+    );
   return chip;
 }
 

@@ -59,9 +59,14 @@ const latest = (key, terminal = 't1') => {
     ['a', 'prog 90%', '\x1b[32mok\x1b[0m']
   );
   check(
-    'tail: last 8 lines',
+    'tail: the whole output, not the last 8 lines',
     tailLines(Array.from({ length: 20 }, (_, i) => `l${i}`).join('\n')).length,
-    8
+    20
+  );
+  check(
+    'tail: capped at 500 lines, the newest kept',
+    tailLines(Array.from({ length: 600 }, (_, i) => `l${i}`).join('\n')).slice(0, 1),
+    ['l100']
   );
 
   // 1. background call: its file by task id, read as it grows

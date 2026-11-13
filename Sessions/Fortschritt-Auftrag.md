@@ -173,6 +173,10 @@ der beiden Seiten ist keine Abnahme.
   Ein Vordergrund-Chip geht, wenn sein Befehl endet (sein Ergebnis steht im Terminal, die Datei löscht Claude Code);
   ein Hintergrund-Chip bleibt bis zum ×, wie ein Fortschritts-Chip. Bilder abgenommen:
   https://claude.ai/artifact/PaJfVU55FWqtoksMmyEPYY (Version 2).
+- 13.11.2026: Aufgeklappt stört ihn, dass „inputs und outputs gelöscht werden, am Ende sehe ich nur die letzte
+  ausgabe“. Gewählt: die **ganze Ausgabe** behalten, im Kasten scrollbar (Höhe bleibt 8 Zeilen), und der **Befehl**
+  als erste Zeile mit `$` davor, wie im Terminal. Nicht gewählt: fertige Vordergrund-Chips stehen lassen (der
+  Entscheid „Vordergrund-Chip geht mit Ende“ gilt weiter).
 
 ## Fragen an Daniel (einzeln stellen)
 

@@ -412,9 +412,11 @@ the contract.
 
 Every Bash call Claude makes in a tab shows as a chip in the progress chip's form (Daniel,
 2026-11-13; pictures and decisions in `Sessions/Fortschritt-Auftrag.md`). Folded: spinner or
-✓/✕, the command, the run time, `exit N` in red when it failed. Open: the last lines of its output,
-read-only, colour codes kept, in a box of fixed height (8 rows) so the terminal does not refit
-while the tail grows. A foreground call's chip goes when the call ends; a background call's stays,
+✓/✕, the command, the run time, `exit N` in red when it failed. Open: the command after a `$`, then
+its output, read-only, colour codes kept, in a box of fixed height (8 rows) so the terminal does not
+refit while the output grows. The box scrolls through the whole output (the host keeps the last 500
+lines, `SHELL_LINES`); it follows the newest line while it sits at the end and stays where it is
+once scrolled up, across every rebuild of the bar. A foreground call's chip goes when the call ends; a background call's stays,
 finished, until its × is clicked. A call that writes a progress list shows no chip of its own: its
 output appears inside that list's chip when the chip is open, and stays there after the call ends.
 

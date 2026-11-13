@@ -23,10 +23,13 @@ import type { ShellRun } from './types';
 
 /** How often running calls' files are read. */
 const POLL_MS = 500;
-/** Lines the chip shows; the host sends no more than that. */
-export const SHELL_LINES = 8;
-/** Bytes kept per call for cutting lines; a progress bar redrawn with `\r` stays inside it. */
-const TAIL_BYTES = 16 * 1024;
+/**
+ * Lines the host keeps and sends per call; the chip's box shows 8 and scrolls through the rest
+ * (Daniel 2026-11-13: the whole output, not only the end). A first draft: one constant to change.
+ */
+export const SHELL_LINES = 500;
+/** Bytes kept per call for cutting lines: room for `SHELL_LINES` lines of up to 256 characters. */
+const TAIL_BYTES = 128 * 1024;
 /** One line is cut here; the chip cuts again at its width. */
 const LINE_MAX = 400;
 /** A foreground file born this long before its call's recorded start still counts as its own. */

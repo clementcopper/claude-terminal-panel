@@ -16,7 +16,13 @@ import type {
   ShellRun
 } from './types';
 import { buildProgressChip, progressTicks, tickProgressChip } from './progressChip';
-import { buildShellChip, linkedShell, tickShellChip } from './shellChip';
+import {
+  buildShellChip,
+  linkedShell,
+  restoreOutputScroll,
+  saveOutputScroll,
+  tickShellChip
+} from './shellChip';
 
 // File path link provider for terminal
 class FileLinkProvider implements ILinkProvider {
@@ -668,7 +674,7 @@ class StatusLineView {
    */
   private readonly listOutput = new Map<
     string,
-    { lines: string[]; running: boolean; readable: boolean }
+    { lines: string[]; running: boolean; readable: boolean; command?: string }
   >();
 
   /** Mirrors the setting; the extension host owns the value, this is the drawn copy. */
@@ -809,6 +815,8 @@ class StatusLineView {
     const prompt = snapshot?.prompt;
     const lists = this.activeId ? (this.progress.get(this.activeId) ?? []) : [];
     const shells = this.activeId ? (this.shells.get(this.activeId) ?? []) : [];
+    // Every update rebuilds the bar; an output box the person scrolled up must not jump back
+    const scrolled = saveOutputScroll(bar);
     bar.textContent = '';
     delete bar.dataset.tooltip;
     // The bar carries the prompt chip and the progress and call chips under it; any keeps it open
@@ -847,7 +855,8 @@ class StatusLineView {
         this.listOutput.set(key, {
           lines: run.lines,
           running: run.state === 'running' && list.state === 'running',
-          readable: run.readable
+          readable: run.readable,
+          command: run.command
         });
       }
       const output = this.listOutput.get(key);
@@ -857,7 +866,8 @@ class StatusLineView {
           (listId) => this.dismissProgress(listId),
           this.expandedLists.has(key),
           (listId) => this.toggleProgress(listId),
-          output && list.state !== 'running' ? { ...output, running: false } : output
+          output && list.state !== 'running' ? { ...output, running: false } : output,
+          `list:${key}`
         )
       );
     }
@@ -868,10 +878,12 @@ class StatusLineView {
           run,
           this.expandedShells.has(`${tab}/${run.key}`),
           (key) => this.toggleShell(key),
-          (key) => this.dismissShell(key)
+          (key) => this.dismissShell(key),
+          `shell:${tab}/${run.key}`
         )
       );
     }
+    restoreOutputScroll(bar, scrolled);
   }
 
   /** Opens or folds one call chip, like `toggleProgress`. */

@@ -745,11 +745,13 @@ body.vscode-high-contrast-light {
   z-index: 100;
 }
 
-#tab-bar::-webkit-scrollbar {
+#tab-bar::-webkit-scrollbar,
+.shell-out::-webkit-scrollbar {
   width: 3px;
 }
 
-#tab-bar::-webkit-scrollbar-thumb {
+#tab-bar::-webkit-scrollbar-thumb,
+.shell-out::-webkit-scrollbar-thumb {
   background: var(--panel-scrollbar-slider);
 }
 
@@ -1335,7 +1337,9 @@ body.vscode-high-contrast-light {
   font-family: var(--panel-mono-font);
   font-size: 10.5px;
   line-height: 14px;
-  overflow: hidden;
+  /* The whole output scrolls inside the fixed height; long lines are cut, never scrolled sideways */
+  overflow-x: hidden;
+  overflow-y: auto;
   user-select: text;
   cursor: text;
 }
@@ -1345,6 +1349,10 @@ body.vscode-high-contrast-light {
   white-space: pre;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.shell-prompt {
+  color: var(--vscode-descriptionForeground, #767676);
 }
 
 .shell-note {

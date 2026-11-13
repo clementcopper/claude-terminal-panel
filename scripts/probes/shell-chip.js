@@ -52,6 +52,8 @@ outText:out?[...out.querySelectorAll('.shell-line')].map(l=>l.textContent):[],cu
 green:out?out.querySelectorAll('.ansi-green').length:0,markup:bar.querySelectorAll('.shell-out img,.shell-out script').length,
 exit:sc&&sc.querySelector('.progress-fail-count')?sc.querySelector('.progress-fail-count').textContent:null,close:!!(sc&&sc.querySelector('.progress-close')),
 inList:!!(pc&&pc.querySelector('.shell-out')),
+input:out?[...out.querySelectorAll('.shell-input')].map(l=>l.textContent):[],
+scroll:out?{top:Math.round(out.scrollTop),end:Math.round(out.scrollHeight-out.clientHeight)}:null,
 rows:document.querySelectorAll('#terminal-t1 .xterm-rows > div').length}};
 </script></body></html>`
 );
@@ -158,12 +160,43 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const open = await click('.shell-chip .progress-toggle');
   check('click opens: output box', open.out, true);
-  check('open: 7 lines and the cursor row', [open.outLines, open.cursor], [8, true]);
+  check(
+    'open: the command, all 12 lines and the cursor row',
+    [open.input, open.outLines, open.cursor],
+    [['$ npm run watch'], 14, true]
+  );
   check(
     'open: newest line last, markup as text',
-    open.outText[6],
+    open.outText[12],
     '✓ built <img src=x onerror="window.__xss=1">'
   );
+  check(
+    'open: scrolled to the newest line',
+    open.scroll.top > 0 && open.scroll.top === open.scroll.end,
+    true
+  );
+  const grown = await show([shell({ lines: [...shell().lines, 'line 12'] })]);
+  check(
+    'a new line at the end: follows it',
+    grown.scroll.top === grown.scroll.end && grown.scroll.end > open.scroll.end,
+    true
+  );
+  await evaluate("document.querySelector('.shell-out').scrollTop = 0");
+  const kept = await show([shell({ lines: [...shell().lines, 'line 12', 'line 13'] })]);
+  check('scrolled up: a new line leaves it where it was', kept.scroll.top, 0);
+  check('box height unchanged by the scroll content', kept.outH, open.outH);
+  // PROBE_SHOT=<file.png> keeps a picture of the open box, scrolled to the end
+  if (process.env.PROBE_SHOT) {
+    await evaluate(
+      "(b => { b.scrollTop = b.scrollHeight; b.dispatchEvent(new Event('scroll')); })(document.querySelector('.shell-out'))"
+    );
+    await settle();
+    const shot = await cdp('Page.captureScreenshot', {
+      format: 'png',
+      clip: { x: 0, y: 0, width: W, height: 260, scale: 2 }
+    });
+    fs.writeFileSync(process.env.PROBE_SHOT, Buffer.from(shot.data, 'base64'));
+  }
   check('open: colour code becomes a class', open.green, 1);
   check('open: no element from the output', open.markup, 0);
   check('open: terminal gives rows', open.rows < folded.rows, true);
@@ -204,7 +237,11 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   await click('.progress-chip .progress-toggle');
   check('opened list: output inside', (await evaluate('window.__read()')).inList, true);
   const after = await show([]);
-  check('call gone: output stays in the list', [after.inList, after.outText[0]], [true, 'start a']);
+  check(
+    'call gone: command and output stay in the list',
+    [after.inList, after.outText[0], after.outText[1]],
+    [true, '$ node cli/kuza.mjs check', 'start a']
+  );
   const unrelated = await show([
     { ...fg, key: 'w1', command: 'npm run watch', startedAt: t0 - 3_600_000, lines: ['watching'] }
   ]);

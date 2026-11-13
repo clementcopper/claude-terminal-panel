@@ -109,7 +109,8 @@ export function buildProgressChip(
   expanded = false,
   onToggle: (listId: string) => void = () => undefined,
   /** The output of the Bash call that writes this list, shown under the foot when open. */
-  output?: { lines: string[]; running: boolean; readable: boolean }
+  output?: { lines: string[]; running: boolean; readable: boolean; command?: string },
+  outKey?: string
 ): HTMLElement {
   const now = Date.now();
   const chip = document.createElement('div');
@@ -189,7 +190,9 @@ export function buildProgressChip(
   foot.hidden = !expanded;
   chip.append(head, strip, foot);
   if (expanded && output)
-    chip.appendChild(buildShellOutput(output.lines, output.running, output.readable));
+    chip.appendChild(
+      buildShellOutput(output.lines, output.running, output.readable, output.command, outKey)
+    );
   return chip;
 }
 
