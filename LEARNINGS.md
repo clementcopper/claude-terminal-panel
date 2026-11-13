@@ -275,6 +275,12 @@ var(--vscode-cornerRadius-large)`; die Webview-Fläche (`.webview-overlay-conten
   `cols − 1` reicht und ihr letztes Wort in den ersten 8 Spalten beginnt. Ohne die Startspalten-Sperre
   wurde aus `src/foo.ts` am Zeilenende plus „and“ darunter `src/foo.tsand`; die Probe
   `scripts/probes/file-link-wrap.js` zeigt das rot.
+- **The prompt bar is rebuilt from scratch on every update, so a scroll box inside it loses its
+  position** (13.11.2026, process monitor). Daniel wanted the whole output of a call scrollable in
+  the chip's 8-row box; with `shells` arriving every 500 ms the box would jump back each time.
+  `saveOutputScroll`/`restoreOutputScroll` (`media/shellChip.ts`) key each box by `data-out-key`:
+  at the end (1 px slack) it follows the newest line, scrolled up it stays. `shell-chip.js` holds
+  it; a mutation that always scrolls to the end turns it red (112 instead of 0).
 
 ## OpenCode theme in the panel
 
@@ -782,6 +788,14 @@ at the call site`. Ein Modul-weites `S.$ = $` für einen Schreib-Timer fällt du
 - **A call stopped with TaskStop ends with `[killed]`, not `[exited with code N]`** (same report,
   reproduced: `\n[killed]\n`). The watcher's end mark knew only the exit code, so the chip spun with
   `[killed]` as its last line. It now ends as failed without a code (✕, no `exit N`).
+- **The mod's hooks are formatted with their own prettier flags; a bare `prettier --write` reformats
+  them whole** (13.11.2026). `format`/`format:check` run `--no-semi --single-quote --print-width 100`
+  over `resources/mods/**/hooks/*.ts`; a plain `npx prettier --write` on `register.ts` and its test
+  turned a 50-line change into 1100 changed lines with semicolons. Use `npm run format`, or pass the
+  three flags; `kb/triggers.json` `mod-prettier-flags` warns before the bare call.
+- **`d57f379` shipped a red `typecheck:mod`**: the test's `Shell` type lacked `startedAt`, which an
+  assertion read (`TS2339`). `test:mod` was green all along; only `typecheck:mod` sees the types.
+  Found when the next mod change ran both.
 
 ## Schriften und Scrollbar im Panel
 

@@ -1,46 +1,45 @@
-# Handoff — 2026-11-13 09:31
+# Handoff — 2026-11-13 14:16
 
 Arbeitsverzeichnis: /Users/danielmartin/claude-terminal-panel
 
 ## Stand
 
-Prozess-Monitor gebaut und installiert (1.2.0): jeder Bash-Aufruf von Claude erscheint als Chip in der
-Form des Fortschritts-Chips, aufgeklappt mit den letzten Ausgabezeilen (8 Zeilen, read-only, ANSI-Farben).
-Die Mod meldet die Aufrufe unter `shells` in `<tab>.live.json`, `src/shellWatcher.ts` liest Claude Codes
-`tasks/<id>.output`, `media/shellChip.ts` zeichnet. Ein Aufruf, der eine Fortschrittsliste schreibt, zeigt
-seine Ausgabe im aufgeklappten Fortschritts-Chip. Daniel hat neu geladen, mit einem Hintergrund-Zähler
-getestet: „sieht gut aus“. Doku: `README.local.md` § Process monitor, Entscheidungen in
-`Sessions/Fortschritt-Auftrag.md`.
-HEAD: d57f379 (Code-Stand; danach nur dieser Docs-Commit)
+Prozess-Monitor, zwei Runden heute Nachmittag, beide gebaut und installiert (1.2.0):
+
+1. Chips, die nie endeten (Befund einer Peer-Session in designdone-termin): nach `/clear` schreibt Claude Code
+   `tasks/` weiter unter der Start-Session-ID; die Mod schickt jetzt alle IDs des Prozesses (`sessionIds`),
+   der Watcher sucht in allen und notfalls per Task-ID überall. `[killed]` (TaskStop) beendet als ✕. Mit echtem
+   `claude` in einer PTY reproduziert. Im Panel geprüft: neue Mod schickt `sessionIds`.
+2. Daniel: „inputs und outputs im aufgeklappten monitor gelöscht“. Jetzt hält der Host 500 Zeilen je Aufruf
+   (`SHELL_LINES`), der 8-Zeilen-Kasten scrollt, erste Zeile ist `$ <Befehl>`, Scrollposition überlebt jeden
+   Neuaufbau (unten: folgt; hochgescrollt: bleibt). Nur headless angesehen, nicht im Panel.
+   HEAD: 2f8b91a
 
 ## Nächster Schritt
 
-Abnahme mit echtem `kuza check` (aus dem Handoff vom 12.11., noch offen): in einem Panel-Tab
-`cd ~/Documents/DMA/Designdone/designdone-termin && node cli/kuza.mjs check --group logic --pause 5`
-laufen lassen, Fortschritts-Chip aufklappen: Streifen, Fußzeile **und** die Ausgabe darunter müssen
-erscheinen, kein eigener Chip für den kuza-Befehl. Ctrl-C muss nach ≤ 5 s „cancelled“ zeigen.
-Ergebnis an `panel-verlauf-fortschritt-auftrag` melden. Erst Daniels Go holen (Akku, siehe unten).
+Daniel lädt das Fenster neu; dann in einem Panel-Tab einen Hintergrund-Aufruf mit vielen Zeilen starten, z. B.
+Bash mit `run_in_background`: `for i in $(seq 1 60); do echo "line $i"; sleep 0.3; done`
+Chip aufklappen: `$`-Zeile oben, Ende folgt; hochscrollen → bleibt stehen. Danach `/clear` und einen
+Hintergrund-`sleep 5` in der neuen Session: der Chip muss mit ✓ enden.
 
-## Danach (Auftrag)
+## Mitten drin
 
-- Projektliste `<cwd>/.claude/progress/*.json` lesen und zeigen (zuerst Bild, eingeklappt).
-- „Was Claude gerade tut“ über Bash hinaus (Agenten, andere Tools) — erst fragen, ob der Monitor reicht.
-- Figma Claude erst nach bewährtem VS-Code-Chip.
+- `scripts/probes/file-link-wrap.js` bricht mit `TypeError … reading 'find'` (Z. 83) ab; nicht von diesen
+  Änderungen (bündelt nur `media/`, unberührt), ob schon auf `d57f379` rot: nicht geprüft.
+- Antwort an die meldende Session `kuza-qa-live-write-gate` kam nicht an (Session weg).
 
 ## Schon probiert, geht nicht
 
-- `cat` über `tasks/*.output` aus einem Bash-Aufruf: liest die eigene Datei in sich selbst, 5 GB.
-  Trigger `tasks-output-self-read` warnt jetzt.
-- Probe-Serien und Browser-Renders ohne Daniels Go: Laptop ging zweimal am 13.11. aus (Akku leer, -60).
-- Erste Layout-Runde ohne den Fortschritts-Chip im Bild: las sich als Ersatz (Memory `zusatz-neben-bestand-zeigen`).
-- Render-Harness (`render.js`, `variants*.js`) lag im Scratchpad und ist weg; neu nach `scripts/probes/shell-chip.js`.
+- `!sleep 20` als Test: ein `!`-Befehl läuft nicht über Claudes Bash-Tool, erzeugt keinen Chip.
+- `npx prettier --write` auf die Mod-Dateien ohne `--no-semi …`: 1100 Zeilen Semikolons (Trigger warnt jetzt).
 
 ## Was Daniel entschieden hat
 
-- Alles in `Sessions/Fortschritt-Auftrag.md` (13.11.: zusätzlich statt Ersatz, eigener Chip ohne Liste,
-  jeder Vordergrund-Befehl sofort, Vordergrund-Chip geht mit Ende, Hintergrund bleibt bis ×).
+- Steht in `Sessions/Fortschritt-Auftrag.md` (13.11.: ganze Ausgabe scrollbar, Befehl als erste Zeile;
+  Vordergrund-Chips gehen weiter mit Ende).
 
 ## Erledigt und vom Tisch
 
-- Layouts A (Chip je Aufruf), B (Sammel-Chip), C (unten angedockt) der ersten Runde: verworfen.
-- Ob der Ausgabepfad gemessen ist: ja, E2E mit echtem `claude -p` und der Mod, Vorder- und Hintergrund.
+- Fertige Vordergrund-Chips stehen lassen: nicht gewählt.
+- Ob `tasks/` nach `/clear` wandert: gemessen, bleibt unter der Start-ID (2.1.323). Offen nur, ob das auch
+  gilt, wenn vor dem `/clear` kein Bash lief — der Fix deckt beides ab.
