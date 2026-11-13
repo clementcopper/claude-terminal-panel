@@ -1,46 +1,46 @@
-# Handoff — 2026-11-12 14:07
+# Handoff — 2026-11-13 09:31
 
 Arbeitsverzeichnis: /Users/danielmartin/claude-terminal-panel
 
 ## Stand
 
-Auftrag „Verlauf und Fortschritt im Panel“ (`Sessions/Fortschritt-Auftrag.md`, alle Entscheidungen dort unter
-„Was Daniel entschieden hat“). Gebaut: Tab-Listen. Programme in einem Tab schreiben
-`$CLAUDE_PANEL_STATUS_DIR/progress/<tab>/<list>.json` (Vertrag v1: `README.local.md` § Progress lists),
-`src/progressWatcher.ts` liest sie, `media/progressChip.ts` zeichnet je Liste einen Chip unter dem Prompt-Chip.
-Der Chip startet eingeklappt (27 px, rotes „N failed“), Klick auf die Kopfzeile klappt ihn auf (61 px), × schließt
-fertige oder abgebrochene Listen. Installiert, Daniel hat noch nicht neu geladen (Extension-Host von 11.11. 15:18).
-Die kuza-Session (designdone-termin, Name `panel-verlauf-fortschritt-auftrag`) schreibt schon echte Dateien. Beide
-lesen sich mit dem Parser fehlerfrei.
-HEAD: a313888
+Prozess-Monitor gebaut und installiert (1.2.0): jeder Bash-Aufruf von Claude erscheint als Chip in der
+Form des Fortschritts-Chips, aufgeklappt mit den letzten Ausgabezeilen (8 Zeilen, read-only, ANSI-Farben).
+Die Mod meldet die Aufrufe unter `shells` in `<tab>.live.json`, `src/shellWatcher.ts` liest Claude Codes
+`tasks/<id>.output`, `media/shellChip.ts` zeichnet. Ein Aufruf, der eine Fortschrittsliste schreibt, zeigt
+seine Ausgabe im aufgeklappten Fortschritts-Chip. Daniel hat neu geladen, mit einem Hintergrund-Zähler
+getestet: „sieht gut aus“. Doku: `README.local.md` § Process monitor, Entscheidungen in
+`Sessions/Fortschritt-Auftrag.md`.
+HEAD: bb8a87e
 
 ## Nächster Schritt
 
-Daniel lädt das VS-Code-Fenster neu. Dann Abnahme: in einem Panel-Tab
-`cd ~/Documents/DMA/Designdone/designdone-termin && node cli/kuza.mjs check --group logic --pause 5` laufen lassen,
-einmal im Vordergrund, einmal als Hintergrund-Bash. Chip zu und auf ansehen, ein Ctrl-C-Abbruch muss nach ≤ 5 s
-„cancelled“ zeigen. Ergebnis an `panel-verlauf-fortschritt-auftrag` melden.
+Abnahme mit echtem `kuza check` (aus dem Handoff vom 12.11., noch offen): in einem Panel-Tab
+`cd ~/Documents/DMA/Designdone/designdone-termin && node cli/kuza.mjs check --group logic --pause 5`
+laufen lassen, Fortschritts-Chip aufklappen: Streifen, Fußzeile **und** die Ausgabe darunter müssen
+erscheinen, kein eigener Chip für den kuza-Befehl. Ctrl-C muss nach ≤ 5 s „cancelled“ zeigen.
+Ergebnis an `panel-verlauf-fortschritt-auftrag` melden. Erst Daniels Go holen (Akku, siehe unten).
 
-## Danach (Auftrag, jeweils erst Bild, dann Bau)
+## Danach (Auftrag)
 
-- Projektliste `<cwd>/.claude/progress/*.json` lesen und zeigen (echte Datei: designdone-termin
-  `.claude/progress/kuza-absicherung.json`, 12 Schritte). Vorschlag zuerst eingeklappt (Memory
-  `zusatzanzeigen-eingeklappt`).
-- „Was Claude gerade tut“ aus der Mod (`tool.call`, `agent.spawn`), gleiche Chip-Form.
+- Projektliste `<cwd>/.claude/progress/*.json` lesen und zeigen (zuerst Bild, eingeklappt).
+- „Was Claude gerade tut“ über Bash hinaus (Agenten, andere Tools) — erst fragen, ob der Monitor reicht.
 - Figma Claude erst nach bewährtem VS-Code-Chip.
 
 ## Schon probiert, geht nicht
 
-- `hidden` auf Streifen/Fußzeile: `display: flex` gewinnt, Chip blieb 58 px. Jetzt `.collapsed`-Regel.
-- × als Schriftzeichen: hängt an der Grundlinie. Gezeichnet, 1 px angehoben, ausgerichtet an den Ziffern daneben.
-- Render-Harness für Bilder: Scratchpad `progress-layouts/` (`render.js`, `variants.js`, `ink.py`) ist morgen weg;
-  bei Bedarf neu nach dem Muster in `scripts/probes/progress-chip.js` aufbauen.
+- `cat` über `tasks/*.output` aus einem Bash-Aufruf: liest die eigene Datei in sich selbst, 5 GB.
+  Trigger `tasks-output-self-read` warnt jetzt.
+- Probe-Serien und Browser-Renders ohne Daniels Go: Laptop ging zweimal am 13.11. aus (Akku leer, -60).
+- Erste Layout-Runde ohne den Fortschritts-Chip im Bild: las sich als Ersatz (Memory `zusatz-neben-bestand-zeigen`).
+- Render-Harness (`render.js`, `variants*.js`) lag im Scratchpad und ist weg; neu nach `scripts/probes/shell-chip.js`.
 
 ## Was Daniel entschieden hat
 
-- Alles in `Sessions/Fortschritt-Auftrag.md` eingetragen. UI-Texte englisch (Repo-Regel), Daniel hat die Bilder so gesehen.
+- Alles in `Sessions/Fortschritt-Auftrag.md` (13.11.: zusätzlich statt Ersatz, eigener Chip ohne Liste,
+  jeder Vordergrund-Befehl sofort, Vordergrund-Chip geht mit Ende, Hintergrund bleibt bis ×).
 
 ## Erledigt und vom Tisch
 
-- Layout B (Ring) und C (Liste über der Statuszeile) verworfen.
-- Fragen der kuza-Session zum Vertrag (detail relativ, Abbruch, blocked) beantwortet, in README und ihrer `docs/kuza-qa.md`.
+- Layouts A (Chip je Aufruf), B (Sammel-Chip), C (unten angedockt) der ersten Runde: verworfen.
+- Ob der Ausgabepfad gemessen ist: ja, E2E mit echtem `claude -p` und der Mod, Vorder- und Hintergrund.

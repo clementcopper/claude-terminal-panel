@@ -757,18 +757,17 @@ at the call site`. Ein Modul-weites `S.$ = $` für einen Schreib-Timer fällt du
   (`composer`/`bridge`) und aus `<bash-input>`, `turn.start` nimmt das. Zweiter E2E-Lauf:
   `/probe-skill` und `!echo hi` stehen in `prompt`, nach `/context` steht dort weiter der vorige.
 
-- **Jeder Bash-Aufruf schreibt seine Ausgabe live nach `tasks/<id>.output`, auch im Vordergrund**
-  (13.11.2026, Claude Code 2.1.323, Prozess-Monitor). Ordner
-  `/private/tmp/claude-501/<cwd mit ->/<session id>/tasks/`; stdout und stderr gemischt, am Ende eines
-  Hintergrund-Aufrufs `[exited with code N]`, die Datei eines Vordergrund-Aufrufs löscht Claude Code
-  bei dessen Ende. Die Mod-Schnittstelle nennt nur die `backgroundTaskId`, keinen Pfad und für
-  Vordergrund-Aufrufe gar nichts; `shellWatcher.ts` sucht den Ordner per Session-ID und ordnet
-  Vordergrund-Dateien nach Geburtszeit zu. E2E mit echtem `claude -p` und der Mod: beide Ausgaben
-  kamen sekündlich an, `exit 3` wurde `failed`.
-- **Ein Messbefehl, der den `tasks/`-Ordner ausliest, liest seine eigene Ausgabe.** `cat *.output`
-  in einem Bash-Aufruf schrieb die gelesene Datei in sich selbst zurück; nach Sekunden 5 GB, Claude
-  Code brach mit „output file exceeded 5GB“ ab. Die eigene Datei ausschließen (`ls` statt `cat`,
-  oder eine fremde Datei mit Namen lesen).
+- **Every Bash call writes its output live to `tasks/<id>.output`, foreground calls too**
+  (13.11.2026, Claude Code 2.1.323, process monitor). Folder
+  `/private/tmp/claude-501/<cwd with ->/<session id>/tasks/`; stdout and stderr interleaved, a
+  background call ends with `[exited with code N]`, a foreground call's file is deleted when it
+  returns. The mod API names only `backgroundTaskId`, no path, and nothing for foreground calls;
+  `shellWatcher.ts` finds the folder by session id and matches foreground files by birth time. End to
+  end with a real `claude -p` and the mod: both outputs arrived every second, `exit 3` became `failed`.
+- **A measuring command that reads the `tasks/` folder reads its own output.** `cat` over
+  `*.output` from a Bash call wrote the file it read back into itself; 5 GB within seconds, Claude
+  Code killed it with "output file exceeded 5GB". Exclude the own file (`ls` instead of `cat`, or
+  read another file by name); `kb/triggers.json` `tasks-output-self-read` now warns before such a call.
 
 ## Schriften und Scrollbar im Panel
 
