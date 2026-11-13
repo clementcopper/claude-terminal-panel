@@ -516,7 +516,8 @@ test('a Bash call lists as a shell while it runs; a background one stays with it
   const writes = bottom(on, { window: 1_000_000 })
   mock.env(on, { CLAUDE_PANEL_STATUS_DIR: DIR, CLAUDE_PANEL_TAB_ID: TAB })
   const clock = mock.clock(on, { now: 1_000 })
-  on('session.id', () => ({ value: 'sess-1' }))
+  let session = 'sess-1'
+  on('session.id', () => ({ value: session }))
   on('tool.call', { tool: 'Bash' }, async (_, e) => {
     await clock.advance(400)
     const input = e as unknown as { run_in_background?: boolean }
@@ -533,7 +534,9 @@ test('a Bash call lists as a shell while it runs; a background one stays with it
     key: string
     command: string
     description?: string
+    startedAt: number
     sessionId?: string
+    sessionIds?: string[]
     background: boolean
     taskId?: string
   }
@@ -554,6 +557,7 @@ test('a Bash call lists as a shell while it runs; a background one stays with it
       description: 'Run the tests',
       startedAt: shells()[0]!.startedAt,
       sessionId: 'sess-1',
+      sessionIds: ['sess-1'],
       background: false
     }
   ])
@@ -570,5 +574,22 @@ test('a Bash call lists as a shell while it runs; a background one stays with it
   await clock.advance(150)
   expect(shells().map((s) => [s.key, s.background, s.taskId, s.sessionId])).toEqual([
     ['b1', true, 'b9bxey20n', 'sess-1']
+  ])
+
+  // A /clear gives the session a new id, but Claude Code keeps the output folder under the old
+  // one: every call names all ids the process has had, and the background call survives the clear
+  await $.session.end({ reason: 'clear', sessionId: 'sess-1', resume: { id: 'sess-1' } })
+  session = 'sess-2'
+  await $.session.start({ cwd: '/Users/me/p', surface: 'terminal', isInteractive: true })
+  await $.tool.call({
+    tool: 'Bash',
+    tool_use_id: 'b2',
+    command: 'sleep 2',
+    run_in_background: true
+  })
+  await clock.advance(150)
+  expect(shells().map((s) => [s.key, s.sessionId, s.sessionIds])).toEqual([
+    ['b1', 'sess-1', ['sess-1']],
+    ['b2', 'sess-2', ['sess-1', 'sess-2']]
   ])
 })

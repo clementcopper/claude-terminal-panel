@@ -9,6 +9,10 @@
  * as failed and leaves the output; a foreground call takes the file born after it started, not an
  * older one; it leaves when the mod drops it; a call without a findable file turns unreadable;
  * dismiss hides a finished call while the mod still lists it. Red before the change: no module.
+ * After a `/clear` (peer report 2026-11-13): the files stay under the id the process started with,
+ * a background call finds them through the mod's `sessionIds` or, from an older mod, by task id in
+ * any folder; a foreground call takes only its own process's files; `[killed]` ends a call as
+ * failed. Red on d57f379: five checks, the killed call kept spinning with `[killed]` as a line.
  */
 const fs = require('fs');
 const os = require('os');
@@ -39,11 +43,10 @@ const emitted = [];
 const watcher = new ShellWatcher((id, shells) => emitted.push([id, shells]), [root]);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const live = (shells) => JSON.stringify({ v: 1, updatedAt: Date.now(), shells });
-const latest = (key) => {
+const latest = (key, terminal = 't1') => {
   for (let i = emitted.length - 1; i >= 0; i--) {
-    const run = emitted[i][1].find((s) => s.key === key);
-    if (run) return run;
-    if (emitted[i][0] === 't1') return undefined;
+    if (emitted[i][0] !== terminal) continue;
+    return emitted[i][1].find((s) => s.key === key);
   }
   return undefined;
 };
@@ -128,6 +131,78 @@ const latest = (key) => {
 
   // 5. markup in a command is data
   check('half-written file is ignored', (watcher.update('t1', '{"v":1,"shel'), true), true);
+
+  // 6. after a /clear (2.1.323, measured 2026-11-13): the session has a new id, the files stay
+  // under the id the process started with; the mod names both. A third session in the same
+  // project folder (another tab) holds a file that is not this tab's.
+  const project = path.join(root, '-Users-me-other');
+  const startTasks = path.join(project, 'sess-A', 'tasks');
+  const otherTasks = path.join(project, 'sess-9', 'tasks');
+  fs.mkdirSync(startTasks, { recursive: true });
+  fs.mkdirSync(otherTasks, { recursive: true });
+  fs.mkdirSync(path.join(project, 'sess-B', 'scratchpad'), { recursive: true });
+  const cleared = { sessionId: 'sess-B', sessionIds: ['sess-A', 'sess-B'] };
+  fs.writeFileSync(path.join(startTasks, 'bk1.output'), 'one\n');
+  fs.writeFileSync(path.join(startTasks, 'bk2.output'), 'two\n');
+  // The killed call sits where the old watcher looks too, so its check is about the mark alone
+  fs.writeFileSync(path.join(tasks, 'bk3.output'), 'three\n');
+  const bk1 = {
+    key: 'k1',
+    command: 'a',
+    startedAt: Date.now(),
+    background: true,
+    taskId: 'bk1',
+    ...cleared
+  };
+  // A mod from before the fix names only the new id: found by task id across every folder
+  const bk2 = {
+    key: 'k2',
+    command: 'b',
+    startedAt: Date.now(),
+    background: true,
+    taskId: 'bk2',
+    sessionId: 'sess-B'
+  };
+  const bk3 = {
+    key: 'k3',
+    command: 'c',
+    startedAt: Date.now(),
+    background: true,
+    taskId: 'bk3',
+    sessionId: 'sess-1'
+  };
+  watcher.update('t2', live([bk1, bk2, bk3]));
+  check("cleared: background reads the start id's folder", latest('k1', 't2').lines, ['one']);
+  check('cleared: old mod, found by task id', latest('k2', 't2').lines, ['two']);
+  fs.appendFileSync(path.join(startTasks, 'bk1.output'), '\n[exited with code 0]\n');
+  fs.appendFileSync(path.join(tasks, 'bk3.output'), '\n[killed]\n');
+  await sleep(700);
+  check('cleared: exit 0 ends it', latest('k1', 't2').state, 'done');
+  const killed = latest('k3', 't2');
+  check(
+    'killed: ends as failed without a code, the mark is not a line',
+    [killed.state, killed.exitCode, killed.lines, typeof killed.endedAt],
+    ['failed', undefined, ['three'], 'number']
+  );
+
+  await sleep(1600); // the background files above are now older than the slack
+  const fg2Start = Date.now();
+  const fg2 = {
+    key: 'f2',
+    command: 'npm test',
+    startedAt: fg2Start,
+    background: false,
+    ...cleared
+  };
+  fs.writeFileSync(path.join(otherTasks, 'theirs.output'), 'not mine\n');
+  await sleep(50);
+  fs.writeFileSync(path.join(startTasks, 'mine.output'), 'mine\n');
+  watcher.update('t2', live([bk1, bk2, bk3, fg2]));
+  check(
+    "cleared: foreground takes its own process's file, not another tab's",
+    latest('f2', 't2').lines,
+    ['mine']
+  );
 
   watcher.dispose();
   fs.rmSync(scratch, { recursive: true, force: true });

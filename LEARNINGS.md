@@ -768,6 +768,20 @@ at the call site`. Ein Modul-weites `S.$ = $` für einen Schreib-Timer fällt du
   `*.output` from a Bash call wrote the file it read back into itself; 5 GB within seconds, Claude
   Code killed it with "output file exceeded 5GB". Exclude the own file (`ls` instead of `cat`, or
   read another file by name); `kb/triggers.json` `tasks-output-self-read` now warns before such a call.
+- **After `/clear` the `tasks/` folder stays under the id the process started with** (13.11.2026,
+  2.1.323, reported by a peer session in designdone-termin). Three background chips spun for hours:
+  the mod stamped each call with `$.session.id()` = the id after the clear (`d1a55bd6…`, folder born
+  11:33:16, the moment of the clear), Claude Code wrote the files under `17e13fe6…/tasks/` (born
+  10:40:50), and the watcher looked only under the stamped id. Reproduced with a real `claude`
+  (haiku) in a PTY: background call, `/clear`, foreground + background call — the mod reported
+  `4a459255…`, both files landed under the startup id `c886d390…`, the new id's folder had no
+  `tasks/`. Not measured: whether a process that ran no Bash call before the clear also keeps the
+  startup id. Fix: the mod records every id `session.id` gave in the process (`sessionIds`, kept
+  across a clear) and the watcher searches all of them; a background call from an older mod is found
+  by its task id in any session folder (random ids, unique).
+- **A call stopped with TaskStop ends with `[killed]`, not `[exited with code N]`** (same report,
+  reproduced: `\n[killed]\n`). The watcher's end mark knew only the exit code, so the chip spun with
+  `[killed]` as its last line. It now ends as failed without a code (✕, no `exit N`).
 
 ## Schriften und Scrollbar im Panel
 

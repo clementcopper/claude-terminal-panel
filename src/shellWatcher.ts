@@ -10,9 +10,11 @@ import type { ShellRun } from './types';
  * The `panel-bridge` mod lists the calls in `<tab id>.live.json` under `shells`; Claude Code
  * itself writes each call's output, stdout and stderr interleaved, to
  * `<tmp>/claude-<uid>/<project>/<session id>/tasks/<task id>.output` and appends
- * `[exited with code N]` when a background call ends (measured with Claude Code 2.1.323). That
- * path is Claude Code's internal layout, not a contract: a call whose file cannot be found shows
- * as unreadable rather than empty.
+ * `[exited with code N]` when a background call ends, `[killed]` when it was stopped (measured with
+ * Claude Code 2.1.323). The session id is the one the process started with: after a `/clear` the
+ * session has a new id and the folder stays under the old one, so the mod names every id the
+ * process has had. That path is Claude Code's internal layout, not a contract: a call whose file
+ * cannot be found shows as unreadable rather than empty.
  *
  * A background call names its task id; a foreground one does not, so it takes the oldest
  * unclaimed `.output` file born after it started. A foreground call leaves the list when it ends;
@@ -31,7 +33,12 @@ const LINE_MAX = 400;
 const BIRTH_SLACK_MS = 1500;
 /** How long a call may go without a file before its chip says the output is unreadable. */
 const UNREADABLE_AFTER_MS = 5000;
-const EXIT_MARK = /\n*\[exited with code (-?\d+)\]\s*$/;
+/** How often a call not found in its own folders searches every session's folder for its id. */
+const SEARCH_EVERY_MS = 5000;
+/** How a background call's file ends: its exit code, or `[killed]` when TaskStop ended it. */
+const EXIT_MARK = /\n*\[(?:exited with code (-?\d+)|killed)\]\s*$/;
+/** A session or task id that may join a path. */
+const ID = /^[\w-]+$/;
 /** Every escape sequence but colour (SGR): cursor moves, OSC titles, mode switches. */
 const NON_SGR =
   // eslint-disable-next-line no-control-regex
@@ -44,6 +51,8 @@ export interface ShellEntry {
   description?: string;
   startedAt: number;
   sessionId?: string;
+  /** Every session id of the process, oldest first; the mod sends it since the `/clear` fix. */
+  sessionIds?: string[];
   background: boolean;
   taskId?: string;
 }
@@ -54,6 +63,10 @@ interface Track {
   offset: number;
   tail: string;
   exitCode?: number;
+  /** Ended by `[killed]`: no exit code, but over. */
+  killed?: boolean;
+  /** When the wide search for its task id last ran. */
+  searchedAt?: number;
   endedAt?: number;
   gone: boolean;
 }
@@ -74,14 +87,18 @@ export function parseShells(raw: string): ShellEntry[] | undefined {
     if (typeof item !== 'object' || item === null) continue;
     const v = item as Record<string, unknown>;
     if (typeof v.key !== 'string' || typeof v.startedAt !== 'number') continue;
+    const sessionIds = Array.isArray(v.sessionIds)
+      ? v.sessionIds.filter((id): id is string => typeof id === 'string' && ID.test(id))
+      : undefined;
     shells.push({
       key: v.key,
       command: typeof v.command === 'string' ? v.command : '',
       description: typeof v.description === 'string' ? v.description : undefined,
       startedAt: v.startedAt,
       sessionId: typeof v.sessionId === 'string' ? v.sessionId : undefined,
+      sessionIds,
       background: v.background === true,
-      taskId: typeof v.taskId === 'string' && /^[\w-]+$/.test(v.taskId) ? v.taskId : undefined
+      taskId: typeof v.taskId === 'string' && ID.test(v.taskId) ? v.taskId : undefined
     });
   }
   return shells;
@@ -104,6 +121,10 @@ export function tailLines(text: string, count = SHELL_LINES): string[] {
   while (lines.length > 0 && lines[lines.length - 1]?.trim() === '') lines.pop();
   return lines.slice(-count);
 }
+
+/** A call whose chip no longer spins: it exited, was killed, or its file went. */
+const ended = (track: Track): boolean =>
+  track.exitCode !== undefined || track.killed === true || track.gone;
 
 export class ShellWatcher {
   private readonly tracks = new Map<string, Map<string, Track>>();
@@ -195,7 +216,7 @@ export class ShellWatcher {
 
   private schedule(): void {
     const running = [...this.tracks.values()].some((tracks) =>
-      [...tracks.values()].some((track) => track.exitCode === undefined && !track.gone)
+      [...tracks.values()].some((track) => !ended(track))
     );
     if (running && !this.timer) {
       this.timer = setInterval(() => {
@@ -214,7 +235,7 @@ export class ShellWatcher {
     // Oldest first, so two foreground calls take their files in the order they started
     const ordered = [...tracks.values()].sort((a, b) => a.entry.startedAt - b.entry.startedAt);
     for (const track of ordered) {
-      if (track.exitCode !== undefined || track.gone) continue;
+      if (ended(track)) continue;
       if (!track.file) track.file = this.locate(track);
       if (track.file) this.read(track);
     }
@@ -239,8 +260,9 @@ export class ShellWatcher {
       description: entry.description,
       startedAt: entry.startedAt,
       background: entry.background,
-      state:
-        track.exitCode === undefined
+      state: track.killed
+        ? 'failed'
+        : track.exitCode === undefined
           ? track.gone
             ? 'done'
             : 'running'
@@ -256,7 +278,7 @@ export class ShellWatcher {
 
   /** The folder Claude Code writes this session's output files to, found once per session. */
   private taskDir(sessionId: string | undefined): string | undefined {
-    if (!sessionId || !/^[\w-]+$/.test(sessionId)) return undefined;
+    if (!sessionId || !ID.test(sessionId)) return undefined;
     const known = this.taskDirs.get(sessionId);
     if (known) return known;
     for (const root of this.roots) {
@@ -277,38 +299,93 @@ export class ShellWatcher {
     return undefined;
   }
 
+  /** Every existing output folder of the call's process, newest session id first. */
+  private taskDirsOf(entry: ShellEntry): string[] {
+    const ids = [...(entry.sessionIds ?? []), entry.sessionId].filter(
+      (id): id is string => id !== undefined
+    );
+    const dirs: string[] = [];
+    for (const id of [...new Set(ids)].reverse()) {
+      const dir = this.taskDir(id);
+      if (dir && !dirs.includes(dir)) dirs.push(dir);
+    }
+    return dirs;
+  }
+
+  /**
+   * A task id's file in any session's folder: the last resort for a call whose list of ids misses
+   * the folder (a mod from before `sessionIds`, a `/resume`). Task ids are random, so the name is
+   * enough.
+   */
+  private findTask(taskId: string): string | undefined {
+    for (const root of this.roots) {
+      let projects: string[];
+      try {
+        projects = fs.readdirSync(root);
+      } catch {
+        continue;
+      }
+      for (const project of projects) {
+        let sessions: string[];
+        try {
+          sessions = fs.readdirSync(path.join(root, project));
+        } catch {
+          continue;
+        }
+        for (const session of sessions) {
+          const file = path.join(root, project, session, 'tasks', `${taskId}.output`);
+          if (fs.existsSync(file)) return file;
+        }
+      }
+    }
+    return undefined;
+  }
+
   private locate(track: Track): string | undefined {
-    const dir = this.taskDir(track.entry.sessionId);
-    if (!dir) return undefined;
-    if (track.entry.taskId) return path.join(dir, `${track.entry.taskId}.output`);
-    // A foreground call: the oldest file born since it started that no other call holds
+    const dirs = this.taskDirsOf(track.entry);
+    const taskId = track.entry.taskId;
+    if (taskId) {
+      for (const dir of dirs) {
+        const file = path.join(dir, `${taskId}.output`);
+        if (fs.existsSync(file)) return file;
+      }
+      if (Date.now() - (track.searchedAt ?? 0) < SEARCH_EVERY_MS) return undefined;
+      track.searchedAt = Date.now();
+      return this.findTask(taskId);
+    }
+    // A foreground call: the oldest file born since it started that no other call holds, in its
+    // own process's folders only, so a second tab in the same folder keeps its files
     const claimed = new Set<string>();
     for (const tracks of this.tracks.values()) {
       for (const other of tracks.values()) {
         if (other.file) claimed.add(other.file);
-        if (other.entry.taskId) claimed.add(path.join(dir, `${other.entry.taskId}.output`));
+        if (other.entry.taskId) {
+          for (const dir of dirs) claimed.add(path.join(dir, `${other.entry.taskId}.output`));
+        }
       }
     }
     let best: { file: string; born: number } | undefined;
-    let names: string[];
-    try {
-      names = fs.readdirSync(dir);
-    } catch {
-      return undefined;
-    }
-    for (const name of names) {
-      if (!name.endsWith('.output')) continue;
-      const file = path.join(dir, name);
-      if (claimed.has(file)) continue;
-      let born: number;
+    for (const dir of dirs) {
+      let names: string[];
       try {
-        const stat = fs.statSync(file);
-        born = stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.ctimeMs;
+        names = fs.readdirSync(dir);
       } catch {
         continue;
       }
-      if (born < track.entry.startedAt - BIRTH_SLACK_MS) continue;
-      if (!best || born < best.born) best = { file, born };
+      for (const name of names) {
+        if (!name.endsWith('.output')) continue;
+        const file = path.join(dir, name);
+        if (claimed.has(file)) continue;
+        let born: number;
+        try {
+          const stat = fs.statSync(file);
+          born = stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.ctimeMs;
+        } catch {
+          continue;
+        }
+        if (born < track.entry.startedAt - BIRTH_SLACK_MS) continue;
+        if (!best || born < best.born) best = { file, born };
+      }
     }
     return best?.file;
   }
@@ -351,7 +428,10 @@ export class ShellWatcher {
     track.tail = (skipped ? fresh : track.tail + fresh).slice(-TAIL_BYTES);
     const exit = EXIT_MARK.exec(track.tail);
     if (exit && track.entry.background) {
-      track.exitCode = Number(exit[1]);
+      // The code group is empty for `[killed]`; the regex type does not say so
+      const code = exit[1] as string | undefined;
+      if (code === undefined) track.killed = true;
+      else track.exitCode = Number(code);
       track.endedAt = Date.now();
       track.tail = track.tail.slice(0, exit.index);
     }

@@ -421,11 +421,16 @@ output appears inside that list's chip when the chip is open, and stays there af
 **Where the output comes from.** The `panel-bridge` mod lists the calls under `shells` in the live
 file (above). Claude Code writes every Bash call's output, stdout and stderr interleaved, to
 `<tmp>/claude-<uid>/<project>/<session id>/tasks/<task id>.output` and appends
-`[exited with code N]` when a background call ends; it deletes a foreground call's file when the
-call returns (measured with Claude Code 2.1.323). `src/shellWatcher.ts` finds the folder by session
-id under `/tmp`, `/private/tmp`, `os.tmpdir()` and `$CLAUDE_CODE_TMPDIR`, reads each running call's
-file every 500 ms from its byte offset and keeps a 16 kB tail. A background call names its task id;
-a foreground one does not, so it takes the oldest unclaimed file born after it started.
+`[exited with code N]` when a background call ends, `[killed]` when TaskStop ended it (shown as
+failed, without an exit code); it deletes a foreground call's file when the call returns (measured
+with Claude Code 2.1.323). The session id in that path is the one the process started with: after a
+`/clear` the session has a new id and the folder stays where it was, so the mod sends every id the
+process has had (`sessionIds`). `src/shellWatcher.ts` looks for the folders of those ids under
+`/tmp`, `/private/tmp`, `os.tmpdir()` and `$CLAUDE_CODE_TMPDIR`, reads each running call's file
+every 500 ms from its byte offset and keeps a 16 kB tail. A background call names its task id, and
+if none of its own folders holds the file, every session folder is searched for that id (at most
+every 5 s); a foreground one does not, so it takes the oldest unclaimed file born after it started,
+in its own process's folders only.
 
 **This path is Claude Code's internal layout, not a contract.** If an update moves it, the chips
 still appear (the mod's list is ours) and say "Output not readable" after 5 s instead of staying

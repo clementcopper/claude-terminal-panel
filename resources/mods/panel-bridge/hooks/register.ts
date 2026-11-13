@@ -51,8 +51,9 @@ type ToolEntry = { name: string; summary: string; agentId?: string; startedAt: n
 
 /**
  * A Bash call for the panel's process monitor. Claude Code writes its output to
- * `<tmp>/claude-<uid>/<project>/<session id>/tasks/<task id>.output` (measured with 2.1.323); the
- * panel reads that file. A background call names its task id in its result; a foreground one
+ * `<tmp>/claude-<uid>/<project>/<session id>/tasks/<task id>.output` (measured with 2.1.323), the
+ * session id being an earlier one after a `/clear` (the one the process started with); the panel
+ * reads that file. A background call names its task id in its result; a foreground one
  * never does, so the panel matches it by start time.
  */
 type ShellEntry = {
@@ -60,6 +61,8 @@ type ShellEntry = {
   description?: string
   startedAt: number
   sessionId?: string
+  /** Every session id this process has had, oldest first; the output folder is under one of them. */
+  sessionIds?: string[]
   background: boolean
   taskId?: string
 }
@@ -86,6 +89,12 @@ const S = {
   tools: new Map<string, ToolEntry>(),
   /** Bash calls by tool use id: foreground ones while they run, background ones until bounded out. */
   shells: new Map<string, ShellEntry>(),
+  /**
+   * Every id `session.id` answered in this process, oldest first. Claude Code kept writing
+   * `tasks/` under the id the process started with after a `/clear` gave the session a new one
+   * (2.1.323, measured 2026-11-13); so a clear keeps this list.
+   */
+  sessionIds: [] as string[],
   agents: new Set<string>(),
   compacted: 0,
   compactAuto: 0,
@@ -268,6 +277,15 @@ const keepRunningAgents = async (list: () => Promise<readonly AgentInfo[]>) => {
   }
 }
 
+/** Bounds `S.sessionIds`; a process seldom sees more than a few clears. */
+const SESSION_IDS_MAX = 10
+
+const noteSession = (id: string | undefined) => {
+  if (!id || S.sessionIds.includes(id)) return
+  S.sessionIds.push(id)
+  if (S.sessionIds.length > SESSION_IDS_MAX) S.sessionIds.splice(1, 1)
+}
+
 const resetForClear = () => {
   S.resetAt = now()
   S.used = undefined
@@ -331,6 +349,11 @@ export const register: Register = (on) => {
     }
 
     S.cwd = e.cwd
+    try {
+      noteSession(await $.session.id())
+    } catch {
+      // The first Bash call asks again
+    }
     try {
       takeUsage(await $.session.usage())
     } catch {
@@ -458,6 +481,7 @@ export const register: Register = (on) => {
       let sessionId: string | undefined
       try {
         sessionId = await $.session.id()
+        noteSession(sessionId)
       } catch {
         // Without the id the panel cannot find the output; the chip says so
       }
@@ -466,6 +490,7 @@ export const register: Register = (on) => {
         description: typeof input.description === 'string' ? input.description : undefined,
         startedAt: now(),
         sessionId,
+        sessionIds: [...S.sessionIds],
         background: false
       })
     }
