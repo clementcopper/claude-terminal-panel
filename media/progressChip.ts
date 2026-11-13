@@ -1,3 +1,4 @@
+import { buildShellOutput } from './shellChip';
 import type { ProgressItem, ProgressList } from './types';
 
 /**
@@ -106,7 +107,9 @@ export function buildProgressChip(
   list: ProgressList,
   onDismiss: (listId: string) => void,
   expanded = false,
-  onToggle: (listId: string) => void = () => undefined
+  onToggle: (listId: string) => void = () => undefined,
+  /** The output of the Bash call that writes this list, shown under the foot when open. */
+  output?: { lines: string[]; running: boolean; readable: boolean }
 ): HTMLElement {
   const now = Date.now();
   const chip = document.createElement('div');
@@ -185,6 +188,8 @@ export function buildProgressChip(
   strip.hidden = !expanded;
   foot.hidden = !expanded;
   chip.append(head, strip, foot);
+  if (expanded && output)
+    chip.appendChild(buildShellOutput(output.lines, output.running, output.readable));
   return chip;
 }
 

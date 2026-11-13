@@ -408,6 +408,33 @@ newest file by `updatedAt` among
 `$TMPDIR/claude-terminal-panel/status/*/progress/*/<list id>.json`. That path shape is part of
 the contract.
 
+### Process monitor
+
+Every Bash call Claude makes in a tab shows as a chip in the progress chip's form (Daniel,
+2026-11-13; pictures and decisions in `Sessions/Fortschritt-Auftrag.md`). Folded: spinner or
+✓/✕, the command, the run time, `exit N` in red when it failed. Open: the last lines of its output,
+read-only, colour codes kept, in a box of fixed height (8 rows) so the terminal does not refit
+while the tail grows. A foreground call's chip goes when the call ends; a background call's stays,
+finished, until its × is clicked. A call that writes a progress list shows no chip of its own: its
+output appears inside that list's chip when the chip is open, and stays there after the call ends.
+
+**Where the output comes from.** The `panel-bridge` mod lists the calls under `shells` in the live
+file (above). Claude Code writes every Bash call's output, stdout and stderr interleaved, to
+`<tmp>/claude-<uid>/<project>/<session id>/tasks/<task id>.output` and appends
+`[exited with code N]` when a background call ends; it deletes a foreground call's file when the
+call returns (measured with Claude Code 2.1.323). `src/shellWatcher.ts` finds the folder by session
+id under `/tmp`, `/private/tmp`, `os.tmpdir()` and `$CLAUDE_CODE_TMPDIR`, reads each running call's
+file every 500 ms from its byte offset and keeps a 16 kB tail. A background call names its task id;
+a foreground one does not, so it takes the oldest unclaimed file born after it started.
+
+**This path is Claude Code's internal layout, not a contract.** If an update moves it, the chips
+still appear (the mod's list is ours) and say "Output not readable" after 5 s instead of staying
+empty.
+
+**Which call feeds a list.** The newest call that started between 60 s before and 2 s after the
+list's `startedAt` and was still running when the list began; an hour-old `npm run watch` is never
+taken for the writer.
+
 ### Before the first render
 
 Claude Code only runs the statusLine command when it renders its own status line, which happens
@@ -661,7 +688,20 @@ watcher drops a file it cannot parse and keeps the previous one:
   "prompt": "compile it", // the person's last prompt, one line; gone after /clear
   "promptAt": 1791301234000,
   "before": "SIGWINCH-Handler: Beispiel in Python oder C?", // Haiku's line on the answer `prompt` replies to
-  "color": "pink" // the tab's /color
+  "color": "pink", // the tab's /color
+  // Bash calls for the process monitor: foreground ones while they run, background ones (at most
+  // 20) until the panel drops them. `taskId` only for background calls.
+  "shells": [
+    {
+      "key": "toolu_…",
+      "command": "npm test",
+      "description": "Run the tests",
+      "startedAt": 1791301250000,
+      "sessionId": "8158df55-…",
+      "background": true,
+      "taskId": "b9bxey20n"
+    }
+  ]
 }
 ```
 

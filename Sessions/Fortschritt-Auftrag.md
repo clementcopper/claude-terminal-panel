@@ -163,6 +163,16 @@ der beiden Seiten ist keine Abnahme.
   klappt ihn auf (Streifen und Fußzeile, 61 px), ein zweiter wieder zu. Das × gegen die Ziffern daneben ausgerichtet,
   1 px angehoben (3cdfcc5).
 - 12.11.2026: Eingeklappt zeigt die Kopfzeile ein rotes „1 failed“; aufgeklappt nennt die Fußzeile die Läufe.
+- 13.11.2026: Live-Ausgabe kommt **zusätzlich**, der Fortschritts-Chip bleibt wie er ist. Eingeklappt unverändert;
+  aufgeklappt zeigt er unter Streifen und Fußzeile die Ausgabe des Prozesses („Prozess-Monitor“). Die ersten drei
+  Layouts (https://claude.ai/artifact/PaJfVU55FWqtoksMmyEPYY) zeigten den Chip nicht und lasen sich als Ersatz.
+- 13.11.2026: Ein Hintergrund-Aufruf ohne Fortschrittsliste (`npm test`) bekommt einen eigenen Chip in derselben
+  Form: eingeklappt Befehl und Laufzeit, aufgeklappt die Ausgabe, kein Streifen.
+- 13.11.2026: Auch **jeder Vordergrund-Bash** bekommt sofort einen Chip (gewählt gegen „ab 5 s“ und „nur
+  Hintergrund“). Vordergrund-Aufrufe schreiben ihre Ausgabe ebenfalls live nach `tasks/<id>.output` [gemessen].
+  Ein Vordergrund-Chip geht, wenn sein Befehl endet (sein Ergebnis steht im Terminal, die Datei löscht Claude Code);
+  ein Hintergrund-Chip bleibt bis zum ×, wie ein Fortschritts-Chip. Bilder abgenommen:
+  https://claude.ai/artifact/PaJfVU55FWqtoksMmyEPYY (Version 2).
 
 ## Fragen an Daniel (einzeln stellen)
 
@@ -171,6 +181,29 @@ der beiden Seiten ist keine Abnahme.
 - Wie lange bleibt eine fertige Liste stehen: bis zum nächsten Prompt, bis er sie schließt, eine feste Zeit?
 - Zieht Figma Claude (`~/figma-cli/swift-host`, gleicher Datei-Vertrag, eigene Kopie der Mod [Agent]) mit, oder
   bleibt es beim VS-Code-Panel?
+
+## Hintergrund-Aufrufe: Live-Ausgabe (13.11.2026)
+
+Daniel will die Ausgabe von Hintergrund-Aufrufen sehen, „in einer Art Terminal“. Plan
+`~/.claude/plans/wir-haben-ja-k-rzlich-temporal-papert.md`: erst messen, dann 2–3 Layouts als Bild, dann bauen.
+
+- Ein Hintergrund-Bash schreibt nach `/private/tmp/claude-501/<cwd mit - statt />/<session id>/tasks/<task id>.output`
+  [gemessen, Claude Code 2.1.323]. Die Datei wächst live, stdout und stderr stehen gemischt in Schreibreihenfolge drin,
+  den Befehl enthält sie nicht. Am Ende hängt Claude Code `[exited with code N]` an, die Datei bleibt danach stehen.
+- Auch Vordergrund-Aufrufe legen dort kurz eine `.output` an und löschen sie wieder [gemessen: drei Dateien
+  kamen und gingen]. Wer den Ordner beobachtet, sieht also mehr als nur die Hintergrund-Aufrufe.
+- Die Mod sieht beim `tool.call` den Befehl, `description` und `run_in_background` (Eingabe), und im Ergebnis
+  `backgroundTaskId`, dazu `backgroundedByUser` (Ctrl+B) und `timedOutAfterMs` (automatisch in den Hintergrund
+  geschoben) [gelesen, Typen 2.1.323]. Ein Hintergrund-Agent liefert `status: "async_launched"`, `agentId`,
+  `description` und `outputFile` [gelesen].
+- Das Ende kommt als Turn mit `origin.kind: 'task-notification'` [gelesen]; die Exit-Zeile in der Datei reicht
+  aber auch [gemessen].
+- Damit ist die Zuordnung zum Tab lösbar: Die Mod läuft im Tab (`CLAUDE_PANEL_TAB_ID`) und kann je Aufruf
+  `{ id, command, description, startedAt, outputFile }` in `<tab>.live.json` schreiben [erschlossen]. Den Pfad
+  liefert die Schnittstelle für einen lokalen Bash nicht (`backgroundOutputPath` nur für entfernte); die Mod muss ihn
+  aus `$.session.id()`, dem cwd und dem Temp-Ordner bauen. Das ist Claude Codes internes Layout und kann sich mit
+  einem Update ändern; die Anzeige muss eine fehlende Datei als „Ausgabe nicht lesbar“ zeigen, nicht als leer.
+- Nicht gemessen: was in der `outputFile` eines Hintergrund-Agenten steht (Transkript oder Text).
 
 ## Nicht geprüft
 

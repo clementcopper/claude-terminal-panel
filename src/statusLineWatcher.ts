@@ -147,7 +147,9 @@ export class StatusLineWatcher {
 
   constructor(
     private readonly onSnapshot: StatusLineCallback,
-    private readonly debounceMs = 150
+    private readonly debounceMs = 150,
+    /** Every read of a tab's live file, raw; the process monitor takes its `shells` from it. */
+    private readonly onLive?: (terminalId: string, raw: string | undefined) => void
   ) {
     this.start();
   }
@@ -661,6 +663,7 @@ export class StatusLineWatcher {
 
     const producerRaw = this.readFile(`${terminalId}.json`);
     const liveRaw = this.readFile(`${terminalId}${LIVE_SUFFIX}`);
+    this.onLive?.(terminalId, liveRaw);
 
     if (liveRaw === undefined) {
       this.latestLive.delete(terminalId);

@@ -757,6 +757,19 @@ at the call site`. Ein Modul-weites `S.$ = $` für einen Schreib-Timer fällt du
   (`composer`/`bridge`) und aus `<bash-input>`, `turn.start` nimmt das. Zweiter E2E-Lauf:
   `/probe-skill` und `!echo hi` stehen in `prompt`, nach `/context` steht dort weiter der vorige.
 
+- **Jeder Bash-Aufruf schreibt seine Ausgabe live nach `tasks/<id>.output`, auch im Vordergrund**
+  (13.11.2026, Claude Code 2.1.323, Prozess-Monitor). Ordner
+  `/private/tmp/claude-501/<cwd mit ->/<session id>/tasks/`; stdout und stderr gemischt, am Ende eines
+  Hintergrund-Aufrufs `[exited with code N]`, die Datei eines Vordergrund-Aufrufs löscht Claude Code
+  bei dessen Ende. Die Mod-Schnittstelle nennt nur die `backgroundTaskId`, keinen Pfad und für
+  Vordergrund-Aufrufe gar nichts; `shellWatcher.ts` sucht den Ordner per Session-ID und ordnet
+  Vordergrund-Dateien nach Geburtszeit zu. E2E mit echtem `claude -p` und der Mod: beide Ausgaben
+  kamen sekündlich an, `exit 3` wurde `failed`.
+- **Ein Messbefehl, der den `tasks/`-Ordner ausliest, liest seine eigene Ausgabe.** `cat *.output`
+  in einem Bash-Aufruf schrieb die gelesene Datei in sich selbst zurück; nach Sekunden 5 GB, Claude
+  Code brach mit „output file exceeded 5GB“ ab. Die eigene Datei ausschließen (`ls` statt `cat`,
+  oder eine fremde Datei mit Namen lesen).
+
 ## Schriften und Scrollbar im Panel
 
 - **„SF Pro Compact" gibt es nicht.** Apples Familien heißen `SF Pro` und `SF Compact` — Geschwister,

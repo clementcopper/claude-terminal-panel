@@ -12,9 +12,11 @@ import type {
   StatusLineSnapshot,
   EditorContext,
   DroppedFile,
-  ProgressList
+  ProgressList,
+  ShellRun
 } from './types';
 import { buildProgressChip, progressTicks, tickProgressChip } from './progressChip';
+import { buildShellChip, linkedShell, tickShellChip } from './shellChip';
 
 // File path link provider for terminal
 class FileLinkProvider implements ILinkProvider {
@@ -433,6 +435,9 @@ const messageHandlers: MessageHandlers = {
   },
   progress: (message, ctx) => {
     ctx.setProgress(message.id, message.lists);
+  },
+  shells: (message, ctx) => {
+    ctx.setShells(message.id, message.shells);
   }
 };
 
@@ -653,6 +658,18 @@ class StatusLineView {
   private readonly expandedLists = new Set<string>();
   /** Moves the chips' times once a second while a list of the active tab runs. */
   private progressTimer: number | undefined;
+  /** Claude's Bash calls per tab, the process monitor; see `shellChip.ts`. */
+  private readonly shells = new Map<string, ShellRun[]>();
+  /** Call chips opened by a click, as `<tab id>/<key>`; every chip starts folded. */
+  private readonly expandedShells = new Set<string>();
+  /**
+   * The last output each progress list was fed, as `<tab id>/<list id>`: a foreground call leaves
+   * the monitor when it ends, and the open list chip should still show how it finished.
+   */
+  private readonly listOutput = new Map<
+    string,
+    { lines: string[]; running: boolean; readable: boolean }
+  >();
 
   /** Mirrors the setting; the extension host owns the value, this is the drawn copy. */
   private threshold = 60;
@@ -665,7 +682,8 @@ class StatusLineView {
     private readonly onEditorReferenceClick: () => void,
     private readonly onStopTurn: () => void,
     private readonly onThresholdPrompt: () => void,
-    private readonly onDismissProgress: (listId: string) => void
+    private readonly onDismissProgress: (listId: string) => void,
+    private readonly onDismissShell: (key: string) => void
   ) {
     // Centring is a measurement, not a breakpoint, so it has to be taken again whenever the panel
     // changes width — a resize on its own never rebuilds the row. Toggling `justify-content`
@@ -708,9 +726,28 @@ class StatusLineView {
       this.progress.delete(id);
     }
     // A list that is gone takes its open state with it; a new one with the same id starts folded
-    for (const key of this.expandedLists) {
+    for (const key of [...this.expandedLists, ...this.listOutput.keys()]) {
       const [tab, listId] = key.split('/');
-      if (tab === id && !lists.some((list) => list.id === listId)) this.expandedLists.delete(key);
+      if (tab === id && !lists.some((list) => list.id === listId)) {
+        this.expandedLists.delete(key);
+        this.listOutput.delete(key);
+      }
+    }
+    if (id === this.activeId) {
+      this.render();
+    }
+  }
+
+  setShells(id: string, shells: ShellRun[]): void {
+    if (shells.length > 0) {
+      this.shells.set(id, shells);
+    } else {
+      this.shells.delete(id);
+    }
+    for (const key of this.expandedShells) {
+      const [tab, shellKey] = key.split('/');
+      if (tab === id && !shells.some((run) => run.key === shellKey))
+        this.expandedShells.delete(key);
     }
     if (id === this.activeId) {
       this.render();
@@ -720,6 +757,13 @@ class StatusLineView {
   remove(id: string): void {
     this.snapshots.delete(id);
     this.progress.delete(id);
+    this.shells.delete(id);
+    for (const key of [...this.expandedShells, ...this.listOutput.keys()]) {
+      if (key.startsWith(`${id}/`)) {
+        this.expandedShells.delete(key);
+        this.listOutput.delete(key);
+      }
+    }
     for (const key of this.expandedLists) {
       if (key.startsWith(`${id}/`)) this.expandedLists.delete(key);
     }
@@ -764,10 +808,11 @@ class StatusLineView {
     const bar = this.promptElement;
     const prompt = snapshot?.prompt;
     const lists = this.activeId ? (this.progress.get(this.activeId) ?? []) : [];
+    const shells = this.activeId ? (this.shells.get(this.activeId) ?? []) : [];
     bar.textContent = '';
     delete bar.dataset.tooltip;
-    // The bar carries the prompt chip and the progress chips under it; either keeps it open
-    if (!prompt && lists.length === 0) {
+    // The bar carries the prompt chip and the progress and call chips under it; any keeps it open
+    if (!prompt && lists.length === 0 && shells.length === 0) {
       bar.hidden = true;
       return;
     }
@@ -791,17 +836,63 @@ class StatusLineView {
       chip.appendChild(StatusLineView.promptLine('said', '❯', prompt));
       bar.appendChild(chip);
     }
+    const tab = this.activeId ?? '';
+    // A call that writes a progress list shows its output inside that list's chip, not on its own
+    const feeding = new Set<string>();
     for (const list of lists) {
-      const tab = this.activeId ?? '';
+      const run = linkedShell(shells, list.startedAt);
+      const key = `${tab}/${list.id}`;
+      if (run) {
+        feeding.add(run.key);
+        this.listOutput.set(key, {
+          lines: run.lines,
+          running: run.state === 'running' && list.state === 'running',
+          readable: run.readable
+        });
+      }
+      const output = this.listOutput.get(key);
       bar.appendChild(
         buildProgressChip(
           list,
           (listId) => this.dismissProgress(listId),
-          this.expandedLists.has(`${tab}/${list.id}`),
-          (listId) => this.toggleProgress(listId)
+          this.expandedLists.has(key),
+          (listId) => this.toggleProgress(listId),
+          output && list.state !== 'running' ? { ...output, running: false } : output
         )
       );
     }
+    for (const run of shells) {
+      if (feeding.has(run.key)) continue;
+      bar.appendChild(
+        buildShellChip(
+          run,
+          this.expandedShells.has(`${tab}/${run.key}`),
+          (key) => this.toggleShell(key),
+          (key) => this.dismissShell(key)
+        )
+      );
+    }
+  }
+
+  /** Opens or folds one call chip, like `toggleProgress`. */
+  private toggleShell(key: string): void {
+    if (!this.activeId) return;
+    const id = `${this.activeId}/${key}`;
+    if (!this.expandedShells.delete(id)) this.expandedShells.add(id);
+    this.render();
+    this.promptElement
+      .querySelector<HTMLElement>(
+        `.shell-chip[data-shell-key="${CSS.escape(key)}"] .progress-toggle`
+      )
+      ?.focus();
+  }
+
+  /** Drops a finished call chip at once; the host forgets it and confirms with the rest. */
+  private dismissShell(key: string): void {
+    if (!this.activeId) return;
+    const shells = (this.shells.get(this.activeId) ?? []).filter((run) => run.key !== key);
+    this.setShells(this.activeId, shells);
+    this.onDismissShell(key);
   }
 
   /** Opens or folds one chip; `render()` measures the new height and refits the terminal. */
@@ -819,6 +910,13 @@ class StatusLineView {
   /** Drops the chip at once; the host deletes the file and confirms with the remaining lists. */
   private dismissProgress(listId: string): void {
     if (!this.activeId) return;
+    // The background call that wrote the list goes with it, or its own chip would take its place
+    const list = (this.progress.get(this.activeId) ?? []).find((l) => l.id === listId);
+    const run = list
+      ? linkedShell(this.shells.get(this.activeId) ?? [], list.startedAt)
+      : undefined;
+    if (run && run.state !== 'running') this.dismissShell(run.key);
+    this.listOutput.delete(`${this.activeId}/${listId}`);
     const lists = (this.progress.get(this.activeId) ?? []).filter((list) => list.id !== listId);
     this.setProgress(this.activeId, lists);
     this.onDismissProgress(listId);
@@ -827,7 +925,8 @@ class StatusLineView {
   /** One timer for every running chip of the active tab; it rewrites text, never the bar. */
   private scheduleProgressTick(): void {
     const lists = this.activeId ? (this.progress.get(this.activeId) ?? []) : [];
-    const wanted = lists.some(progressTicks);
+    const shells = this.activeId ? (this.shells.get(this.activeId) ?? []) : [];
+    const wanted = lists.some(progressTicks) || shells.some((run) => run.state === 'running');
     if (wanted && this.progressTimer === undefined) {
       this.progressTimer = window.setInterval(() => {
         const current = this.activeId ? (this.progress.get(this.activeId) ?? []) : [];
@@ -836,6 +935,12 @@ class StatusLineView {
             `.progress-chip[data-list-id="${list.id}"]`
           );
           if (chip) tickProgressChip(chip, list);
+        }
+        for (const run of this.activeId ? (this.shells.get(this.activeId) ?? []) : []) {
+          const chip = this.promptElement.querySelector<HTMLElement>(
+            `.shell-chip[data-shell-key="${CSS.escape(run.key)}"]`
+          );
+          if (chip) tickShellChip(chip, run);
         }
       }, StatusLineView.BUSY_TICK_MS);
     } else if (!wanted && this.progressTimer !== undefined) {
@@ -1630,12 +1735,22 @@ class WebviewContext {
         if (id) {
           this.postMessage({ type: 'dismissProgress', id, listId });
         }
+      },
+      (key) => {
+        const id = this.state.getActiveId();
+        if (id) {
+          this.postMessage({ type: 'dismissShell', id, key });
+        }
       }
     );
   }
 
   setProgress(id: string, lists: ProgressList[]): void {
     this.statusLine.setProgress(id, lists);
+  }
+
+  setShells(id: string, shells: ShellRun[]): void {
+    this.statusLine.setShells(id, shells);
   }
 
   setContextThreshold(value: number): void {

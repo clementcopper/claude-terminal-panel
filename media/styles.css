@@ -1321,3 +1321,104 @@ body.vscode-high-contrast-light {
   color: var(--progress-failed);
   font-weight: 600;
 }
+
+/* The process monitor (Daniel, 2026-11-13): a Bash call's output, read-only, on the terminal's
+   own ground inside the chip. Always eight rows tall, so a growing tail never refits the
+   terminal; colours from the theme's ANSI slots, like xterm's. */
+.shell-out {
+  box-sizing: border-box;
+  height: calc(8 * 14px + 10px);
+  padding: 5px 8px;
+  border-radius: 4px;
+  background-color: var(--vscode-terminal-background, var(--vscode-editor-background, #1e1e1e));
+  color: var(--vscode-terminal-foreground, var(--vscode-foreground, #cccccc));
+  font-family: var(--panel-mono-font);
+  font-size: 10.5px;
+  line-height: 14px;
+  overflow: hidden;
+  user-select: text;
+  cursor: text;
+}
+
+.shell-line {
+  height: 14px;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.shell-note {
+  color: var(--vscode-descriptionForeground, #767676);
+  font-family: var(--panel-ui-font);
+}
+
+.shell-cursor {
+  display: inline-block;
+  width: 6px;
+  height: 11px;
+  vertical-align: -2px;
+  background-color: var(
+    --vscode-terminalCursor-foreground,
+    var(--vscode-terminal-foreground, #cccccc)
+  );
+}
+
+.shell-command {
+  font-family: var(--panel-mono-font);
+  font-size: 10.5px;
+}
+
+.ansi-bold {
+  font-weight: 700;
+}
+.ansi-dim {
+  opacity: 0.6;
+}
+.ansi-black {
+  color: var(--vscode-terminal-ansiBlack, #000000);
+}
+.ansi-red {
+  color: var(--vscode-terminal-ansiRed, #cd3131);
+}
+.ansi-green {
+  color: var(--vscode-terminal-ansiGreen, #0dbc79);
+}
+.ansi-yellow {
+  color: var(--vscode-terminal-ansiYellow, #e5e510);
+}
+.ansi-blue {
+  color: var(--vscode-terminal-ansiBlue, #2472c8);
+}
+.ansi-magenta {
+  color: var(--vscode-terminal-ansiMagenta, #bc3fbc);
+}
+.ansi-cyan {
+  color: var(--vscode-terminal-ansiCyan, #11a8cd);
+}
+.ansi-white {
+  color: var(--vscode-terminal-ansiWhite, #e5e5e5);
+}
+.ansi-bright-black {
+  color: var(--vscode-terminal-ansiBrightBlack, #666666);
+}
+.ansi-bright-red {
+  color: var(--vscode-terminal-ansiBrightRed, #f14c4c);
+}
+.ansi-bright-green {
+  color: var(--vscode-terminal-ansiBrightGreen, #23d18b);
+}
+.ansi-bright-yellow {
+  color: var(--vscode-terminal-ansiBrightYellow, #f5f543);
+}
+.ansi-bright-blue {
+  color: var(--vscode-terminal-ansiBrightBlue, #3b8eea);
+}
+.ansi-bright-magenta {
+  color: var(--vscode-terminal-ansiBrightMagenta, #d670d6);
+}
+.ansi-bright-cyan {
+  color: var(--vscode-terminal-ansiBrightCyan, #29b8db);
+}
+.ansi-bright-white {
+  color: var(--vscode-terminal-ansiBrightWhite, #e5e5e5);
+}

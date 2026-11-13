@@ -197,7 +197,12 @@ test('a background agent outlives the turn that spawned it: counted until its ow
   // What the engine says of its agents when the main turn ends: a1 still at work, a2 done.
   const status: Record<string, 'running' | 'completed'> = { a1: 'running', a2: 'completed' }
   on('agent.list', () => ({
-    value: Object.entries(status).map(([id, s]) => ({ id, description: id, type: 'Explore', status: s }))
+    value: Object.entries(status).map(([id, s]) => ({
+      id,
+      description: id,
+      type: 'Explore',
+      status: s
+    }))
   }))
 
   await $.session.start({ cwd: '/Users/me/p', surface: 'terminal', isInteractive: true })
@@ -208,7 +213,14 @@ test('a background agent outlives the turn that spawned it: counted until its ow
   expect(last(writes).agents).toBe(2)
 
   // The main turn ends while a1 runs in the background: Claude waits for the person, a1 still counts.
-  await $.turn.complete({ turnId: 't7', answer: 'started', durationMs: 10, isAborted: false, reason: 'answer', usage: USAGE })
+  await $.turn.complete({
+    turnId: 't7',
+    answer: 'started',
+    durationMs: 10,
+    isAborted: false,
+    reason: 'answer',
+    usage: USAGE
+  })
   await clock.advance(150)
   expect(last(writes).state).toBe('idle')
   expect(last(writes).agents).toBe(1)
@@ -224,7 +236,14 @@ test('a background agent outlives the turn that spawned it: counted until its ow
   expect(last(writes).prompt).toBe('look around')
 
   // Its own turn end takes it off.
-  await $.turn.complete({ turnId: 'a1-t', agentId: 'a1', answer: '12', durationMs: 10, isAborted: false, reason: 'answer' })
+  await $.turn.complete({
+    turnId: 'a1-t',
+    agentId: 'a1',
+    answer: '12',
+    durationMs: 10,
+    isAborted: false,
+    reason: 'answer'
+  })
   await clock.advance(150)
   expect(last(writes).agents).toBe(0)
 })
@@ -246,7 +265,11 @@ test('the tab colour runs /color once, at the first real prompt, never at the st
     runs.push({ command: e.command, args: e.args })
     return { text: '' }
   })
-  mock.env(on, { CLAUDE_PANEL_STATUS_DIR: DIR, CLAUDE_PANEL_TAB_ID: TAB, CLAUDE_PANEL_COLOR: 'pink' })
+  mock.env(on, {
+    CLAUDE_PANEL_STATUS_DIR: DIR,
+    CLAUDE_PANEL_TAB_ID: TAB,
+    CLAUDE_PANEL_COLOR: 'pink'
+  })
   const clock = mock.clock(on)
   await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true })
   await clock.advance(150)
@@ -276,7 +299,11 @@ test('the person’s own /color before the first prompt leaves the mod’s out',
     runs.push(e.args)
     return { text: '' }
   })
-  mock.env(on, { CLAUDE_PANEL_STATUS_DIR: DIR, CLAUDE_PANEL_TAB_ID: TAB, CLAUDE_PANEL_COLOR: 'pink' })
+  mock.env(on, {
+    CLAUDE_PANEL_STATUS_DIR: DIR,
+    CLAUDE_PANEL_TAB_ID: TAB,
+    CLAUDE_PANEL_COLOR: 'pink'
+  })
   const clock = mock.clock(on)
   await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true })
   await $.command.run(typed('green'))
@@ -292,7 +319,11 @@ test('an unknown colour runs no /color', async ($, on) => {
     runs.push(e.args)
     return { text: '' }
   })
-  mock.env(on, { CLAUDE_PANEL_STATUS_DIR: DIR, CLAUDE_PANEL_TAB_ID: TAB, CLAUDE_PANEL_COLOR: 'magenta; rm' })
+  mock.env(on, {
+    CLAUDE_PANEL_STATUS_DIR: DIR,
+    CLAUDE_PANEL_TAB_ID: TAB,
+    CLAUDE_PANEL_COLOR: 'magenta; rm'
+  })
   const clock = mock.clock(on)
   await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true })
   await $.turn.start({ turnId: 't1', text: 'hello' })
@@ -315,7 +346,11 @@ test('the person’s own /color recolours the bar; the bare one gets its colour 
     seen.push(e.args)
     return { text: `Session color set to: ${e.args}` }
   })
-  mock.env(on, { CLAUDE_PANEL_STATUS_DIR: DIR, CLAUDE_PANEL_TAB_ID: TAB, CLAUDE_PANEL_COLOR: 'pink' })
+  mock.env(on, {
+    CLAUDE_PANEL_STATUS_DIR: DIR,
+    CLAUDE_PANEL_TAB_ID: TAB,
+    CLAUDE_PANEL_COLOR: 'pink'
+  })
   const clock = mock.clock(on)
   await $.session.start({ cwd: '/x', surface: 'terminal', isInteractive: true })
   await clock.advance(150)
@@ -452,14 +487,21 @@ test('a skill and a ! line show as typed; a local command and a notification kee
 
   // A ! line raises no prompt.submit; the engine records it, then starts a turn on its output
   const row = (text: string) => ({
-    message: { type: 'user' as const, role: 'user' as const, content: [{ type: 'text' as const, text }] },
+    message: {
+      type: 'user' as const,
+      role: 'user' as const,
+      content: [{ type: 'text' as const, text }]
+    },
     door: 'command' as const,
     origin: { kind: 'unclassified' as const },
     uuid: `u-${text.length}`
   })
   await $.session.append(row('<bash-input>npm test</bash-input>'))
   await $.session.append(row('<bash-stdout>ok</bash-stdout><bash-stderr></bash-stderr>'))
-  await $.turn.start({ turnId: 't3', text: '<bash-stdout>ok</bash-stdout><bash-stderr></bash-stderr>' })
+  await $.turn.start({
+    turnId: 't3',
+    text: '<bash-stdout>ok</bash-stdout><bash-stderr></bash-stderr>'
+  })
   await clock.advance(150)
   expect(last(writes).prompt).toBe('!npm test')
 
@@ -468,4 +510,65 @@ test('a skill and a ! line show as typed; a local command and a notification kee
   await $.turn.start({ turnId: 't4', text: '<task-notification>a1 done</task-notification>' })
   await clock.advance(150)
   expect(last(writes).prompt).toBe('!npm test')
+})
+
+test('a Bash call lists as a shell while it runs; a background one stays with its task id', async ($, on) => {
+  const writes = bottom(on, { window: 1_000_000 })
+  mock.env(on, { CLAUDE_PANEL_STATUS_DIR: DIR, CLAUDE_PANEL_TAB_ID: TAB })
+  const clock = mock.clock(on, { now: 1_000 })
+  on('session.id', () => ({ value: 'sess-1' }))
+  on('tool.call', { tool: 'Bash' }, async (_, e) => {
+    await clock.advance(400)
+    const input = e as unknown as { run_in_background?: boolean }
+    return {
+      result: {
+        stdout: '',
+        stderr: '',
+        interrupted: false,
+        backgroundTaskId: input.run_in_background ? 'b9bxey20n' : undefined
+      }
+    }
+  })
+  type Shell = {
+    key: string
+    command: string
+    description?: string
+    sessionId?: string
+    background: boolean
+    taskId?: string
+  }
+  const shells = () => (last(writes).shells ?? []) as Shell[]
+
+  await $.session.start({ cwd: '/Users/me/p', surface: 'terminal', isInteractive: true })
+  const fore = $.tool.call({
+    tool: 'Bash',
+    tool_use_id: 'f1',
+    command: 'npm test',
+    description: 'Run the tests'
+  })
+  await clock.advance(150)
+  expect(shells()).toEqual([
+    {
+      key: 'f1',
+      command: 'npm test',
+      description: 'Run the tests',
+      startedAt: shells()[0]!.startedAt,
+      sessionId: 'sess-1',
+      background: false
+    }
+  ])
+  await fore
+  await clock.advance(150)
+  expect(shells()).toEqual([])
+
+  await $.tool.call({
+    tool: 'Bash',
+    tool_use_id: 'b1',
+    command: 'npm run watch',
+    run_in_background: true
+  })
+  await clock.advance(150)
+  expect(shells().map((s) => [s.key, s.background, s.taskId, s.sessionId])).toEqual([
+    ['b1', true, 'b9bxey20n', 'sess-1']
+  ])
 })

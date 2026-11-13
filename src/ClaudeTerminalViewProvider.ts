@@ -25,6 +25,7 @@ import { readPasteboard } from './clipboardPaste';
 import { startModelLimitsPoll } from './usageLimits';
 import { PromptDetector, type PromptDetectorConfig } from './promptDetector';
 import { StatusLineWatcher } from './statusLineWatcher';
+import { ShellWatcher } from './shellWatcher';
 import { ProgressWatcher } from './progressWatcher';
 import { EditorContextTracker } from './editorContextTracker';
 import { InterAgentRouter } from './interagent/InterAgentRouter';
@@ -70,6 +71,8 @@ export class ClaudeTerminalViewProvider
   /** Last keystroke per tab, so a state older than the user's own input does not raise the pill. */
   private readonly lastInputAt = new Map<string, number>();
   private readonly statusLineWatcher: StatusLineWatcher;
+  /** Claude's Bash calls and the tail of their output; see `shellWatcher.ts`. */
+  private readonly shellWatcher: ShellWatcher;
   /** Progress lists programs in a tab write; see `progressWatcher.ts`. */
   private readonly progressWatcher: ProgressWatcher;
   /** Fable's own weekly window and any other per-model one; see `usageLimits.ts`. */
@@ -165,15 +168,24 @@ export class ClaudeTerminalViewProvider
       this.handleNotificationChange.bind(this)
     );
 
-    this.statusLineWatcher = new StatusLineWatcher((terminalId, snapshot) => {
-      this.applyLiveState(terminalId, snapshot);
-      // The threshold warning is independent of the row: it fires whether or not the row is
-      // drawn, because a user who hid the row still asked for the warning.
-      if (this.configManager.getConfig().statusLine) {
-        this.postMessage({ type: 'statusLine', id: terminalId, data: snapshot });
-      }
-      this.checkContextThreshold(terminalId, snapshot);
+    this.shellWatcher = new ShellWatcher((terminalId, shells) => {
+      this.postMessage({ type: 'shells', id: terminalId, shells });
     });
+    this.statusLineWatcher = new StatusLineWatcher(
+      (terminalId, snapshot) => {
+        this.applyLiveState(terminalId, snapshot);
+        // The threshold warning is independent of the row: it fires whether or not the row is
+        // drawn, because a user who hid the row still asked for the warning.
+        if (this.configManager.getConfig().statusLine) {
+          this.postMessage({ type: 'statusLine', id: terminalId, data: snapshot });
+        }
+        this.checkContextThreshold(terminalId, snapshot);
+      },
+      undefined,
+      (terminalId, raw) => {
+        this.shellWatcher.update(terminalId, raw);
+      }
+    );
 
     // After the status line watcher: it creates the window folder the lists live in.
     this.progressWatcher = new ProgressWatcher((terminalId, lists) => {
@@ -236,6 +248,11 @@ export class ClaudeTerminalViewProvider
   /** The × on a finished progress chip. */
   handleDismissProgress(id: string, listId: string): void {
     this.progressWatcher.dismiss(id, listId);
+  }
+
+  /** The × on a finished process-monitor chip. */
+  handleDismissShell(id: string, key: string): void {
+    this.shellWatcher.dismiss(id, key);
   }
 
   /**
@@ -302,6 +319,10 @@ export class ClaudeTerminalViewProvider
       const lists = this.progressWatcher.get(tab.id);
       if (lists.length > 0) {
         this.postMessage({ type: 'progress', id: tab.id, lists });
+      }
+      const shells = this.shellWatcher.get(tab.id);
+      if (shells.length > 0) {
+        this.postMessage({ type: 'shells', id: tab.id, shells });
       }
     }
     this.sendGroupsUpdate();
@@ -1177,6 +1198,7 @@ export class ClaudeTerminalViewProvider
     this.promptDetector.removeTerminal(terminalId);
     this.statusLineWatcher.removeTerminal(terminalId);
     this.progressWatcher.removeTerminal(terminalId);
+    this.shellWatcher.removeTerminal(terminalId);
     this.thresholdNotified.delete(terminalId);
     this.coldTerminals.delete(terminalId);
     this.exitRecovery.delete(terminalId);
@@ -1439,6 +1461,7 @@ export class ClaudeTerminalViewProvider
     this.modelLimitsPoll.dispose();
     this.statusLineWatcher.dispose();
     this.progressWatcher.dispose();
+    this.shellWatcher.dispose();
     this.editorTracker.dispose();
     this.configManager.dispose();
   }

@@ -12,7 +12,14 @@
  * (`CLAUDE_PANEL_STATUS_DIR`, `CLAUDE_PANEL_TAB_ID`) and the JSON shape in `payload()`, documented
  * in README.local.md § Status line. Every field there is optional for the reader.
  */
-import type { AgentInfo, AgentStatus, Register, SessionRateLimit, SessionUsage, Timer } from 'claude-code'
+import type {
+  AgentInfo,
+  AgentStatus,
+  Register,
+  SessionRateLimit,
+  SessionUsage,
+  Timer
+} from 'claude-code'
 
 const LIVE_SUFFIX = '.live.json'
 /** One write per burst: a tool round trip raises several events within milliseconds. */
@@ -43,6 +50,24 @@ type State = 'idle' | 'busy' | 'asking'
 type ToolEntry = { name: string; summary: string; agentId?: string; startedAt: number }
 
 /**
+ * A Bash call for the panel's process monitor. Claude Code writes its output to
+ * `<tmp>/claude-<uid>/<project>/<session id>/tasks/<task id>.output` (measured with 2.1.323); the
+ * panel reads that file. A background call names its task id in its result; a foreground one
+ * never does, so the panel matches it by start time.
+ */
+type ShellEntry = {
+  command: string
+  description?: string
+  startedAt: number
+  sessionId?: string
+  background: boolean
+  taskId?: string
+}
+
+/** Background calls outlive their turn; the panel drops finished ones, this bounds the rest. */
+const SHELLS_MAX = 20
+
+/**
  * Everything the file is built from. Module state, not `$.state`: nothing draws from it, and a
  * hot reload (which empties it) is a development case the next event repairs.
  */
@@ -59,6 +84,8 @@ const S = {
   state: 'idle' as State,
   stateAt: 0,
   tools: new Map<string, ToolEntry>(),
+  /** Bash calls by tool use id: foreground ones while they run, background ones until bounded out. */
+  shells: new Map<string, ShellEntry>(),
   agents: new Set<string>(),
   compacted: 0,
   compactAuto: 0,
@@ -189,7 +216,8 @@ const payload = () => ({
   prompt: S.prompt,
   promptAt: S.promptAt,
   before: S.before,
-  color: S.color
+  color: S.color,
+  shells: [...S.shells].map(([key, shell]) => ({ key, ...shell }))
 })
 
 const text = () => JSON.stringify(payload())
@@ -255,6 +283,10 @@ const resetForClear = () => {
   S.before = undefined
   S.summaryAbort?.abort()
   S.tools.clear()
+  // Background calls keep running across a /clear and keep their session's folder
+  for (const [key, shell] of S.shells) {
+    if (!shell.background) S.shells.delete(key)
+  }
   S.agents.clear()
   S.state = 'idle'
   S.stateAt = S.resetAt
@@ -361,7 +393,11 @@ export const register: Register = (on) => {
   // Control); a local command such as `/context` raises no `prompt.submit` and keeps the topic.
   // `next(e)` resolves after `turn.start`, so the text is set before it.
   on('prompt.submit', async ($, e, next) => {
-    if (S.path !== undefined && !e.isMeta && (e.origin.kind === 'composer' || e.origin.kind === 'bridge')) {
+    if (
+      S.path !== undefined &&
+      !e.isMeta &&
+      (e.origin.kind === 'composer' || e.origin.kind === 'bridge')
+    ) {
       S.typed = e.text
     }
     const entered = await next(e)
@@ -372,7 +408,12 @@ export const register: Register = (on) => {
   // A `!` line raises no `prompt.submit`; the engine records it as `<bash-input>…` and then starts a
   // turn on its output (2.1.319, measured 2026-11-09), which `turn.start` names with this.
   on('session.append', ($, e, next) => {
-    if (S.path !== undefined && e.agentId === undefined && e.door === 'command' && e.message.type === 'user') {
+    if (
+      S.path !== undefined &&
+      e.agentId === undefined &&
+      e.door === 'command' &&
+      e.message.type === 'user'
+    ) {
       const first = e.message.content[0]
       const text = first?.type === 'text' && typeof first.text === 'string' ? first.text : ''
       const line = /^<bash-input>([\s\S]*)<\/bash-input>$/.exec(text)
@@ -411,13 +452,46 @@ export const register: Register = (on) => {
     })
     const asks = e.agentId === undefined && String(e.tool) === 'AskUserQuestion'
     if (asks) setState('asking')
+    const bash = String(e.tool) === 'Bash' && S.path !== undefined
+    if (bash) {
+      const input = e as unknown as Record<string, unknown>
+      let sessionId: string | undefined
+      try {
+        sessionId = await $.session.id()
+      } catch {
+        // Without the id the panel cannot find the output; the chip says so
+      }
+      S.shells.set(id, {
+        command: typeof input.command === 'string' ? input.command : '',
+        description: typeof input.description === 'string' ? input.description : undefined,
+        startedAt: now(),
+        sessionId,
+        background: false
+      })
+    }
     bump(
       (fn) => $.clock.after(WRITE_DELAY_MS, fn),
       () => $.fs.write(S.path ?? '', text())
     )
     try {
-      return await next(e)
+      const answer = await next(e)
+      const result = (answer as { result?: unknown }).result
+      const taskId =
+        typeof result === 'object' && result !== null
+          ? (result as { backgroundTaskId?: unknown }).backgroundTaskId
+          : undefined
+      const shell = S.shells.get(id)
+      if (bash && shell && typeof taskId === 'string') {
+        shell.background = true
+        shell.taskId = taskId
+        const background = [...S.shells].filter(([, entry]) => entry.background)
+        for (const [key] of background.slice(0, Math.max(0, background.length - SHELLS_MAX))) {
+          S.shells.delete(key)
+        }
+      }
+      return answer
     } finally {
+      if (!S.shells.get(id)?.background) S.shells.delete(id)
       S.tools.delete(id)
       if (S.state === 'asking' && e.agentId === undefined) setState('busy')
       bump(

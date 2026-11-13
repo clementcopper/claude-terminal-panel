@@ -25,6 +25,7 @@ export interface MessageHandlerContext {
   handlePromptContextThreshold(): void;
   handleThemeApplied(): void;
   handleDismissProgress(id: string, listId: string): void;
+  handleDismissShell(id: string, key: string): void;
 }
 
 type MessageHandler<T extends WebviewMessage> = (message: T, ctx: MessageHandlerContext) => void;
@@ -97,6 +98,9 @@ const messageHandlers: MessageHandlerMap = {
   },
   dismissProgress: (message, ctx) => {
     ctx.handleDismissProgress(message.id, message.listId);
+  },
+  dismissShell: (message, ctx) => {
+    ctx.handleDismissShell(message.id, message.key);
   }
 };
 

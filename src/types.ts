@@ -297,7 +297,9 @@ export type WebviewMessage =
    */
   | { type: 'themeApplied' }
   /** The × on a finished progress chip: the watcher deletes that list's file. */
-  | { type: 'dismissProgress'; id: string; listId: string };
+  | { type: 'dismissProgress'; id: string; listId: string }
+  /** The × on a finished process-monitor chip. */
+  | { type: 'dismissShell'; id: string; key: string };
 
 // Extension message types (from extension to webview)
 export type ExtensionMessage =
@@ -336,7 +338,9 @@ export type ExtensionMessage =
   // The threshold lives in the settings; the webview only draws and drags it
   | { type: 'contextThreshold'; value: number }
   /** Every progress list of one tab, oldest first; an empty array clears them. */
-  | { type: 'progress'; id: string; lists: ProgressList[] };
+  | { type: 'progress'; id: string; lists: ProgressList[] }
+  /** Every Bash call of one tab the process monitor shows; an empty array clears them. */
+  | { type: 'shells'; id: string; shells: ShellRun[] };
 
 /**
  * A progress list a program in a tab wrote under `progress/<tab id>/` — the contract is
@@ -364,4 +368,23 @@ export interface ProgressList {
   paused?: { reason: string; since: number };
   detail?: string;
   items: ProgressItem[];
+}
+
+/**
+ * One Bash call of Claude's for the process monitor (`shellWatcher.ts`): the tail of its output,
+ * colour codes intact, every other escape removed. Declared twice like every message shape here.
+ */
+export interface ShellRun {
+  key: string;
+  command: string;
+  description?: string;
+  startedAt: number;
+  background: boolean;
+  /** `done` also covers a background call whose file went before it said how it ended. */
+  state: 'running' | 'done' | 'failed';
+  exitCode?: number;
+  endedAt?: number;
+  lines: string[];
+  /** False once a call ran for a while and its output file was never found. */
+  readable: boolean;
 }
