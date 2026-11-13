@@ -11,7 +11,7 @@ Die Mod meldet die Aufrufe unter `shells` in `<tab>.live.json`, `src/shellWatche
 seine Ausgabe im aufgeklappten Fortschritts-Chip. Daniel hat neu geladen, mit einem Hintergrund-Zähler
 getestet: „sieht gut aus“. Doku: `README.local.md` § Process monitor, Entscheidungen in
 `Sessions/Fortschritt-Auftrag.md`.
-HEAD: bb8a87e
+HEAD: d57f379 (Code-Stand; danach nur dieser Docs-Commit)
 
 ## Nächster Schritt
 
